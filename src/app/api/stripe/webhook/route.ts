@@ -7,6 +7,7 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const codesPriceId = process.env.STRIPE_CODES_PRICE_ID;
 
 export async function POST(request: Request) {
   if (!stripeSecretKey || !webhookSecret) {
@@ -48,9 +49,25 @@ export async function POST(request: Request) {
       return new Response("Missing customer email.", { status: 400 });
     }
 
+    let participantCount = 0;
+    if (codesPriceId) {
+      const lineItems = await stripe.checkout.sessions.listLineItems(
+        session.id,
+        { limit: 100 }
+      );
+      const codesItem = lineItems.data.find(
+        (item) => item.price?.id === codesPriceId
+      );
+      participantCount = codesItem?.quantity ?? 0;
+    }
+
     payloadObject = {
       ...session,
       customer_email: email,
+      metadata: {
+        ...(session.metadata ?? {}),
+        participant_count: String(participantCount),
+      },
     };
 
     const headers = {
