@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { randomUUID } from "crypto";
+import { Resend } from "resend";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,8 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const codesPriceId = process.env.STRIPE_CODES_PRICE_ID;
+const resendApiKey = process.env.RESEND_API_KEY;
+const resendFromEmail = process.env.RESEND_FROM_EMAIL;
 
 export async function POST(request: Request) {
   if (!stripeSecretKey || !webhookSecret) {
@@ -35,6 +37,10 @@ export async function POST(request: Request) {
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     return new Response("Missing Supabase configuration.", { status: 500 });
+  }
+
+  if (!resendApiKey || !resendFromEmail) {
+    return new Response("Missing Resend configuration.", { status: 500 });
   }
 
   let payloadObject =
@@ -70,31 +76,6 @@ export async function POST(request: Request) {
       },
     };
 
-    const headers = {
-      apikey: supabaseServiceRoleKey,
-      Authorization: `Bearer ${supabaseServiceRoleKey}`,
-      "Content-Type": "application/json",
-    };
-
-    const userCreateResponse = await fetch(
-      `${supabaseUrl}/auth/v1/admin/users`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          email,
-          password: randomUUID().replace(/-/g, "").slice(0, 16),
-          email_confirm: true,
-        }),
-      }
-    );
-
-    if (!userCreateResponse.ok && userCreateResponse.status !== 422) {
-      const userError = await userCreateResponse.text();
-      console.error("Supabase user create failed:", userError);
-      return new Response(userError, { status: 500 });
-    }
-
     const userLookupResponse = await fetch(
       `${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`,
       {
@@ -117,10 +98,95 @@ export async function POST(request: Request) {
     };
 
     const userFound = lookupData.users?.some((user) => user.email === email);
+
     if (!userFound) {
-      return new Response("Auth user still missing after create.", {
-        status: 500,
+      const inviteResponse = await fetch(
+        `${supabaseUrl}/auth/v1/admin/generate_link`,
+        {
+          method: "POST",
+          headers: {
+            apikey: supabaseServiceRoleKey,
+            Authorization: `Bearer ${supabaseServiceRoleKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "invite",
+            email,
+            redirect_to: `${siteUrl}/auth/set-password`,
+          }),
+        }
+      );
+
+      if (!inviteResponse.ok) {
+        const inviteError = await inviteResponse.text();
+        console.error("Supabase invite link failed:", inviteError);
+        return new Response(inviteError, { status: 500 });
+      }
+
+      const invitePayload = (await inviteResponse.json()) as {
+        action_link?: string;
+      };
+
+      if (!invitePayload.action_link) {
+        return new Response("Invite link missing.", { status: 500 });
+      }
+
+      const resend = new Resend(resendApiKey);
+      const sendInvite = await resend.emails.send({
+        from: resendFromEmail,
+        to: email,
+        subject: "Your diagnostic purchase is confirmed",
+        text: `Thanks for your purchase.\n\nSet your password to access your diagnostic dashboard:\n${invitePayload.action_link}\n\nIf you need help, reply to this email.`,
       });
+
+      if (sendInvite.error) {
+        console.error("Resend invite email failed:", sendInvite.error);
+        return new Response("Invite email failed.", { status: 500 });
+      }
+    } else {
+      const magicLinkResponse = await fetch(
+        `${supabaseUrl}/auth/v1/admin/generate_link`,
+        {
+          method: "POST",
+          headers: {
+            apikey: supabaseServiceRoleKey,
+            Authorization: `Bearer ${supabaseServiceRoleKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "magiclink",
+            email,
+            redirect_to: `${siteUrl}/sms-diagnostic/dashboard`,
+          }),
+        }
+      );
+
+      if (!magicLinkResponse.ok) {
+        const magicError = await magicLinkResponse.text();
+        console.error("Supabase magic link failed:", magicError);
+        return new Response(magicError, { status: 500 });
+      }
+
+      const magicPayload = (await magicLinkResponse.json()) as {
+        action_link?: string;
+      };
+
+      if (!magicPayload.action_link) {
+        return new Response("Magic link missing.", { status: 500 });
+      }
+
+      const resend = new Resend(resendApiKey);
+      const sendMagic = await resend.emails.send({
+        from: resendFromEmail,
+        to: email,
+        subject: "Your diagnostic purchase is confirmed",
+        text: `Thanks for your purchase.\n\nLog in to your diagnostic dashboard:\n${magicPayload.action_link}\n\nIf you need help, reply to this email.`,
+      });
+
+      if (sendMagic.error) {
+        console.error("Resend magic link failed:", sendMagic.error);
+        return new Response("Login email failed.", { status: 500 });
+      }
     }
   }
 
