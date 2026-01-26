@@ -1,6 +1,7 @@
 "use client";
 
 import { loadStripe } from "@stripe/stripe-js";
+import type { StripeEmbeddedCheckout } from "@stripe/stripe-js";
 import { useEffect, useRef, useState } from "react";
 
 type EmbeddedCheckoutPanelProps = {
@@ -12,7 +13,7 @@ export default function EmbeddedCheckoutPanel({
 }: EmbeddedCheckoutPanelProps) {
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const checkoutRef = useRef<{ destroy?: () => void } | null>(null);
+  const checkoutRef = useRef<StripeEmbeddedCheckout | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
