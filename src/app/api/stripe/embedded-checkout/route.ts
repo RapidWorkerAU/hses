@@ -34,6 +34,9 @@ export async function POST(request: Request) {
     ui_mode: "embedded",
     allow_promotion_codes: true,
     return_url: `${siteUrl}/sms-diagnostic/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+    metadata: {
+      participant_count: String(quantity),
+    },
     line_items: [
       {
         price: setupPriceId,
