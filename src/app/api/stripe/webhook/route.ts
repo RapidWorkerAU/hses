@@ -35,10 +35,13 @@ export async function POST(request: Request) {
     return new Response("Missing Supabase configuration.", { status: 500 });
   }
 
+  const payloadObject =
+    event.type === "checkout.session.completed" ? event.data.object : event;
+
   const payload = {
     stripe_event_id: event.id,
     event_type: event.type,
-    payload: event,
+    payload: payloadObject,
   };
 
   const insertResponse = await fetch(`${supabaseUrl}/rest/v1/stripe_events`, {
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
 
   if (!insertResponse.ok && insertResponse.status !== 409) {
     const errorText = await insertResponse.text();
+    console.error("Supabase insert failed:", insertResponse.status, errorText);
     return new Response(errorText, { status: 500 });
   }
 
