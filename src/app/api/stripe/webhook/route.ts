@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -52,23 +53,57 @@ export async function POST(request: Request) {
       customer_email: email,
     };
 
-    const userResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-      method: "POST",
-      headers: {
-        apikey: supabaseServiceRoleKey,
-        Authorization: `Bearer ${supabaseServiceRoleKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        email_confirm: true,
-      }),
-    });
+    const headers = {
+      apikey: supabaseServiceRoleKey,
+      Authorization: `Bearer ${supabaseServiceRoleKey}`,
+      "Content-Type": "application/json",
+    };
 
-    if (!userResponse.ok && userResponse.status !== 422) {
-      const userError = await userResponse.text();
+    const userCreateResponse = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          email,
+          password: randomUUID().replace(/-/g, "").slice(0, 16),
+          email_confirm: true,
+        }),
+      }
+    );
+
+    if (!userCreateResponse.ok && userCreateResponse.status !== 422) {
+      const userError = await userCreateResponse.text();
       console.error("Supabase user create failed:", userError);
       return new Response(userError, { status: 500 });
+    }
+
+    const userLookupResponse = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`,
+      {
+        method: "GET",
+        headers: {
+          apikey: supabaseServiceRoleKey,
+          Authorization: `Bearer ${supabaseServiceRoleKey}`,
+        },
+      }
+    );
+
+    if (!userLookupResponse.ok) {
+      const lookupError = await userLookupResponse.text();
+      console.error("Supabase user lookup failed:", lookupError);
+      return new Response(lookupError, { status: 500 });
+    }
+
+    const lookupData = (await userLookupResponse.json()) as {
+      users?: Array<{ email?: string }>;
+    };
+
+    const userFound = lookupData.users?.some((user) => user.email === email);
+    if (!userFound) {
+      return new Response("Auth user still missing after create.", {
+        status: 500,
+      });
     }
   }
 
