@@ -35,8 +35,42 @@ export async function POST(request: Request) {
     return new Response("Missing Supabase configuration.", { status: 500 });
   }
 
-  const payloadObject =
+  let payloadObject =
     event.type === "checkout.session.completed" ? event.data.object : event;
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const email =
+      session.customer_email ?? session.customer_details?.email ?? null;
+
+    if (!email) {
+      return new Response("Missing customer email.", { status: 400 });
+    }
+
+    payloadObject = {
+      ...session,
+      customer_email: email,
+    };
+
+    const userResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseServiceRoleKey,
+        Authorization: `Bearer ${supabaseServiceRoleKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        email_confirm: true,
+      }),
+    });
+
+    if (!userResponse.ok && userResponse.status !== 422) {
+      const userError = await userResponse.text();
+      console.error("Supabase user create failed:", userError);
+      return new Response(userError, { status: 500 });
+    }
+  }
 
   const payload = {
     stripe_event_id: event.id,
