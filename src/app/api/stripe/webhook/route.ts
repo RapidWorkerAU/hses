@@ -10,6 +10,7 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const codesPriceId = process.env.STRIPE_CODES_PRICE_ID;
 const resendApiKey = process.env.RESEND_API_KEY;
 const resendFromEmail = process.env.RESEND_FROM_EMAIL;
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
 export async function POST(request: Request) {
   if (!stripeSecretKey || !webhookSecret) {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     return new Response(message, { status: 400 });
   }
 
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
+  if (!supabaseUrl || !supabaseServiceRoleKey || !siteUrl) {
     return new Response("Missing Supabase configuration.", { status: 500 });
   }
 
