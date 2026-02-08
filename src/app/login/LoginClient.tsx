@@ -181,9 +181,9 @@ export default function LoginClient() {
         return { status: "not_found" as const };
       }
 
-      const nextStatus = payload.confirmed ? "confirmed" : "unconfirmed";
+      const nextStatus = payload.confirmed ? ("confirmed" as const) : ("unconfirmed" as const);
       setEmailStatus(nextStatus);
-      return { status: nextStatus as const };
+      return { status: nextStatus };
     } catch (error) {
       setEmailStatus("error");
       return { status: "error" as const };
