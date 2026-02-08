@@ -1,4 +1,4 @@
-export type QuoteStatus = "draft" | "published" | "accepted" | "rejected";
+export type QuoteStatus = "draft" | "published" | "approved" | "rejected";
 
 export type QuoteVersion = {
   id: string;

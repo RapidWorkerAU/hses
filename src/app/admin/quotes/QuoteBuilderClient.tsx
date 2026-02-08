@@ -315,7 +315,7 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
             >
               <option value="draft">Draft</option>
               <option value="published">Published</option>
-              <option value="accepted">Accepted</option>
+              <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
             </select>
           </div>

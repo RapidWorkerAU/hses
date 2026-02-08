@@ -26,7 +26,7 @@ type QuoteRow = {
   }>;
 };
 
-const statusOptions = ["all", "draft", "published", "accepted", "rejected"];
+const statusOptions = ["all", "draft", "published", "approved", "rejected"];
 
 const formatMoney = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "-";

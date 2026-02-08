@@ -153,7 +153,7 @@ export default function QuoteViewClient() {
         }
       : payload.latest_action ?? null;
   const fallbackAction =
-    payload.quote.status === "approved" || payload.quote.status === "accepted"
+    payload.quote.status === "approved"
       ? "approved"
       : payload.quote.status === "rejected"
         ? "rejected"
@@ -165,7 +165,6 @@ export default function QuoteViewClient() {
   const summaryStatus =
     summaryStatusRaw?.charAt(0).toUpperCase() + summaryStatusRaw?.slice(1);
   const isLocked =
-    payload.quote.status === "accepted" ||
     payload.quote.status === "approved" ||
     payload.quote.status === "rejected" ||
     resolvedAction === "approved" ||

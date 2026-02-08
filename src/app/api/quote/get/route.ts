@@ -115,7 +115,6 @@ export async function GET(request: Request) {
       currency: quoteResponse.data.currency ?? null,
     },
     latest_action:
-      quoteResponse.data.status === "accepted" ||
       quoteResponse.data.status === "approved" ||
       quoteResponse.data.status === "rejected"
         ? latestActionResponse.data ?? null
