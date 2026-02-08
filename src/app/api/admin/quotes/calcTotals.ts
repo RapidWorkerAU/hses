@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 type QuoteVersionTotals = {
   subtotal_ex_gst: number;
   gst_amount: number;
@@ -13,21 +15,7 @@ type VersionFlags = {
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
 export const calculateQuoteVersionTotals = async (
-  supabase: {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (column: string, value: string) => Promise<{
-          data: Array<{
-            pricing_mode: string | null;
-            fixed_price_ex_gst: number | null;
-            total_hours: number | null;
-            default_client_rate: number | null;
-          }> | null;
-          error: { message: string } | null;
-        }>;
-      };
-    };
-  },
+  supabase: SupabaseClient,
   versionId: string,
   flags: VersionFlags
 ): Promise<QuoteVersionTotals> => {
