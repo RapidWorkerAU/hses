@@ -65,7 +65,28 @@ export async function GET(request: Request) {
         )
         .in("deliverable_id", deliverableIds)
         .order("milestone_order", { ascending: true })
-    : { data: [] as Array<Record<string, unknown>>, error: null };
+    : {
+        data: [] as Array<{
+          id: string;
+          deliverable_id: string;
+          milestone_order: number | null;
+          milestone_title: string | null;
+          milestone_description: string | null;
+          pricing_unit: string | null;
+          quantity: number | null;
+          estimated_hours: number | null;
+          billable: boolean | null;
+          client_rate: number | null;
+          client_amount_ex_gst: number | null;
+          delivery_mode: string | null;
+          supplier_name: string | null;
+          cost_rate: number | null;
+          cost_amount: number | null;
+          margin_amount: number | null;
+          margin_percent: number | null;
+        }>,
+        error: null,
+      };
 
   if (milestonesResponse.error) {
     return new NextResponse("Unable to load milestones.", { status: 500 });
