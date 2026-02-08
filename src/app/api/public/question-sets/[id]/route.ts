@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { getSupabaseConfig } from "../../../portal/_utils";
 
 type QuestionRow = {
@@ -17,12 +18,12 @@ type QuestionRow = {
 };
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id?: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const questionSetId =
-    params?.id ??
-    new URL(request.url).pathname.split("/").filter(Boolean).slice(-1)[0];
+    id ?? new URL(request.url).pathname.split("/").filter(Boolean).slice(-1)[0];
   if (!questionSetId || questionSetId === "undefined") {
     return new Response("Missing question set id.", { status: 400 });
   }
