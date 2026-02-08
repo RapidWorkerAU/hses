@@ -445,6 +445,10 @@ export default function ParticipantClient({ diagnosticId }: ParticipantClientPro
             className="btn btn-primary"
             onClick={async () => {
               if (!currentQuestion) return;
+              if (!session) {
+                setSaveError("Unable to load the diagnostic session.");
+                return;
+              }
               const saved = await saveCurrentAnswer(currentQuestion);
               if (!saved) return;
               if (!allRequiredAnswered(orderedQuestions)) {
