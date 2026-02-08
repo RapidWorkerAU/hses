@@ -11,8 +11,9 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const check = async () => {
-      let { data } = await supabaseBrowser.auth.getSession();
-      if (!data.session) {
+      let sessionResult = await supabaseBrowser.auth.getSession();
+      let session = sessionResult.data.session;
+      if (!session) {
         const access = localStorage.getItem("hses_access_token");
         const refresh = localStorage.getItem("hses_refresh_token");
         if (access && refresh) {
@@ -20,10 +21,11 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
             access_token: access,
             refresh_token: refresh,
           });
-          data = await supabaseBrowser.auth.getSession();
+          sessionResult = await supabaseBrowser.auth.getSession();
+          session = sessionResult.data.session;
         }
       }
-      if (!data.session) {
+      if (!session) {
         const redirectTo = pathname ? `?returnTo=${encodeURIComponent(pathname)}` : "";
         router.replace(`/login${redirectTo}`);
         return;
