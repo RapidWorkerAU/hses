@@ -52,6 +52,9 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (!quoteId) {
+      return new NextResponse("Invalid access code.", { status: 401 });
+    }
     const token = createQuoteSessionToken(quoteId);
     const response = NextResponse.json({ ok: true });
     response.cookies.set(quoteSessionCookie.name, token, {
