@@ -283,12 +283,13 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
       setError(message || "Unable to log time.");
     } else {
       const data = (await response.json()) as { entry?: TimeEntry };
-      if (data.entry) {
+      const entry = data.entry;
+      if (entry) {
         setPayload((prev) => {
           if (!prev) return prev;
           return {
             ...prev,
-            time_entries: [data.entry, ...prev.time_entries],
+            time_entries: [entry, ...prev.time_entries],
           };
         });
       }
