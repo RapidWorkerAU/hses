@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { getSupabaseConfig } from "../../../../portal/_utils";
 
 type ResponseRow = {
@@ -6,11 +7,12 @@ type ResponseRow = {
 };
 
 export async function GET(
-  request: Request,
-  { params }: { params: { codeId?: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ codeId: string }> }
 ) {
+  const { codeId: paramCodeId } = await params;
   const urlId = request.url.split("/").pop() ?? "";
-  const codeId = (params?.codeId ?? urlId).trim();
+  const codeId = (paramCodeId ?? urlId).trim();
   if (!codeId || codeId === "undefined" || codeId === "null") {
     return new Response("Missing code id.", { status: 400 });
   }
