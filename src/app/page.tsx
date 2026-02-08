@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Script from "next/script";
+import HomePageScripts from "./home-page-scripts";
 
 export const metadata: Metadata = {
   title: "HSES Industry Partners",
@@ -23,6 +23,9 @@ export default function HomePage() {
             <button className="btn btn-primary js-open-modal" type="button">
               Book discovery call
             </button>
+            <a className="btn btn-outline" href="/login">
+              Client portal login
+            </a>
           </div>
         </div>
       </header>
@@ -437,68 +440,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      <Script id="home-scripts" strategy="afterInteractive">
-        {String.raw`
-    (() => {
-      const modal = document.querySelector('[data-modal]');
-      if (!modal) return;
-      const dialog = modal.querySelector('.modal-dialog');
-      const openers = document.querySelectorAll('.js-open-modal');
-      const closers = modal.querySelectorAll('.js-close-modal');
-      const trustTrack = document.querySelector('.trust-logos');
-      const trustPrev = document.querySelector('.trust-nav--prev');
-      const trustNext = document.querySelector('.trust-nav--next');
-      let trustIndex = 0;
-
-      const open = () => {
-        modal.classList.add('is-visible');
-        dialog.focus();
-        document.body.style.overflow = 'hidden';
-      };
-
-      const close = () => {
-        modal.classList.remove('is-visible');
-        document.body.style.overflow = '';
-      };
-
-      openers.forEach(btn => btn.addEventListener('click', open));
-      closers.forEach(btn => btn.addEventListener('click', close));
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) close();
-      });
-      document.addEventListener('keyup', (e) => {
-        if (e.key === 'Escape') close();
-      });
-
-      const updateTrustSlide = () => {
-        if (!trustTrack) return;
-        const totalSlides = Math.ceil(trustTrack.querySelectorAll('img').length / 2);
-        if (trustIndex >= totalSlides) trustIndex = 0;
-        if (trustIndex < 0) trustIndex = totalSlides - 1;
-        trustTrack.style.transform = \`translateX(-\${trustIndex * 100}%)\`;
-      };
-
-      if (trustPrev && trustNext && trustTrack) {
-        trustPrev.addEventListener('click', () => {
-          trustIndex -= 1;
-          updateTrustSlide();
-        });
-        trustNext.addEventListener('click', () => {
-          trustIndex += 1;
-          updateTrustSlide();
-        });
-      }
-
-      const footerMenuToggle = document.querySelector('.footer-menu-toggle');
-      const footerMenu = document.querySelector('.footer-menu');
-      if (footerMenuToggle && footerMenu) {
-        footerMenuToggle.addEventListener('click', () => {
-          footerMenu.classList.toggle('is-open');
-        });
-      }
-    })();
-  `}
-      </Script>
+      <HomePageScripts />
     </>
   );
 }

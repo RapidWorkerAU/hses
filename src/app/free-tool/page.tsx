@@ -23,6 +23,9 @@ export default function FreeToolPage() {
             <a className="btn btn-primary" href="/">
               Back to site
             </a>
+            <a className="btn btn-outline" href="/login">
+              Client portal login
+            </a>
           </div>
         </div>
       </header>

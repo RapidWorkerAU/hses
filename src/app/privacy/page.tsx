@@ -22,6 +22,9 @@ export default function PrivacyPage() {
             <button className="btn btn-primary js-open-modal" type="button">
               Book discovery call
             </button>
+            <a className="btn btn-outline" href="/login">
+              Client portal login
+            </a>
           </div>
         </div>
       </header>
@@ -223,6 +226,5 @@ export default function PrivacyPage() {
     </div>
   );
 }
-
 
 

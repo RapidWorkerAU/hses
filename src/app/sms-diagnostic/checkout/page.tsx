@@ -34,6 +34,12 @@ export default function CheckoutPage({ searchParams }: CheckoutPageProps) {
             </a>
           </div>
           <div className="header-actions">
+            <a className="btn btn-primary" href="/consult">
+              Book discovery call
+            </a>
+            <a className="btn btn-outline" href="/login">
+              Client portal login
+            </a>
             <a className="btn btn-outline" href="/sms-diagnostic/purchase">
               Back to cart
             </a>

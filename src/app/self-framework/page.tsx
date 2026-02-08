@@ -23,8 +23,8 @@ export default function SelfFrameworkPage() {
             <button className="btn btn-primary js-open-modal" type="button">
               Book discovery call
             </button>
-            <a className="btn btn-outline" href="/sms-diagnostic">
-              SMS diagnostic
+            <a className="btn btn-outline" href="/login">
+              Client portal login
             </a>
           </div>
         </div>
@@ -323,34 +323,51 @@ export default function SelfFrameworkPage() {
           </div>
         </section>
 
-        <div className="section-separator">
-          <a className="down-link" href="#cta" aria-label="Scroll to call to action section">
-            <span className="down-indicator">&darr;</span>
-          </a>
-        </div>
-
-        <section className="lss-cta" id="cta">
+        <section className="lss-cta" id="cta" hidden>
           <div className="lss-container">
             <div className="lss-cta-inner">
-              <div>
-                <h2>Ready for a safety system that grows with your business?</h2>
+              <div className="lss-cta-intro">
+                <p className="lss-eyebrow">Start with the Safety Energy Loop Framework</p>
+                <h2>Choose your path: guided assessment or self-diagnostic.</h2>
                 <p>
-                  If you want a safety system that grows with your business, the Safety Energy Loop Framework&trade; (SELF)
-                  provides a clear, practical, and proven way forward. We can tailor this framework to your organisation and help you turn principles into action.
+                  Engage HSES to assess your system against the framework with
+                  you, or run the SELF diagnostic at your own pace and uncover
+                  where the system is strong, fragile, or failing under pressure.
                 </p>
               </div>
-              <div className="lss-cta-actions">
-                <button className="btn btn-primary js-open-modal" type="button">
-                  Book a discovery call
-                </button>
-                <div className="lss-cta-hours" aria-label="Business hours">
-                  <div>Monday - Friday</div>
-                  <div>9am - 5pm</div>
-                  <div>Saturday - Sunday</div>
-                  <div>Closed</div>
-                  <div>Public holidays</div>
-                  <div>Closed</div>
-                </div>
+              <div className="lss-cta-split">
+                <article className="lss-cta-card lss-cta-card--primary">
+                  <div className="lss-cta-visual image-placeholder" aria-hidden="true">
+                    Diagnostic
+                  </div>
+                  <h3>Run the SELF diagnostic yourself</h3>
+                  <p>
+                    Complete the diagnostic survey solo or with a team. Work
+                    module by module and receive practical, actionable insights
+                    you can use immediately.
+                  </p>
+                  <div className="lss-cta-card-actions">
+                    <a className="btn btn-primary" href="/sms-diagnostic">
+                      Start the SELF diagnostic
+                    </a>
+                  </div>
+                </article>
+                <article className="lss-cta-card">
+                  <div className="lss-cta-visual image-placeholder" aria-hidden="true">
+                    Guided
+                  </div>
+                  <h3>Assess with an HSES specialist</h3>
+                  <p>
+                    Book a discovery call and we will walk your leadership team
+                    through assessing your business against SELF and prioritising
+                    the right next moves.
+                  </p>
+                  <div className="lss-cta-card-actions">
+                    <button className="btn btn-outline js-open-modal" type="button">
+                      Book a discovery call
+                    </button>
+                  </div>
+                </article>
               </div>
             </div>
           </div>

@@ -157,7 +157,7 @@ export async function POST(request: Request) {
           body: JSON.stringify({
             type: "magiclink",
             email,
-            redirect_to: `${siteUrl}/sms-diagnostic/dashboard`,
+            redirect_to: `${siteUrl}/auth/set-password`,
           }),
         }
       );

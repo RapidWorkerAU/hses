@@ -20,8 +20,11 @@ export default function SmsDiagnosticPurchasePage() {
             </a>
           </div>
           <div className="header-actions">
-            <a className="btn btn-outline" href="/sms-diagnostic">
-              Back to diagnostic
+            <a className="btn btn-primary" href="/consult">
+              Book discovery call
+            </a>
+            <a className="btn btn-outline" href="/login">
+              Client portal login
             </a>
           </div>
         </div>

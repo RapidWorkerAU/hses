@@ -85,14 +85,8 @@ export default function PurchaseCheckoutClient() {
             </div>
           </div>
           <div className="diagnostic-cta">
-            <a
-              className="btn btn-primary"
-              href={`/sms-diagnostic/checkout?quantity=${quantity}`}
-            >
-              Proceed to payment
-            </a>
             <a className="btn btn-outline" href="/sms-diagnostic">
-              Back to diagnostic
+              Back to diagnostic home page
             </a>
           </div>
         </div>

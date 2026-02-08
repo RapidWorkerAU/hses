@@ -19,11 +19,11 @@ export default function SmsDiagnosticPage() {
             </a>
           </div>
           <div className="header-actions">
-            <a className="btn btn-primary" href="/sms-diagnostic/purchase">
-              Purchase access
-            </a>
-            <a className="btn btn-outline" href="/self-framework">
-              View SELF framework
+            <button className="btn btn-primary js-open-modal" type="button">
+              Book discovery call
+            </button>
+            <a className="btn btn-outline" href="/login">
+              Client portal login
             </a>
           </div>
         </div>
