@@ -497,6 +497,11 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+  }
+  .quote-public--project-view .qb-table--quote-view tr.qb-deliverable-row.is-selected {
+    background: #f0f7fb;
+    border-color: #b7d5e6;
   }
   .quote-public-card .qb-table--quote-view td {
     border: none;
@@ -508,9 +513,6 @@
     order: 1;
   }
   .quote-public-card .qb-table--quote-view td[data-label="Description"] {
-    display: contents;
-  }
-  .quote-public-card .qb-table--quote-view td[data-label="Description"] .qb-input {
     grid-column: 1 / -1;
     order: 2;
   }
@@ -523,6 +525,19 @@
     padding: 8px 10px;
     background: #f8fafc;
     order: 3;
+  }
+  .quote-public--project-view .qb-table--quote-view td:nth-child(6) {
+    grid-column: 1 / -1;
+  }
+  .quote-public--project-view .qb-table--quote-view td[data-label="Progress"] .flex {
+    justify-content: flex-start;
+  }
+  .quote-public--project-view
+    .qb-table--quote-view
+    td[data-label="Progress"]
+    .flex
+    > div {
+    width: 100% !important;
   }
   .quote-public-card .qb-table--quote-view td .qb-input--static {
     width: 100%;
@@ -551,6 +566,15 @@
     letter-spacing: 0.08em;
     color: #94a3b8;
     margin-bottom: 4px;
+  }
+  .quote-public--project-view .qb-table--quote-view td::before {
+    color: #64748b;
+  }
+  .quote-public--project-view
+    .qb-table--quote-view
+    tr.qb-deliverable-row.is-selected
+    td::before {
+    color: #0f2f4f;
   }
   .quote-public-card .qb-table--quote-view td:first-child {
     display: none;

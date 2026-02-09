@@ -431,7 +431,73 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
           </h2>
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+        <div className="mt-4 space-y-3 md:hidden">
+          {deliverables.map((deliverable) => {
+            const deliverableMilestones = milestonesByDeliverable[deliverable.id] ?? [];
+            const deliverablePlanned = deliverable.planned_hours ?? 0;
+            const deliverableLogged = deliverableMilestones.reduce(
+              (sum, milestone) => sum + (milestoneHours[milestone.id] ?? 0),
+              0
+            );
+            const deliverableProgress =
+              deliverablePlanned > 0
+                ? Math.min(100, Math.round((deliverableLogged / deliverablePlanned) * 100))
+                : 0;
+            const deliverableOver = deliverablePlanned > 0 && deliverableLogged > deliverablePlanned;
+
+            return (
+              <div
+                key={deliverable.id}
+                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <div className="text-sm font-semibold text-slate-900">
+                  {deliverable.title ?? "Deliverable"}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {deliverable.description ?? "-"}
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Planned hrs
+                    </div>
+                    <div className="mt-1 font-semibold text-slate-700">{deliverablePlanned}</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Hours used
+                    </div>
+                    <div
+                      className={`mt-1 font-semibold ${
+                        deliverableOver ? "text-rose-700" : "text-slate-700"
+                      }`}
+                    >
+                      {deliverableLogged}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    <span>Progress</span>
+                    <span className={deliverableOver ? "text-rose-700" : "text-slate-500"}>
+                      {deliverableProgress}%
+                    </span>
+                  </div>
+                  <div className="relative mt-2 h-2.5 w-full rounded-full border border-slate-200 bg-white shadow-sm">
+                    <div
+                      className={`absolute left-0 top-0 h-2.5 rounded-full ${
+                        deliverableOver ? "bg-rose-500" : "bg-emerald-500"
+                      }`}
+                      style={{ width: `${deliverableProgress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 md:block">
           <table className="w-full text-left text-sm">
             <colgroup>
               <col style={{ width: "20%" }} />
@@ -611,7 +677,100 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
             Add time entry
           </button>
         </div>
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+        <div className="mt-4 space-y-3 md:hidden">
+          {timeEntries.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+              No time entries yet.
+            </div>
+          ) : (
+            timeEntries.map((entry) => {
+              const milestone = milestoneList.find(
+                (item) => item.id === entry.project_milestone_id
+              );
+              const deliverableId =
+                milestone?.project_deliverable_id ??
+                deliverables.find((item) =>
+                  milestonesByDeliverable[item.id]?.some(
+                    (m) => m.id === entry.project_milestone_id
+                  )
+                )?.id ??
+                "";
+              return (
+                <div
+                  key={entry.id}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Date
+                      </div>
+                      <div className="text-sm font-semibold text-slate-700">
+                        {entry.entry_date ?? "-"}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Hours
+                      </div>
+                      <div className="text-sm font-semibold text-slate-700">{entry.hours}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2 text-sm text-slate-700">
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Milestone
+                      </span>
+                      <div className="mt-1">{milestone?.title ?? "-"}</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Note
+                      </span>
+                      <div className="mt-1 text-slate-600">{entry.note ?? "-"}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
+                      onClick={() => {
+                        setEditEntryId(entry.id);
+                        setEditForm({
+                          deliverableId,
+                          milestoneId: entry.project_milestone_id,
+                          hours: String(entry.hours ?? ""),
+                          note: entry.note ?? "",
+                          entryDate: entry.entry_date ?? getTodayIsoDate(),
+                        });
+                        setEditOverHoursWarning({
+                          show: false,
+                          planned: 0,
+                          remaining: 0,
+                          requested: 0,
+                          overBy: 0,
+                        });
+                        setAllowOverHoursEdit(false);
+                        setShowEditModal(true);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700"
+                      onClick={() => handleDeleteEntry(entry.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 md:block">
           <table className="w-full text-left text-sm">
             <thead
               className="text-xs uppercase tracking-wide text-white"
@@ -700,8 +859,8 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
       </div>
 
       {showLogModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6">
+        <div className="admin-log-modal fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="admin-log-modal-panel w-full max-w-md rounded-2xl bg-white p-6">
             <h3 className="text-lg font-semibold text-slate-900">Log time entry</h3>
             <p className="mt-2 text-sm text-slate-600">
               Add a time entry against a milestone.

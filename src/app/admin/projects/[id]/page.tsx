@@ -16,7 +16,7 @@ export default async function ProjectDetailPage({
   const resolvedParams = await Promise.resolve(params);
   const id = resolvedParams?.id;
   return (
-    <div className="diagnostic-body page-stack dashboard-portal">
+    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--admin-project-detail">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">

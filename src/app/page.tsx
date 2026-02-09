@@ -27,6 +27,16 @@ export default function HomePage() {
               Client portal login
             </a>
           </div>
+          <button
+            className="header-menu-toggle js-mobile-menu-toggle"
+            type="button"
+            aria-label="Open menu"
+            aria-expanded="false"
+          >
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
         </div>
       </header>
 
@@ -345,6 +355,31 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      <div className="mobile-menu" data-mobile-menu>
+        <div className="mobile-menu-backdrop js-close-mobile-menu"></div>
+        <div className="mobile-menu-panel" role="dialog" aria-modal="true" aria-label="Menu">
+          <div className="mobile-menu-header">
+            <img
+              src="/images/logo-black.png"
+              alt="HSES Industry Partners"
+              className="mobile-menu-logo"
+            />
+          </div>
+          <div className="mobile-menu-divider"></div>
+          <nav className="mobile-menu-links" aria-label="Primary">
+            <button className="btn btn-primary js-open-modal js-close-mobile-menu" type="button">
+              Book discovery call
+            </button>
+            <a className="btn btn-outline js-close-mobile-menu" href="/login">
+              Client portal login
+            </a>
+          </nav>
+          <button className="mobile-menu-close js-close-mobile-menu" type="button">
+            Close menu
+          </button>
+        </div>
+      </div>
 
       <div className="modal" data-modal>
         <div className="modal-backdrop js-close-modal"></div>

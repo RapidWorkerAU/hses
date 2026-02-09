@@ -27,6 +27,16 @@ export default function SelfFrameworkPage() {
               Client portal login
             </a>
           </div>
+          <button
+            className="header-menu-toggle js-mobile-menu-toggle"
+            type="button"
+            aria-label="Open menu"
+            aria-expanded="false"
+          >
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
         </div>
       </header>
 
@@ -405,6 +415,31 @@ export default function SelfFrameworkPage() {
         </div>
       </footer>
 
+      <div className="mobile-menu" data-mobile-menu>
+        <div className="mobile-menu-backdrop js-close-mobile-menu"></div>
+        <div className="mobile-menu-panel" role="dialog" aria-modal="true" aria-label="Menu">
+          <div className="mobile-menu-header">
+            <img
+              src="/images/logo-black.png"
+              alt="HSES Industry Partners"
+              className="mobile-menu-logo"
+            />
+          </div>
+          <div className="mobile-menu-divider"></div>
+          <nav className="mobile-menu-links" aria-label="Primary">
+            <button className="btn btn-primary js-open-modal js-close-mobile-menu" type="button">
+              Book discovery call
+            </button>
+            <a className="btn btn-outline js-close-mobile-menu" href="/login">
+              Client portal login
+            </a>
+          </nav>
+          <button className="mobile-menu-close js-close-mobile-menu" type="button">
+            Close menu
+          </button>
+        </div>
+      </div>
+
       <div className="modal" data-modal>
         <div className="modal-backdrop js-close-modal"></div>
         <div
@@ -496,6 +531,9 @@ export default function SelfFrameworkPage() {
       const closers = modal.querySelectorAll('.js-close-modal');
       const footerMenuToggle = document.querySelector('.footer-menu-toggle');
       const footerMenu = document.querySelector('.footer-menu');
+      const mobileMenu = document.querySelector('[data-mobile-menu]');
+      const mobileMenuToggle = document.querySelector('.js-mobile-menu-toggle');
+      const mobileMenuClosers = mobileMenu ? mobileMenu.querySelectorAll('.js-close-mobile-menu') : [];
 
       const open = () => {
         modal.classList.add('is-visible');
@@ -514,12 +552,36 @@ export default function SelfFrameworkPage() {
         if (e.target === modal) close();
       });
       document.addEventListener('keyup', (e) => {
-        if (e.key === 'Escape') close();
+        if (e.key === 'Escape') {
+          close();
+          if (mobileMenu && mobileMenu.classList.contains('is-open')) {
+            mobileMenu.classList.remove('is-open');
+            document.body.classList.remove('mobile-menu-open');
+            if (mobileMenuToggle) {
+              mobileMenuToggle.setAttribute('aria-expanded', 'false');
+            }
+          }
+        }
       });
 
       if (footerMenuToggle && footerMenu) {
         footerMenuToggle.addEventListener('click', () => {
           footerMenu.classList.toggle('is-open');
+        });
+      }
+
+      if (mobileMenuToggle && mobileMenu) {
+        mobileMenuToggle.addEventListener('click', () => {
+          mobileMenu.classList.add('is-open');
+          document.body.classList.add('mobile-menu-open');
+          mobileMenuToggle.setAttribute('aria-expanded', 'true');
+        });
+        mobileMenuClosers.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            mobileMenu.classList.remove('is-open');
+            document.body.classList.remove('mobile-menu-open');
+            mobileMenuToggle.setAttribute('aria-expanded', 'false');
+          });
         });
       }
     })();

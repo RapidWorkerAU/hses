@@ -42,7 +42,16 @@ export default function HomePageScripts() {
       if (e.target === modal) close();
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") {
+        close();
+        const mobileMenu = document.querySelector<HTMLElement>("[data-mobile-menu]");
+        if (mobileMenu?.classList.contains("is-open")) {
+          mobileMenu.classList.remove("is-open");
+          document.body.classList.remove("mobile-menu-open");
+          const mobileMenuToggle = document.querySelector<HTMLElement>(".js-mobile-menu-toggle");
+          mobileMenuToggle?.setAttribute("aria-expanded", "false");
+        }
+      }
     };
     modal.addEventListener("click", onModalClick);
     document.addEventListener("keyup", onKeyUp);
@@ -74,11 +83,35 @@ export default function HomePageScripts() {
       });
     }
 
+    const mobileMenu = document.querySelector<HTMLElement>("[data-mobile-menu]");
+    const mobileMenuToggle = document.querySelector<HTMLElement>(".js-mobile-menu-toggle");
+    const mobileMenuClosers = mobileMenu?.querySelectorAll<HTMLElement>(".js-close-mobile-menu");
+    const openMobileMenu = () => {
+      if (!mobileMenu) return;
+      mobileMenu.classList.add("is-open");
+      document.body.classList.add("mobile-menu-open");
+      mobileMenuToggle?.setAttribute("aria-expanded", "true");
+    };
+    const closeMobileMenu = () => {
+      if (!mobileMenu) return;
+      mobileMenu.classList.remove("is-open");
+      document.body.classList.remove("mobile-menu-open");
+      mobileMenuToggle?.setAttribute("aria-expanded", "false");
+    };
+    if (mobileMenuToggle && mobileMenu) {
+      mobileMenuToggle.addEventListener("click", openMobileMenu);
+      mobileMenuClosers?.forEach((btn) => btn.addEventListener("click", closeMobileMenu));
+    }
+
     return () => {
       openers.forEach((btn) => btn.removeEventListener("click", open));
       closers.forEach((btn) => btn.removeEventListener("click", close));
       modal.removeEventListener("click", onModalClick);
       document.removeEventListener("keyup", onKeyUp);
+      if (mobileMenuToggle && mobileMenu) {
+        mobileMenuToggle.removeEventListener("click", openMobileMenu);
+        mobileMenuClosers?.forEach((btn) => btn.removeEventListener("click", closeMobileMenu));
+      }
     };
   }, []);
 

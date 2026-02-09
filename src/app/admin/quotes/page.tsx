@@ -5,7 +5,7 @@ import BusinessAdminLink from "@/app/sms-diagnostic/dashboard/BusinessAdminLink"
 
 export default function QuotesListPage() {
   return (
-    <div className="diagnostic-body page-stack dashboard-portal">
+    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--admin-quotes">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">

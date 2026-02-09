@@ -51,6 +51,7 @@ export default function ProjectViewClient({
   const [selectedDeliverableId, setSelectedDeliverableId] = useState<string>("");
   const [selectedMilestoneId, setSelectedMilestoneId] = useState<string>("");
   const [logPage, setLogPage] = useState(1);
+  const [selectedDeliverableTileId, setSelectedDeliverableTileId] = useState<string | null>(null);
   useEffect(() => {
     if (initialDate) {
       setSelectedDate(initialDate);
@@ -260,9 +261,22 @@ export default function ProjectViewClient({
                     : 0;
                 const isOpen = openDeliverableId === deliverable.id;
 
+                const isSelected = selectedDeliverableTileId === deliverable.id;
+
                 return (
                   <Fragment key={deliverable.id}>
-                    <tr className={isOpen ? "qb-deliverable-row is-open" : "qb-deliverable-row"}>
+                    <tr
+                      className={
+                        isOpen
+                          ? `qb-deliverable-row is-open${isSelected ? " is-selected" : ""}`
+                          : `qb-deliverable-row${isSelected ? " is-selected" : ""}`
+                      }
+                      onClick={() =>
+                        setSelectedDeliverableTileId((prev) =>
+                          prev === deliverable.id ? null : deliverable.id
+                        )
+                      }
+                    >
                       <td data-label="">
                         <button
                           type="button"
@@ -469,7 +483,59 @@ export default function ProjectViewClient({
             </div>
           ) : (
             <>
-              <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="space-y-3 md:hidden">
+                {pagedEntries.map((entry) => {
+                  const milestone = milestoneById[entry.project_milestone_id];
+                  const deliverable =
+                    milestone?.project_deliverable_id
+                      ? deliverableById[milestone.project_deliverable_id]
+                      : null;
+                  return (
+                    <div
+                      key={entry.id}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Date
+                          </div>
+                          <div className="text-sm font-semibold text-slate-700">
+                            {entry.entry_date ?? "-"}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Hours
+                          </div>
+                          <div className="text-sm font-semibold text-slate-700">{entry.hours}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-2 text-sm text-slate-700">
+                        <div>
+                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Deliverable
+                          </span>
+                          <div className="mt-1">{deliverable?.title ?? "-"}</div>
+                        </div>
+                        <div>
+                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Milestone
+                          </span>
+                          <div className="mt-1">{milestone?.title ?? "-"}</div>
+                        </div>
+                        <div>
+                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Note
+                          </span>
+                          <div className="mt-1 text-slate-600">{entry.note ?? "-"}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hidden overflow-hidden rounded-xl border border-slate-200 md:block">
                 <table className="w-full text-left text-sm">
                   <thead
                     className="text-xs uppercase tracking-wide text-white"

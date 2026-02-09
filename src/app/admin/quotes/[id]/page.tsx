@@ -11,7 +11,7 @@ export default async function QuoteBuilderPage({
 }) {
   const { id } = await params;
   return (
-    <div className="diagnostic-body page-stack dashboard-portal quote-builder">
+    <div className="diagnostic-body page-stack dashboard-portal quote-builder dashboard-portal--quote-builder">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">
@@ -30,6 +30,10 @@ export default async function QuoteBuilderPage({
           </div>
         </div>
       </header>
+
+      <div className="mobile-blocked-message" role="status" aria-live="polite">
+        Quote builder is not available on mobile. Please use a desktop device.
+      </div>
 
       <main>
         <div className="dashboard-shell">

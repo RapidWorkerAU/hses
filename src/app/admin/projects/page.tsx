@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function ProjectSchedulePage() {
   return (
-    <div className="diagnostic-body page-stack dashboard-portal">
+    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--admin-projects">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">

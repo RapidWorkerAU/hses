@@ -226,6 +226,21 @@ section {
   border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 
+.mobile-blocked-message {
+  display: none;
+}
+
+.dashboard-portal--quote-builder {
+  background: #f5f2eb;
+}
+
+.dashboard-portal--quote-builder .site-header {
+  border-bottom: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: #0d5c75 !important;
+}
+
 .header-inner {
   display: flex;
   align-items: center;
@@ -244,6 +259,101 @@ section {
 .header-logo {
   height: 48px;
   width: auto;
+}
+
+.header-menu-toggle {
+  display: none;
+  width: 40px;
+  height: 34px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 10px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.header-menu-toggle span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: #0f172a;
+}
+
+.mobile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.mobile-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mobile-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 18, 30, 0.65);
+}
+
+.mobile-menu-panel {
+  position: relative;
+  width: min(520px, 92vw);
+  height: min(720px, 90vh);
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 28px 22px 20px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.mobile-menu-header {
+  display: flex;
+  justify-content: center;
+}
+
+.mobile-menu-logo {
+  height: 54px;
+  width: auto;
+}
+
+.mobile-menu-divider {
+  height: 1px;
+  background: rgba(15, 23, 42, 0.12);
+  width: 100%;
+}
+
+.mobile-menu-links {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mobile-menu-close {
+  margin-top: auto;
+  align-self: stretch;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: transparent;
+  color: #0f172a;
+  padding: 12px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+body.mobile-menu-open {
+  overflow: hidden;
 }
 
 .site-footer {
@@ -3595,6 +3705,8 @@ section {
 .dashboard-quick-card h4 {
   margin: 0;
   font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .dashboard-quick-card p {
@@ -4119,6 +4231,9 @@ section {
 .diagnostic-summary-card h3 {
   margin: 0 0 10px;
   color: #0a0f1a;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .set-password-panel {
@@ -4462,6 +4577,83 @@ section {
     padding: 0;
   }
 
+  .dashboard-portal .dashboard-main {
+    padding: 0 !important;
+  }
+
+  .dashboard-portal main section {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .dashboard-portal .dashboard-main {
+    width: 100% !important;
+  }
+
+  .dashboard-portal .dashboard-shell {
+    padding: 0 !important;
+  }
+
+  .dashboard-portal .dashboard-main .diagnostic-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .dashboard-portal .diagnostic-purchase-hero {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .dashboard-portal .diagnostic-hero {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .dashboard-portal main,
+  .dashboard-portal .dashboard-shell,
+  .dashboard-portal .dashboard-main,
+  .dashboard-portal .diagnostic-hero,
+  .dashboard-portal .diagnostic-purchase-hero,
+  .dashboard-portal .diagnostic-container,
+  .dashboard-portal .diagnostic-purchase-layout,
+  .dashboard-portal .diagnostic-purchase-intro {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    box-sizing: border-box;
+  }
+
+  .dashboard-portal .dashboard-main .diagnostic-container {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .dashboard-portal .diagnostic-purchase-layout {
+    gap: 0;
+  }
+
+  .diagnostic-body {
+    overflow-x: hidden;
+  }
+
+  .dashboard-portal .diagnostic-purchase-layout,
+  .dashboard-portal .diagnostic-purchase-intro,
+  .dashboard-portal .diagnostic-summary-card,
+  .dashboard-portal .dashboard-quick-nav,
+  .dashboard-portal .dashboard-quick-card {
+    width: 100% !important;
+    margin: 0 !important;
+    box-sizing: border-box;
+  }
+
   .dashboard-mobile-toggle {
     display: inline-flex;
   }
@@ -4493,6 +4685,21 @@ section {
 }
 
 @media (max-width: 720px) {
+  .header-actions {
+    display: none;
+  }
+
+  .header-menu-toggle {
+    display: inline-flex;
+  }
+
+  .mobile-menu-panel {
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    padding: 28px 22px 22px;
+  }
+
   .admin-quotes-table thead {
     display: none;
   }
@@ -4764,9 +4971,9 @@ section {
   }
 
   .dashboard-portal .dashboard-main .diagnostic-container {
-    padding: 0 16px !important;
+    padding: 0 !important;
     width: 100% !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     text-align: center;
     max-width: 100% !important;
     box-sizing: border-box;
@@ -4774,22 +4981,21 @@ section {
 
   .dashboard-portal .diagnostic-purchase-layout {
     width: 100%;
-    margin: 0 auto;
+    margin: 0;
     justify-items: center;
     box-sizing: border-box;
   }
 
   .dashboard-portal .diagnostic-purchase-intro {
     width: 100%;
-    margin: 0 auto;
+    margin: 0;
     box-sizing: border-box;
   }
 
   .dashboard-portal .diagnostic-summary-card,
   .dashboard-portal .dashboard-quick-card {
     width: 100% !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
+    margin: 0 !important;
     text-align: center;
   }
 
@@ -4842,6 +5048,221 @@ section {
 
   .dashboard-portal .dashboard-mobile-label {
     margin-left: 0;
+  }
+
+  .dashboard-portal .dashboard-main .diagnostic-container,
+  .dashboard-portal .dashboard-main .diagnostic-purchase-layout,
+  .dashboard-portal .dashboard-main .diagnostic-purchase-intro,
+  .dashboard-portal .dashboard-main .dashboard-page-header,
+  .dashboard-portal .dashboard-main .diagnostic-summary-card,
+  .dashboard-portal .dashboard-main .dashboard-quick-nav,
+  .dashboard-portal .dashboard-main .dashboard-quick-card {
+    text-align: center !important;
+    justify-items: center !important;
+    align-items: center !important;
+  }
+
+  .dashboard-portal .dashboard-main {
+    padding: 0 !important;
+  }
+
+  .dashboard-portal .dashboard-main .diagnostic-purchase-intro {
+    display: grid;
+    gap: 16px;
+  }
+
+  .dashboard-portal .dashboard-main .diagnostic-summary-card ul,
+  .dashboard-portal .dashboard-main .diagnostic-summary-card ol {
+    margin: 0 auto;
+    padding: 0;
+    list-style-position: inside;
+    text-align: center;
+    display: grid;
+    gap: 6px;
+    justify-items: center;
+  }
+
+  .dashboard-portal .dashboard-main .dashboard-quick-card p,
+  .dashboard-portal .dashboard-main .dashboard-quick-card h4,
+  .dashboard-portal .dashboard-main .dashboard-quick-link {
+    text-align: center;
+  }
+
+  .dashboard-portal .diagnostic-container,
+  .dashboard-portal .diagnostic-purchase-layout,
+  .dashboard-portal .diagnostic-purchase-intro,
+  .dashboard-portal .dashboard-page-header,
+  .dashboard-portal .diagnostic-summary-card,
+  .dashboard-portal .dashboard-quick-nav {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .dashboard-portal .dashboard-quick-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .dashboard-portal main,
+  .dashboard-portal .dashboard-shell,
+  .dashboard-portal .dashboard-main,
+  .dashboard-portal .diagnostic-hero {
+    overflow: visible !important;
+  }
+
+  .dashboard-portal .dashboard-main {
+    padding-bottom: 32px !important;
+  }
+
+  .dashboard-portal .diagnostic-purchase-layout {
+    padding-bottom: 20px;
+  }
+
+  .dashboard-portal .dashboard-mobile-toggle {
+    width: 40px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: #0d5c75;
+    gap: 6px;
+    padding: 6px 8px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dashboard-portal .dashboard-mobile-toggle .dashboard-mobile-bar {
+    display: none !important;
+  }
+
+  .dashboard-portal .dashboard-mobile-toggle::before {
+    content: "";
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: #ffffff;
+    box-shadow: 0 6px 0 #ffffff, 0 12px 0 #ffffff;
+    transform: translateY(-6px);
+  }
+
+  .dashboard-portal .dashboard-mobile-label {
+    display: none;
+  }
+
+  .dashboard-portal .header-left {
+    margin-top: 14px;
+  }
+
+  .dashboard-portal .site-header {
+    margin-bottom: 14px;
+  }
+
+  .dashboard-portal--quote-builder .dashboard-shell,
+  .dashboard-portal--quote-builder .site-footer {
+    display: none !important;
+  }
+
+  .dashboard-portal--quote-builder .mobile-blocked-message {
+    display: flex;
+    min-height: calc(100vh - 90px);
+    padding: 24px 24px 48px;
+    align-items: flex-start;
+    justify-content: center;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0a0f1a;
+    background: #f5f2eb;
+    margin-top: -1px;
+  }
+
+  .dashboard-portal--quote-builder .site-header {
+    margin-bottom: 0 !important;
+  }
+
+  .dashboard-portal--quote-builder .site-header::after {
+    content: none !important;
+  }
+
+  .dashboard-portal--quote-builder .mobile-blocked-message {
+    border-top: none !important;
+  }
+
+  .dashboard-portal--business-admin .dashboard-main {
+    display: flex;
+    justify-content: center;
+  }
+
+  .dashboard-portal--business-admin .dashboard-main > .diagnostic-container {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .dashboard-portal--business-admin .dashboard-main .mt-6 {
+    width: 100%;
+  }
+
+  .dashboard-portal--admin-quotes .dashboard-main {
+    display: flex;
+    justify-content: center;
+  }
+
+  .dashboard-portal--admin-quotes .dashboard-main > .diagnostic-container {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .dashboard-portal--admin-projects .dashboard-main {
+    display: flex;
+    justify-content: center;
+  }
+
+  .dashboard-portal--admin-projects .dashboard-main > .diagnostic-container {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .dashboard-portal--admin-project-detail .dashboard-main {
+    display: flex;
+    justify-content: center;
+  }
+
+  .dashboard-portal--admin-project-detail .dashboard-main .diagnostic-container {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .dashboard-portal--admin-project-detail .dashboard-main .diagnostic-container > * {
+    width: 100%;
+  }
+
+  .admin-log-modal {
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+  }
+
+  .admin-log-modal-panel {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    border-radius: 0;
+    padding: 24px 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .docs-grid {
     grid-template-columns: 1fr;
