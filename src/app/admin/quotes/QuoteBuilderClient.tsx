@@ -223,7 +223,8 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
     }
     setPublishEmailStatus("sending");
     setPublishEmailError(null);
-    const link = `${window.location.origin}/quote`;
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin).replace(/\/$/, "");
+    const link = `${siteUrl}/quote`;
     const response = await fetchAdmin(`/api/admin/quotes/${quoteId}/send-access-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

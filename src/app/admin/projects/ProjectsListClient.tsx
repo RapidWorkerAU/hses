@@ -45,10 +45,10 @@ export default function ProjectsListClient() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="admin-projects-header">
         <button
           type="button"
-          className="mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
+          className="admin-projects-back mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
           onClick={() => router.push("/sms-diagnostic/dashboard/business-admin")}
         >
           ← Back
@@ -66,10 +66,11 @@ export default function ProjectsListClient() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
+        <table className="admin-projects-table w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Project</th>
+              <th className="px-4 py-3">Project ID</th>
+              <th className="px-4 py-3">Proposal name</th>
               <th className="px-4 py-3">Organisation</th>
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Status</th>
@@ -95,32 +96,36 @@ export default function ProjectsListClient() {
               projects.map((project) => (
                 <tr
                   key={project.id}
-                  className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                  className="admin-projects-row cursor-pointer border-t border-slate-100 hover:bg-slate-50"
                   onClick={() => router.push(`/admin/projects/${project.id}`)}
                 >
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">
+                  <td className="px-4 py-3" data-label="Project ID">
+                    <div className="admin-projects-title-block font-semibold text-slate-900">
+                      <span className="admin-projects-mobile-label">Project ID</span>
                       {project.quotes?.quote_number ?? "-"}
                     </div>
-                    <div className="text-xs text-slate-500">
+                  </td>
+                  <td className="px-4 py-3 text-slate-600" data-label="Proposal name">
+                    <div className="admin-projects-title-block text-slate-600">
+                      <span className="admin-projects-mobile-label">Proposal name</span>
                       {project.name ?? project.quotes?.title ?? "-"}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-slate-600" data-label="Organisation">
                     {project.quotes?.organisations?.name ?? "-"}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3 text-slate-600" data-label="Contact">
                     <div>{project.quotes?.contacts?.full_name ?? "-"}</div>
                     <div className="text-xs text-slate-400">
                       {project.quotes?.contacts?.email ?? ""}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" data-label="Status">
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                       {project.status ?? "active"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
+                  <td className="px-4 py-3 text-xs text-slate-500" data-label="Accepted">
                     {project.accepted_at
                       ? new Date(project.accepted_at).toLocaleDateString()
                       : "-"}

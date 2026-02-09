@@ -139,7 +139,8 @@ export default function QuotesListClient() {
     }
     setResendStatus("sending");
     setResendError(null);
-    const link = `${window.location.origin}/quote`;
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin).replace(/\/$/, "");
+    const link = `${siteUrl}/quote`;
     const response = await fetchAdmin(`/api/admin/quotes/${resendModal.quoteId}/send-access-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -160,11 +161,11 @@ export default function QuotesListClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+      <div className="admin-quotes-header flex flex-wrap items-center justify-between gap-4">
+        <div className="admin-quotes-header-copy">
           <button
             type="button"
-            className="mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
+            className="admin-quotes-back mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
             onClick={() => router.push("/sms-diagnostic/dashboard/business-admin")}
           >
             ← Back
@@ -183,7 +184,7 @@ export default function QuotesListClient() {
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="admin-quotes-filters flex flex-wrap items-center gap-3">
         <select
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
           value={status}
@@ -198,7 +199,7 @@ export default function QuotesListClient() {
             </option>
           ))}
         </select>
-        <form onSubmit={handleSearch} className="flex flex-1 items-center gap-2">
+        <form onSubmit={handleSearch} className="admin-quotes-search flex flex-1 items-center gap-2">
           <input
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
             placeholder="Search by quote number, title, org, or contact..."
@@ -220,10 +221,11 @@ export default function QuotesListClient() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
+        <table className="admin-quotes-table w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Quote</th>
+              <th className="px-4 py-3">Quote ID</th>
+              <th className="px-4 py-3">Proposal name</th>
               <th className="px-4 py-3">Organisation</th>
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Access code</th>
@@ -258,35 +260,37 @@ export default function QuotesListClient() {
                 return (
                   <tr
                     key={quote.id}
-                    className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                    className="admin-quotes-row cursor-pointer border-t border-slate-100 hover:bg-slate-50"
                     onClick={() => router.push(`/admin/quotes/${quote.id}`)}
                   >
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-900">
-                        {quote.quote_number ?? "-"}
-                      </div>
-                      <div className="text-xs text-slate-500">{quote.title}</div>
+                    <td className="px-4 py-3 font-semibold text-slate-900" data-label="Quote ID">
+                      {quote.quote_number ?? "-"}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-slate-600" data-label="Proposal name">
+                      {quote.title ?? "-"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600" data-label="Organisation">
                       {quote.organisations?.name ?? "-"}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
+                    <td className="px-4 py-3 text-slate-600" data-label="Contact">
                       <div>{quote.contacts?.full_name ?? "-"}</div>
                       <div className="text-xs text-slate-400">{quote.contacts?.email ?? ""}</div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{latestCode}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-slate-600" data-label="Access code">
+                      {latestCode}
+                    </td>
+                    <td className="px-4 py-3" data-label="Status">
                       <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                         {quote.status ?? "draft"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700" data-label="Total">
                       {formatMoney(latestVersion?.total_inc_gst)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">
+                    <td className="px-4 py-3 text-xs text-slate-500" data-label="Updated">
                       {quote.updated_at ? new Date(quote.updated_at).toLocaleDateString() : "-"}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right" data-label="Actions">
                       <button
                         type="button"
                         className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"

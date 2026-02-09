@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 export default function DashboardSessionText() {
   const [email, setEmail] = useState<string>("");
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     const storedEmail = localStorage.getItem("hses_user_email");
@@ -12,10 +13,34 @@ export default function DashboardSessionText() {
     }
   }, []);
 
-  if (!email) {
-    return <span>Logged in</span>;
-  }
+  useEffect(() => {
+    if (navOpen) {
+      document.body.classList.add("dashboard-nav-open");
+    } else {
+      document.body.classList.remove("dashboard-nav-open");
+    }
+    return () => {
+      document.body.classList.remove("dashboard-nav-open");
+    };
+  }, [navOpen]);
 
-  return <span>Logged in as {email}</span>;
+  return (
+    <div className="dashboard-session-row">
+      <button
+        type="button"
+        className="dashboard-mobile-toggle"
+        aria-label="Toggle navigation menu"
+        aria-expanded={navOpen}
+        onClick={() => setNavOpen((prev) => !prev)}
+      >
+        <span className="dashboard-mobile-bar"></span>
+        <span className="dashboard-mobile-bar"></span>
+        <span className="dashboard-mobile-bar"></span>
+        <span className="dashboard-mobile-label">Menu</span>
+      </button>
+      <span className="dashboard-session-text">
+        {email ? `Logged in as ${email}` : "Logged in"}
+      </span>
+    </div>
+  );
 }
-

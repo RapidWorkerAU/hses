@@ -2470,6 +2470,49 @@ section {
   color: #ffffff;
 }
 
+.dashboard-session-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-mobile-toggle {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dashboard-mobile-toggle .dashboard-mobile-bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: #ffffff;
+  border-radius: 999px;
+}
+
+.dashboard-mobile-label {
+  width: auto;
+  height: auto;
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin-left: 8px;
+}
+
+.admin-projects-mobile-label {
+  display: none;
+}
+
 .dashboard-shell {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
@@ -2646,6 +2689,13 @@ section {
   display: grid;
   gap: 6px;
   margin: 52px 0 8px;
+}
+
+.dashboard-page-header h1 {
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #0f172a;
 }
 
 .dashboard-page-header--flush {
@@ -4390,7 +4440,13 @@ section {
   }
 
   .dashboard-sidebar {
-    display: none;
+    display: block;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 40;
+    top: 0;
+    height: 100vh;
+    padding-top: 120px;
   }
 
   .dashboard-portal .dashboard-main {
@@ -4404,6 +4460,18 @@ section {
 
   .dashboard-portal .header-actions {
     padding: 0;
+  }
+
+  .dashboard-mobile-toggle {
+    display: inline-flex;
+  }
+
+  body.dashboard-nav-open {
+    overflow: hidden;
+  }
+
+  body.dashboard-nav-open .dashboard-sidebar {
+    transform: translateX(0);
   }
   .diagnostic-hero-inner,
   .diagnostic-principle-grid,
@@ -4425,6 +4493,211 @@ section {
 }
 
 @media (max-width: 720px) {
+  .admin-quotes-table thead {
+    display: none;
+  }
+
+  .admin-quotes-table,
+  .admin-quotes-table tbody,
+  .admin-quotes-table tr,
+  .admin-quotes-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-quotes-row {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    margin: 12px 0;
+    padding: 6px 4px;
+    background: #ffffff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  }
+
+  .admin-quotes-table td {
+    border: none;
+    padding: 8px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .admin-quotes-table td::before {
+    content: attr(data-label);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    font-weight: 600;
+    flex: 0 0 38%;
+    text-align: left;
+  }
+
+  .admin-quotes-table td > * {
+    flex: 1 1 auto;
+    text-align: right;
+  }
+
+  .admin-quotes-mobile-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 2px;
+  }
+
+  .admin-quotes-table td[data-label="Quote ID"],
+  .admin-quotes-table td[data-label="Proposal name"] {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+
+  .admin-quotes-table td[data-label="Quote ID"]::before,
+  .admin-quotes-table td[data-label="Proposal name"]::before {
+    align-self: center;
+  }
+
+  .admin-quotes-table td[data-label="Actions"] {
+    justify-content: flex-end;
+  }
+
+  .admin-quotes-table {
+    padding: 12px;
+    box-sizing: border-box;
+  }
+
+  .admin-quotes-table td[data-label="Organisation"],
+  .admin-quotes-table td[data-label="Contact"],
+  .admin-quotes-table td[data-label="Status"] {
+    display: none;
+  }
+
+  .admin-quotes-header {
+    text-align: center;
+    justify-content: center;
+  }
+
+  .admin-quotes-header-copy {
+    width: 100%;
+  }
+
+  .admin-quotes-back {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .admin-quotes-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-quotes-search {
+    width: 100%;
+  }
+
+  .admin-quotes-filters select {
+    width: 100%;
+  }
+
+  .admin-quotes-header .bg-ocean {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .admin-projects-table thead {
+    display: none;
+  }
+
+  .admin-projects-table,
+  .admin-projects-table tbody,
+  .admin-projects-table tr,
+  .admin-projects-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-projects-row {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    margin: 12px 0;
+    padding: 6px 4px;
+    background: #ffffff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  }
+
+  .admin-projects-table td {
+    border: none;
+    padding: 8px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .admin-projects-table td::before {
+    content: attr(data-label);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    font-weight: 600;
+    flex: 0 0 38%;
+    text-align: left;
+  }
+
+  .admin-projects-table td > * {
+    flex: 1 1 auto;
+    text-align: right;
+  }
+
+  .admin-projects-table td[data-label="Organisation"],
+  .admin-projects-table td[data-label="Contact"] {
+    display: none;
+  }
+
+  .admin-projects-mobile-label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 2px;
+  }
+
+  .admin-projects-table td[data-label="Project ID"],
+  .admin-projects-table td[data-label="Proposal name"] {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+  }
+
+  .admin-projects-table td[data-label="Project ID"]::before,
+  .admin-projects-table td[data-label="Proposal name"]::before {
+    content: none;
+  }
+
+  .admin-projects-table {
+    padding: 12px;
+    box-sizing: border-box;
+  }
+
+  .admin-projects-header {
+    text-align: center;
+  }
+
+  .admin-projects-back {
+    width: 100%;
+    justify-content: center;
+  }
   .header-inner {
     height: auto;
     flex-wrap: wrap;
@@ -4471,6 +4744,104 @@ section {
   }
   .header-actions {
     display: none;
+  }
+
+  .dashboard-portal .header-inner {
+    justify-content: center;
+    padding: 12px 5%;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-portal .header-actions {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    margin-top: 10px;
+  }
+
+  .dashboard-portal .dashboard-session-text {
+    display: none;
+  }
+
+  .dashboard-portal .dashboard-main .diagnostic-container {
+    padding: 0 16px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    text-align: center;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .dashboard-portal .diagnostic-purchase-layout {
+    width: 100%;
+    margin: 0 auto;
+    justify-items: center;
+    box-sizing: border-box;
+  }
+
+  .dashboard-portal .diagnostic-purchase-intro {
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .dashboard-portal .diagnostic-summary-card,
+  .dashboard-portal .dashboard-quick-card {
+    width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    text-align: center;
+  }
+
+  .dashboard-portal .dashboard-page-header {
+    text-align: center;
+  }
+
+  .dashboard-portal .dashboard-page-header h1 {
+    text-align: center;
+  }
+
+  .dashboard-portal .dashboard-page-helper {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .dashboard-portal .dashboard-main h1,
+  .dashboard-portal .dashboard-main h2,
+  .dashboard-portal .dashboard-main h3,
+  .dashboard-portal .dashboard-main p,
+  .dashboard-portal .dashboard-main ul,
+  .dashboard-portal .dashboard-main ol {
+    text-align: center !important;
+  }
+
+  .dashboard-portal .diagnostic-hero::before {
+    display: none !important;
+  }
+
+  .dashboard-portal .diagnostic-purchase-hero {
+    background: #f5f2eb !important;
+  }
+
+  .dashboard-portal .dashboard-page-logo {
+    margin: 0 auto;
+  }
+
+  .dashboard-portal .dashboard-mobile-toggle {
+    width: 100% !important;
+    height: 44px;
+    justify-content: center;
+    padding: 0 16px;
+    gap: 8px;
+    box-sizing: border-box;
+  }
+
+  .dashboard-portal .dashboard-mobile-toggle .dashboard-mobile-bar {
+    display: none;
+  }
+
+  .dashboard-portal .dashboard-mobile-label {
+    margin-left: 0;
   }
   .docs-grid {
     grid-template-columns: 1fr;
