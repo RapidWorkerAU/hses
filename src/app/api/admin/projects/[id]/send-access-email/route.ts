@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/supabase/admin";
 
 type Payload = {
   to?: string;
+  cc?: string;
   access_code?: string;
   link?: string;
 };
@@ -24,6 +25,7 @@ export async function POST(
   }
 
   const to = payload.to?.trim();
+  const cc = payload.cc?.trim() ?? "";
   const accessCode = payload.access_code?.trim();
   const link = payload.link?.trim();
 
@@ -115,10 +117,16 @@ export async function POST(
     .filter(Boolean)
     .join("\n");
 
+  const ccList = cc
+    .split(/[;,]/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
   const resend = new Resend(resendApiKey);
   const sendResult = await resend.emails.send({
     from: resendFromEmail,
     to,
+    cc: ccList.length ? ccList : undefined,
     subject,
     html,
     text,

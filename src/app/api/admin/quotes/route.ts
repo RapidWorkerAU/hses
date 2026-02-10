@@ -80,6 +80,18 @@ export async function GET(request: Request) {
     }));
   }
 
+  if (quoteIds.length) {
+    const { data: projectRows } = await supabase
+      .from("projects")
+      .select("id,quote_id")
+      .in("quote_id", quoteIds);
+    const projectQuotes = new Set((projectRows ?? []).map((row) => row.quote_id));
+    rows = rows.map((row) => ({
+      ...row,
+      has_project: projectQuotes.has(row.id),
+    }));
+  }
+
   if (search) {
     const start = (page - 1) * pageSize;
     rows = filteredRows.slice(start, start + pageSize);

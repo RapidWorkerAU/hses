@@ -24,6 +24,7 @@ type QuoteRow = {
     gst_amount: number | null;
     total_inc_gst: number | null;
   }>;
+  has_project?: boolean;
 };
 
 const statusOptions = ["all", "draft", "published", "approved", "rejected"];
@@ -59,6 +60,7 @@ export default function QuotesListClient() {
     quoteId?: string;
     email?: string;
     code?: string | null;
+    cc?: string;
   }>({ open: false });
   const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
@@ -118,6 +120,21 @@ export default function QuotesListClient() {
     router.push(`/admin/quotes/${data.id}`);
   };
 
+  const deleteQuote = async (event: React.MouseEvent, quote: QuoteRow) => {
+    event.stopPropagation();
+    if (quote.has_project) return;
+    const confirmed = window.confirm("Delete this quote? This cannot be undone.");
+    if (!confirmed) return;
+    setError(null);
+    const response = await fetchAdmin(`/api/admin/quotes/${quote.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const message = await response.text();
+      setError(message || "Unable to delete quote.");
+      return;
+    }
+    await load();
+  };
+
   const openResend = (event: React.MouseEvent, quote: QuoteRow) => {
     event.stopPropagation();
     setResendStatus("idle");
@@ -127,6 +144,7 @@ export default function QuotesListClient() {
       quoteId: quote.id,
       email: quote.contacts?.email ?? "",
       code: quote.latest_access_code ?? quote.quote_access_codes?.[0]?.access_code ?? null,
+      cc: "",
     });
   };
 
@@ -153,6 +171,7 @@ export default function QuotesListClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         to: email,
+        cc: resendModal.cc?.trim() || null,
         access_code: code,
         link,
       }),
@@ -305,6 +324,23 @@ export default function QuotesListClient() {
                       >
                         Resend email
                       </button>
+                      <button
+                        type="button"
+                        className={`ml-2 rounded-full border px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                          quote.has_project
+                            ? "border-slate-200 text-slate-400"
+                            : "border-rose-200 text-rose-700 hover:bg-rose-50"
+                        }`}
+                        onClick={(event) => deleteQuote(event, quote)}
+                        disabled={quote.has_project}
+                        title={
+                          quote.has_project
+                            ? "Quote already converted to a project."
+                            : "Delete quote"
+                        }
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 );
@@ -362,6 +398,18 @@ export default function QuotesListClient() {
                   value={resendModal.email ?? ""}
                   onChange={(event) =>
                     setResendModal((prev) => ({ ...prev, email: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="mt-3 block text-xs text-slate-500">
+                CC (comma separated)
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                  value={resendModal.cc ?? ""}
+                  placeholder="manager@example.com, ops@example.com"
+                  onChange={(event) =>
+                    setResendModal((prev) => ({ ...prev, cc: event.target.value }))
                   }
                 />
               </label>

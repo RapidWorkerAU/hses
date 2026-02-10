@@ -37,6 +37,7 @@ export default function ProjectsListClient() {
     projectId?: string;
     email?: string;
     code?: string | null;
+    cc?: string;
   }>({ open: false });
   const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
@@ -70,6 +71,7 @@ export default function ProjectsListClient() {
       projectId: project.id,
       email: project.quotes?.contacts?.email ?? "",
       code: project.latest_access_code ?? null,
+      cc: "",
     });
   };
 
@@ -98,6 +100,7 @@ export default function ProjectsListClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: email,
+          cc: resendModal.cc?.trim() || null,
           access_code: code,
           link,
         }),
@@ -233,6 +236,18 @@ export default function ProjectsListClient() {
                   value={resendModal.email ?? ""}
                   onChange={(event) =>
                     setResendModal((prev) => ({ ...prev, email: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="mt-3 block text-xs text-slate-500">
+                CC (comma separated)
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                  value={resendModal.cc ?? ""}
+                  placeholder="manager@example.com, ops@example.com"
+                  onChange={(event) =>
+                    setResendModal((prev) => ({ ...prev, cc: event.target.value }))
                   }
                 />
               </label>

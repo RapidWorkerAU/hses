@@ -134,3 +134,93 @@ export async function PATCH(
 
   return NextResponse.json({ quote: data });
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdmin(request);
+  if (auth.response) return auth.response;
+
+  const { id: quoteId } = await params;
+  if (!quoteId || quoteId === "undefined") {
+    return new NextResponse("Missing quote id.", { status: 400 });
+  }
+
+  const supabase = createServiceRoleClient();
+  const projectCheck = await supabase
+    .from("projects")
+    .select("id")
+    .eq("quote_id", quoteId)
+    .limit(1);
+
+  if (projectCheck.error) {
+    return new NextResponse(projectCheck.error.message, { status: 500 });
+  }
+  if ((projectCheck.data ?? []).length > 0) {
+    return new NextResponse("Quotes linked to projects cannot be deleted.", { status: 400 });
+  }
+
+  const versionsResponse = await supabase
+    .from("quote_versions")
+    .select("id")
+    .eq("quote_id", quoteId);
+
+  if (versionsResponse.error) {
+    return new NextResponse(versionsResponse.error.message, { status: 500 });
+  }
+
+  const versionIds = (versionsResponse.data ?? []).map((row) => row.id);
+  if (versionIds.length) {
+    const deliverablesResponse = await supabase
+      .from("quote_deliverables")
+      .select("id")
+      .in("quote_version_id", versionIds);
+
+    if (deliverablesResponse.error) {
+      return new NextResponse(deliverablesResponse.error.message, { status: 500 });
+    }
+
+    const deliverableIds = (deliverablesResponse.data ?? []).map((row) => row.id);
+    if (deliverableIds.length) {
+      const milestonesDelete = await supabase
+        .from("quote_milestones")
+        .delete()
+        .in("deliverable_id", deliverableIds);
+      if (milestonesDelete.error) {
+        return new NextResponse(milestonesDelete.error.message, { status: 500 });
+      }
+    }
+
+    const deliverablesDelete = await supabase
+      .from("quote_deliverables")
+      .delete()
+      .in("quote_version_id", versionIds);
+    if (deliverablesDelete.error) {
+      return new NextResponse(deliverablesDelete.error.message, { status: 500 });
+    }
+
+    const versionsDelete = await supabase
+      .from("quote_versions")
+      .delete()
+      .in("id", versionIds);
+    if (versionsDelete.error) {
+      return new NextResponse(versionsDelete.error.message, { status: 500 });
+    }
+  }
+
+  const accessCodesDelete = await supabase
+    .from("quote_access_codes")
+    .delete()
+    .eq("quote_id", quoteId);
+  if (accessCodesDelete.error) {
+    return new NextResponse(accessCodesDelete.error.message, { status: 500 });
+  }
+
+  const quoteDelete = await supabase.from("quotes").delete().eq("id", quoteId);
+  if (quoteDelete.error) {
+    return new NextResponse(quoteDelete.error.message, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

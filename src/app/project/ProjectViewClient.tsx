@@ -192,6 +192,27 @@ export default function ProjectViewClient({
   const projectProgress =
     projectPlanned > 0 ? Math.min(100, Math.round((projectLogged / projectPlanned) * 100)) : 0;
 
+  const latestLog = payload.time_entries.reduce<
+    { createdAt: string; timestamp: number } | null
+  >((latest, entry) => {
+    if (!entry.created_at) return latest;
+    const ts = new Date(entry.created_at).getTime();
+    if (Number.isNaN(ts)) return latest;
+    if (!latest || ts > latest.timestamp) {
+      return { createdAt: entry.created_at, timestamp: ts };
+    }
+    return latest;
+  }, null);
+
+  const lastLogLabel = (() => {
+    if (!latestLog) return "-";
+    const now = Date.now();
+    const diffMs = Math.max(0, now - latestLog.timestamp);
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const dayLabel = diffDays === 1 ? "day" : "days";
+    return `${new Date(latestLog.createdAt).toLocaleString("en-AU")} (${diffDays} ${dayLabel})`;
+  })();
+
   const dateFilteredEntries = selectedDate
     ? timeEntriesByDate[selectedDate] ?? []
     : payload.time_entries;
@@ -243,6 +264,10 @@ export default function ProjectViewClient({
           <div className="qb-field">
             <label>Completion</label>
             <div className="qb-input qb-input--static">{projectProgress}%</div>
+          </div>
+          <div className="qb-field">
+            <label>Last log update</label>
+            <div className="qb-input qb-input--static">{lastLogLabel}</div>
           </div>
         </div>
       </div>

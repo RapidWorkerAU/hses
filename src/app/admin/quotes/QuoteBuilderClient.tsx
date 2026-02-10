@@ -31,6 +31,7 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
   const [publishError, setPublishError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishEmail, setPublishEmail] = useState("");
+  const [publishCcEmail, setPublishCcEmail] = useState("");
   const [publishEmailStatus, setPublishEmailStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
   );
@@ -230,6 +231,7 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         to: publishEmail.trim(),
+        cc: publishCcEmail.trim() || null,
         access_code: publishModal.code,
         link,
       }),
@@ -592,6 +594,22 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
                       value={publishEmail}
                       onChange={(event) => {
                         setPublishEmail(event.target.value);
+                        if (publishEmailStatus !== "idle") {
+                          setPublishEmailStatus("idle");
+                          setPublishEmailError(null);
+                        }
+                      }}
+                    />
+                  </label>
+                  <label className="mt-3 block text-xs text-slate-500">
+                    CC (comma separated)
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                      placeholder="manager@example.com, ops@example.com"
+                      value={publishCcEmail}
+                      onChange={(event) => {
+                        setPublishCcEmail(event.target.value);
                         if (publishEmailStatus !== "idle") {
                           setPublishEmailStatus("idle");
                           setPublishEmailError(null);
