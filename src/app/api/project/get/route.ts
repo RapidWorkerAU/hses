@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     ? await supabase
         .from("project_milestones")
         .select(
-          "id,project_deliverable_id,source_milestone_id,title,description,planned_hours,status,created_at"
+          "id,project_deliverable_id,source_milestone_id,title,description,planned_hours,status,estimated_completion_date,created_at"
         )
         .in("project_deliverable_id", deliverableIds)
         .order("created_at", { ascending: true })

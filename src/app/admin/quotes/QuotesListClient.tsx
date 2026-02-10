@@ -28,6 +28,13 @@ type QuoteRow = {
 
 const statusOptions = ["all", "draft", "published", "approved", "rejected"];
 
+const formatDate = (value: string | null | undefined) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-AU");
+};
+
 const formatMoney = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "-";
   return new Intl.NumberFormat("en-AU", {
@@ -288,7 +295,7 @@ export default function QuotesListClient() {
                       {formatMoney(latestVersion?.total_inc_gst)}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500" data-label="Updated">
-                      {quote.updated_at ? new Date(quote.updated_at).toLocaleDateString() : "-"}
+                      {formatDate(quote.updated_at)}
                     </td>
                     <td className="px-4 py-3 text-right" data-label="Actions">
                       <button

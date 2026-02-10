@@ -20,6 +20,13 @@ type ProjectRow = {
   } | null;
 };
 
+const formatDate = (value: string | null | undefined) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-AU");
+};
+
 export default function ProjectsListClient() {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
@@ -189,9 +196,7 @@ export default function ProjectsListClient() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500" data-label="Accepted">
-                    {project.accepted_at
-                      ? new Date(project.accepted_at).toLocaleDateString()
-                      : "-"}
+                    {formatDate(project.accepted_at)}
                   </td>
                   <td className="px-4 py-3 text-right" data-label="Actions">
                     <button

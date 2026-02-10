@@ -28,6 +28,7 @@ type ProjectPayload = {
     description: string | null;
     planned_hours: number | null;
     status: string | null;
+    estimated_completion_date?: string | null;
   }>;
   time_entries: Array<{
     id: string;
@@ -97,6 +98,20 @@ export default function ProjectViewClient({
     return map;
   }, [payload]);
 
+  const deliverableEstimatedDates = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    if (!payload) return map;
+    payload.milestones.forEach((milestone) => {
+      const date = milestone.estimated_completion_date;
+      if (!date) return;
+      const current = map[milestone.project_deliverable_id];
+      if (!current || date > current) {
+        map[milestone.project_deliverable_id] = date;
+      }
+    });
+    return map;
+  }, [payload]);
+
   const milestoneById = useMemo(() => {
     const map: Record<string, ProjectPayload["milestones"][number]> = {};
     if (!payload) return map;
@@ -135,6 +150,13 @@ export default function ProjectViewClient({
       timeZoneName: "short",
     }).formatToParts(new Date());
     return parts.find((part) => part.type === "timeZoneName")?.value ?? "AWST";
+  };
+
+  const formatDate = (value: string | null | undefined) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("en-AU");
   };
 
   if (error) {
@@ -233,8 +255,9 @@ export default function ProjectViewClient({
               <col style={{ width: "40px" }} />
               <col style={{ width: "22%" }} />
               <col style={{ width: "28%" }} />
-              <col style={{ width: "16%" }} />
-              <col style={{ width: "16%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
               <col style={{ width: "18%" }} />
             </colgroup>
             <thead>
@@ -242,6 +265,7 @@ export default function ProjectViewClient({
                 <th></th>
                 <th>Deliverable</th>
                 <th>Description</th>
+                <th className="text-center">Est. completion</th>
                 <th className="text-center">Planned hrs</th>
                 <th className="text-center">Hours used</th>
                 <th className="text-center">Progress</th>
@@ -302,6 +326,13 @@ export default function ProjectViewClient({
                           {deliverable.description ?? "-"}
                         </div>
                       </td>
+                      <td data-label="Est. completion" className="text-center">
+                        <div className="qb-input qb-input--static">
+                          {deliverableEstimatedDates[deliverable.id]
+                            ? formatDate(deliverableEstimatedDates[deliverable.id])
+                            : "TBC"}
+                        </div>
+                      </td>
                       <td data-label="Planned hrs" className="text-center">
                         <div className="qb-input qb-input--static">{deliverablePlanned}</div>
                       </td>
@@ -324,14 +355,15 @@ export default function ProjectViewClient({
                     </tr>
                     {isOpen && milestones.length > 0 && (
                       <tr className="qb-nested-block">
-                        <td colSpan={6}>
+                        <td colSpan={7}>
                           <table className="qb-table qb-table--nested qb-table--milestones">
                             <colgroup>
                               <col style={{ width: "40px" }} />
                               <col style={{ width: "22%" }} />
                               <col style={{ width: "28%" }} />
-                              <col style={{ width: "16%" }} />
-                              <col style={{ width: "16%" }} />
+                              <col style={{ width: "10%" }} />
+                              <col style={{ width: "10%" }} />
+                              <col style={{ width: "10%" }} />
                               <col style={{ width: "18%" }} />
                             </colgroup>
                             <thead>
@@ -339,6 +371,7 @@ export default function ProjectViewClient({
                                 <th></th>
                                 <th>Milestone</th>
                                 <th>Description</th>
+                                <th className="text-center">Est. completion</th>
                                 <th className="text-center">Planned hrs</th>
                                 <th className="text-center">Hours used</th>
                                 <th className="text-center">Progress</th>
@@ -363,6 +396,11 @@ export default function ProjectViewClient({
                                     <td className="py-4">
                                       <div className="qb-input qb-input--static">
                                         {milestone.description ?? "-"}
+                                      </div>
+                                    </td>
+                                    <td className="py-4 text-center">
+                                      <div className="qb-input qb-input--static">
+                                        {formatDate(milestone.estimated_completion_date)}
                                       </div>
                                     </td>
                                     <td className="py-4 text-center">
@@ -418,7 +456,7 @@ export default function ProjectViewClient({
                   .sort()
                   .map((dateKey) => (
                     <option key={dateKey} value={dateKey}>
-                      {dateKey}
+                      {formatDate(dateKey)}
                     </option>
                   ))}
               </select>
@@ -500,9 +538,9 @@ export default function ProjectViewClient({
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                             Date
                           </div>
-                          <div className="text-sm font-semibold text-slate-700">
-                            {entry.entry_date ?? "-"}
-                          </div>
+                      <div className="text-sm font-semibold text-slate-700">
+                        {formatDate(entry.entry_date)}
+                      </div>
                         </div>
                         <div className="text-right">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -559,7 +597,7 @@ export default function ProjectViewClient({
                       return (
                         <tr key={entry.id} className="border-t border-slate-100">
                           <td className="px-4 py-3 text-slate-600">
-                            {entry.entry_date ?? "-"}
+                            {formatDate(entry.entry_date)}
                           </td>
                           <td className="px-4 py-3 text-slate-700">
                             {deliverable?.title ?? "-"}

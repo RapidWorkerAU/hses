@@ -28,6 +28,7 @@ type ProjectDeliverable = {
   unit_rate: number | null;
   budget_ex_gst: number | null;
   status: string | null;
+  estimated_completion_date?: string | null;
 };
 
 type ProjectMilestone = {
@@ -37,6 +38,7 @@ type ProjectMilestone = {
   description: string | null;
   planned_hours: number | null;
   status: string | null;
+  estimated_completion_date?: string | null;
 };
 
 type TimeEntry = {
@@ -62,6 +64,13 @@ const formatMoney = (value: number | null | undefined) => {
     currency: "AUD",
     maximumFractionDigits: 2,
   }).format(value);
+};
+
+const formatDate = (value: string | null | undefined) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-AU");
 };
 
 const getTodayIsoDate = () => {
@@ -95,6 +104,11 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     overBy: number;
   }>({ show: false, planned: 0, remaining: 0, requested: 0, overBy: 0 });
   const [allowOverHoursEdit, setAllowOverHoursEdit] = useState(false);
+  const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
+  const [milestoneDateDrafts, setMilestoneDateDrafts] = useState<Record<string, string>>({});
+  const [isSavingMilestoneDate, setIsSavingMilestoneDate] = useState<Record<string, boolean>>(
+    {}
+  );
   const [logForm, setLogForm] = useState({
     deliverableId: "",
     milestoneId: "",
@@ -157,6 +171,20 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
         map[milestone.project_deliverable_id] = [];
       }
       map[milestone.project_deliverable_id].push(milestone);
+    });
+    return map;
+  }, [payload]);
+
+  const deliverableEstimatedDates = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    if (!payload) return map;
+    payload.milestones.forEach((milestone) => {
+      const date = milestone.estimated_completion_date;
+      if (!date) return;
+      const current = map[milestone.project_deliverable_id];
+      if (!current || date > current) {
+        map[milestone.project_deliverable_id] = date;
+      }
     });
     return map;
   }, [payload]);
@@ -406,6 +434,46 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     });
   };
 
+  const saveMilestoneEstimatedDate = async (milestoneId: string) => {
+    const draft = milestoneDateDrafts[milestoneId] ?? "";
+    setError(null);
+    setIsSavingMilestoneDate((prev) => ({ ...prev, [milestoneId]: true }));
+    const response = await fetchAdmin(`/api/admin/projects/milestones/${milestoneId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        estimated_completion_date: draft ? draft : null,
+      }),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      setError(message || "Unable to update milestone date.");
+      setIsSavingMilestoneDate((prev) => ({ ...prev, [milestoneId]: false }));
+      return;
+    }
+    const data = (await response.json()) as {
+      milestone?: { id: string; estimated_completion_date?: string | null };
+    };
+    if (data.milestone) {
+      setPayload((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          milestones: prev.milestones.map((milestone) =>
+            milestone.id === data.milestone?.id
+              ? {
+                  ...milestone,
+                  estimated_completion_date: data.milestone?.estimated_completion_date ?? null,
+                }
+              : milestone
+          ),
+        };
+      });
+    }
+    setEditingMilestoneId(null);
+    setIsSavingMilestoneDate((prev) => ({ ...prev, [milestoneId]: false }));
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -500,12 +568,13 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
         <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 md:block">
           <table className="w-full text-left text-sm">
             <colgroup>
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "30%" }} />
-              <col style={{ width: "12.5%" }} />
-              <col style={{ width: "12.5%" }} />
-              <col style={{ width: "12.5%" }} />
-              <col style={{ width: "12.5%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "26%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
             </colgroup>
             <thead
               className="text-xs uppercase tracking-wide text-white"
@@ -514,6 +583,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
               <tr>
                 <th className="px-4 py-3">Item</th>
                 <th className="px-4 py-3">Description</th>
+                <th className="px-4 py-3">Est. completion</th>
                 <th className="px-4 py-3">Planned hrs</th>
                 <th className="px-4 py-3">Hours used</th>
                 <th className="px-4 py-3">Progress</th>
@@ -563,6 +633,11 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                         {deliverable.description ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
+                        {deliverableEstimatedDates[deliverable.id]
+                          ? formatDate(deliverableEstimatedDates[deliverable.id])
+                          : "TBC"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
                         {deliverablePlanned}
                       </td>
                       <td
@@ -609,6 +684,47 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                           <td className="px-4 py-3 text-slate-600">
                             {milestone.description ?? "-"}
                           </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {editingMilestoneId === milestone.id ? (
+                                <input
+                                  type="date"
+                                  className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                                  value={milestoneDateDrafts[milestone.id] ?? ""}
+                                  onChange={(event) =>
+                                    setMilestoneDateDrafts((prev) => ({
+                                      ...prev,
+                                      [milestone.id]: event.target.value,
+                                    }))
+                                  }
+                                />
+                              ) : (
+                                <span>{formatDate(milestone.estimated_completion_date)}</span>
+                              )}
+                              <button
+                                type="button"
+                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
+                                onClick={() => {
+                                  if (editingMilestoneId === milestone.id) {
+                                    saveMilestoneEstimatedDate(milestone.id);
+                                    return;
+                                  }
+                                  setEditingMilestoneId(milestone.id);
+                                  setMilestoneDateDrafts((prev) => ({
+                                    ...prev,
+                                    [milestone.id]: milestone.estimated_completion_date ?? "",
+                                  }));
+                                }}
+                                disabled={isSavingMilestoneDate[milestone.id]}
+                              >
+                                {editingMilestoneId === milestone.id
+                                  ? isSavingMilestoneDate[milestone.id]
+                                    ? "Saving..."
+                                    : "Save"
+                                  : "Edit"}
+                              </button>
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-slate-600">{planned}</td>
                           <td className="px-4 py-3 text-slate-600">{logged}</td>
                             <td className="px-4 py-3">
@@ -635,6 +751,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
               })}
               <tr className="border-t border-slate-200 bg-slate-50">
                 <td className="px-4 py-3 font-semibold text-slate-700">Project total</td>
+                <td className="px-4 py-3"></td>
                 <td className="px-4 py-3"></td>
                 <td className="px-4 py-3 font-semibold text-slate-700">
                   {projectPlannedHours}
@@ -706,7 +823,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                         Date
                       </div>
                       <div className="text-sm font-semibold text-slate-700">
-                        {entry.entry_date ?? "-"}
+                        {formatDate(entry.entry_date)}
                       </div>
                     </div>
                     <div className="text-right">
@@ -807,7 +924,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 return (
                   <tr key={entry.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 text-slate-600">
-                      {entry.entry_date ?? "-"}
+                      {formatDate(entry.entry_date)}
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {milestone?.title ?? "-"}

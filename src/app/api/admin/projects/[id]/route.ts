@@ -33,7 +33,7 @@ export async function GET(
   const deliverablesResponse = await supabase
     .from("project_deliverables")
     .select(
-      "id,project_id,source_deliverable_id,title,description,pricing_mode,planned_hours,unit_rate,budget_ex_gst,status,created_at"
+      "id,project_id,source_deliverable_id,title,description,pricing_mode,planned_hours,unit_rate,budget_ex_gst,status,estimated_completion_date,created_at"
     )
     .eq("project_id", projectId)
     .order("created_at", { ascending: true });
@@ -49,7 +49,7 @@ export async function GET(
     ? await supabase
         .from("project_milestones")
         .select(
-          "id,project_deliverable_id,source_milestone_id,title,description,planned_hours,status,created_at"
+          "id,project_deliverable_id,source_milestone_id,title,description,planned_hours,status,estimated_completion_date,created_at"
         )
         .in("project_deliverable_id", deliverableIds)
         .order("created_at", { ascending: true })
