@@ -929,7 +929,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }
 
   return (
-    <div className="flex min-h-screen h-dvh flex-col bg-slate-100">
+    <div className="flex h-svh min-h-svh flex-col bg-stone-50 md:min-h-screen md:h-dvh">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">
