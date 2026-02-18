@@ -85,7 +85,7 @@ export default function CodesRegisterPage() {
           <div className="header-left">
             <a href="/">
               <img
-                src="/images/logo-black.png"
+                src="/images/logo-white.png"
                 alt="HSES Industry Partners"
                 className="header-logo"
               />

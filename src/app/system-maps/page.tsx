@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import DashboardLogoutLink from "@/app/sms-diagnostic/dashboard/DashboardLogoutLink";
-import DashboardSessionText from "@/app/sms-diagnostic/dashboard/DashboardSessionText";
-import BusinessAdminLink from "@/app/sms-diagnostic/dashboard/BusinessAdminLink";
-import ProjectsListClient from "./ProjectsListClient";
+import SystemMapsListClient from "./SystemMapsListClient";
+import DashboardLogoutLink from "../sms-diagnostic/dashboard/DashboardLogoutLink";
+import DashboardSessionText from "../sms-diagnostic/dashboard/DashboardSessionText";
+import BusinessAdminLink from "../sms-diagnostic/dashboard/BusinessAdminLink";
 
 export const metadata: Metadata = {
-  title: "Project Schedule Builder",
+  title: "Management System Maps",
 };
 
-export default function ProjectSchedulePage() {
+export default function SystemMapsPage() {
   return (
-    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--admin-projects">
+    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--business-admin">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">
@@ -58,7 +58,18 @@ export default function ProjectSchedulePage() {
 
           <section className="dashboard-section dashboard-main">
             <div className="diagnostic-container">
-              <ProjectsListClient />
+              <div className="dashboard-page-header">
+                <img
+                  src="/images/SELF-Original-Logo.png"
+                  alt="Safety Energy Loop Framework logo"
+                  className="dashboard-page-logo"
+                />
+                <h1>Management System Maps</h1>
+                <p className="dashboard-page-helper">
+                  Create and manage management system design maps you own or that are shared with you.
+                </p>
+              </div>
+              <SystemMapsListClient />
             </div>
           </section>
         </div>

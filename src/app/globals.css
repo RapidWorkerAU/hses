@@ -2567,7 +2567,8 @@ body.mobile-menu-open {
 }
 
 .dashboard-portal .header-left {
-  justify-content: center;
+  justify-content: flex-start;
+  padding-left: 18px;
 }
 
 .dashboard-portal .header-actions {
@@ -2752,7 +2753,7 @@ body.mobile-menu-open {
 }
 
 .dashboard-portal .diagnostic-hero {
-  padding-top: 52px;
+  padding-top: 52px !important;
 }
 
 .dashboard-section {
@@ -3721,6 +3722,17 @@ body.mobile-menu-open {
   margin-top: 2px;
 }
 
+.dashboard-portal .dashboard-main .diagnostic-summary-card,
+.dashboard-portal .dashboard-main .diagnostic-summary-card h3,
+.dashboard-portal .dashboard-main .diagnostic-summary-card ul,
+.dashboard-portal .dashboard-main .diagnostic-summary-card ol,
+.dashboard-portal .dashboard-main .dashboard-quick-card,
+.dashboard-portal .dashboard-main .dashboard-quick-card h4,
+.dashboard-portal .dashboard-main .dashboard-quick-card p,
+.dashboard-portal .dashboard-main .dashboard-quick-link {
+  text-align: left;
+}
+
 .diagnostic-container {
   width: 100%;
   max-width: 1280px;
@@ -3730,10 +3742,14 @@ body.mobile-menu-open {
 
 .diagnostic-hero {
   position: relative;
-  padding: 96px 0 72px;
+  padding: 44px 0 72px;
   background: #0d5c75;
   color: #ffffff;
   overflow: hidden;
+}
+
+.dashboard-portal .dashboard-main.diagnostic-hero {
+  padding-top: 52px !important;
 }
 
 .diagnostic-hero::before {
@@ -3759,6 +3775,7 @@ body.mobile-menu-open {
   align-items: center;
 }
 
+
 .diagnostic-kicker {
   text-transform: uppercase;
   letter-spacing: 0.2em;
@@ -3781,7 +3798,7 @@ body.mobile-menu-open {
 }
 
 .diagnostic-lede {
-  font-size: 1.05rem;
+  font-size: 0.98rem;
   line-height: 1.7;
   color: rgba(255, 255, 255, 0.88);
   margin-bottom: 20px;
@@ -3843,6 +3860,12 @@ body.mobile-menu-open {
   gap: 18px;
 }
 
+.diagnostic-hero-image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 .diagnostic-hero-placeholder {
   min-height: 320px;
   background: rgba(255, 255, 255, 0.08);
@@ -3894,6 +3917,9 @@ body.mobile-menu-open {
 
 .diagnostic-principle-image {
   min-height: 260px;
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 .diagnostic-eyebrow {
@@ -3979,6 +4005,28 @@ body.mobile-menu-open {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.diagnostic-process .btn-primary {
+  background: #ffffff;
+  color: #0f0f0f;
+  border-color: #ffffff;
+}
+
+.diagnostic-process .btn-primary:hover {
+  background: #e9eef3;
+  border-color: #e9eef3;
+}
+
+.diagnostic-process .btn-outline {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+}
+
+.diagnostic-process .btn-outline:hover {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .diagnostic-process-panel {

@@ -73,9 +73,11 @@ export default function SmsDiagnosticPage() {
               </p>
             </div>
             <div className="diagnostic-hero-visual">
-              <div className="image-placeholder diagnostic-hero-placeholder">
-                Diagnostic portal preview
-              </div>
+              <img
+                src="/images/sms-diagnostic-hero.png"
+                alt="SMS diagnostic portal preview"
+                className="diagnostic-hero-image"
+              />
               <div className="diagnostic-badges">
                 <div>
                   <span className="diagnostic-badge-title">Anonymous</span>
@@ -120,16 +122,18 @@ export default function SmsDiagnosticPage() {
                 them.
               </p>
             </div>
-            <div className="image-placeholder diagnostic-principle-image">
-              Governance diagnostic graphic
-            </div>
+            <img
+              src="/images/diagnostic-graph.png"
+              alt="Governance diagnostic graphic"
+              className="diagnostic-principle-image"
+            />
           </div>
         </section>
 
         <section className="diagnostic-themes" id="themes">
           <div className="diagnostic-container">
             <div className="diagnostic-section-header">
-              <p className="diagnostic-eyebrow">Governance themes</p>
+              <p className="diagnostic-eyebrow">Safety management system effectiveness themes</p>
               <h2>Insights are organised around the four SELF domains.</h2>
               <p>
                 Each domain highlights where the system is strong, fragile, or

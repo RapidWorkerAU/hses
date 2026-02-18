@@ -331,10 +331,15 @@ export default function ParticipantClient({ diagnosticId }: ParticipantClientPro
 
   return (
     <div className="diagnostic-access-card">
+      <img
+        src="/images/SELF-Original-Logo.png"
+        alt="Safety Energy Loop Framework logo"
+        className="diagnostic-access-logo"
+      />
       <p className="diagnostic-access-domain">
         {displayName}
       </p>
-      <h1>
+      <h1 className="diagnostic-access-title">
         {session?.domain_name ? `${session.domain_name} diagnostic` : "Diagnostic assessment"}
       </h1>
       <p className="diagnostic-access-subtitle">

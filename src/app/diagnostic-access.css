@@ -652,6 +652,13 @@
   font-size: 0.75rem;
   color: #2563eb;
   margin: 20px 0 4px;
+  font-weight: 400;
+}
+
+.diagnostic-access-title {
+  font-size: 1.9rem;
+  font-weight: 600;
+  margin: 0 0 10px;
 }
 
 .diagnostic-access-question {
@@ -731,6 +738,12 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  margin-bottom: 12px;
+}
+
+.diagnostic-access-logo img,
+.diagnostic-access-logo {
+  max-width: 200px;
 }
 
 .diagnostic-access-logo img {
