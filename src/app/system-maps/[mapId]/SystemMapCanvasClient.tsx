@@ -60,6 +60,18 @@ type NodeRelationRow = {
   relation_type: string;
   relationship_description: string | null;
 };
+type CanvasElementRow = {
+  id: string;
+  map_id: string;
+  element_type: "process_heading";
+  heading: string;
+  pos_x: number;
+  pos_y: number;
+  width: number;
+  height: number;
+  created_at: string;
+  updated_at: string;
+};
 
 type OutlineItemRow = {
   id: string;
@@ -76,12 +88,14 @@ type OutlineItemRow = {
 };
 
 type FlowData = {
+  entityKind: "document" | "process_heading";
   typeName: string;
   title: string;
   userGroup: string;
   discipline: string;
   bannerBg: string;
   bannerText: string;
+  isLandscape: boolean;
 };
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
@@ -91,19 +105,36 @@ const majorGridSize = minorGridSize * 5;
 const tileGridSpan = 5;
 const defaultWidth = minorGridSize * tileGridSpan;
 const defaultHeight = Math.round(defaultWidth * A4_RATIO);
+const landscapeDefaultWidth = defaultHeight;
+const landscapeDefaultHeight = defaultWidth;
+const processHeadingWidth = minorGridSize * 18;
+const processHeadingHeight = minorGridSize * 3;
 const laneHeight = 260;
 const fallbackHierarchy = [
   { name: "System Manual", level_rank: 1 },
   { name: "Policy", level_rank: 2 },
-  { name: "Management Plan", level_rank: 3 },
-  { name: "Procedure", level_rank: 4 },
-  { name: "Work Instruction", level_rank: 5 },
-  { name: "Form / Template", level_rank: 6 },
-  { name: "Record", level_rank: 7 },
+  { name: "Risk Document", level_rank: 3 },
+  { name: "Management Plan", level_rank: 4 },
+  { name: "Procedure", level_rank: 5 },
+  { name: "Work Instruction", level_rank: 6 },
+  { name: "Form / Template", level_rank: 7 },
+  { name: "Record", level_rank: 8 },
 ] as const;
+const fallbackRankByName = new Map(fallbackHierarchy.map((item) => [item.name.trim().toLowerCase(), item.level_rank]));
+const normalizeTypeRanks = (items: DocumentTypeRow[]) =>
+  items
+    .map((item) => {
+      const normalizedRank = fallbackRankByName.get(item.name.trim().toLowerCase());
+      return normalizedRank ? { ...item, level_rank: normalizedRank } : item;
+    })
+    .sort((a, b) => a.level_rank - b.level_rank);
 
 const getDisplayTypeName = (typeName: string) =>
   typeName.trim().toLowerCase() === "management system manual" ? "System Manual" : typeName;
+const isLandscapeTypeName = (typeName: string) => typeName.trim().toLowerCase() === "risk document";
+const getCanonicalTypeName = (typeName: string) => getDisplayTypeName(typeName).trim().toLowerCase();
+const processFlowId = (id: string) => `process:${id}`;
+const parseProcessFlowId = (id: string) => (id.startsWith("process:") ? id.slice(8) : id);
 const getDisplayRelationType = (relationType: string) => {
   if (!relationType) return "Related";
   const trimmed = relationType.trim();
@@ -120,8 +151,18 @@ const getTypeBannerStyle = (typeName: string) => {
   if (key.includes("work instruction")) return { bg: "#facc15", text: "#1f2937" };
   if (key.includes("form")) return { bg: "#15803d", text: "#ffffff" };
   if (key.includes("record")) return { bg: "#475569", text: "#ffffff" };
+  if (key.includes("risk")) return { bg: "#0ea5a4", text: "#ffffff" };
   return { bg: "#64748b", text: "#ffffff" };
 };
+const boxesOverlap = (
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+  gap = 0
+) =>
+  a.x < b.x + b.width + gap &&
+  a.x + a.width + gap > b.x &&
+  a.y < b.y + b.height + gap &&
+  a.y + a.height + gap > b.y;
 
 function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
   return (
@@ -139,26 +180,35 @@ function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
         <span className="block w-full truncate">{data.typeName}</span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col px-2 pt-1 pb-2">
-        <div className="overflow-hidden text-center text-[10px] font-semibold leading-tight text-slate-900">
+        <div className={`overflow-hidden text-center font-semibold leading-tight text-slate-900 ${data.isLandscape ? "text-[9px]" : "text-[10px]"}`}>
           {data.title || "Untitled Document"}
         </div>
         <div className="mt-auto space-y-1 text-[8px] leading-tight">
           <div className="space-y-[1px] border border-slate-300 px-1 py-[2px]">
             <div className="text-center font-semibold text-slate-700">User Group</div>
-            <div className="truncate text-center text-slate-500">{data.userGroup || "Unassigned"}</div>
+            <div className={`${data.isLandscape ? "text-[7px]" : ""} truncate text-center text-slate-500`}>{data.userGroup || "Unassigned"}</div>
           </div>
           <div className="space-y-[1px] border border-slate-300 px-1 py-[2px]">
             <div className="text-center font-semibold text-slate-700">Discipline</div>
-            <div className="truncate text-center text-slate-500">{data.discipline || "No discipline"}</div>
+            <div className={`${data.isLandscape ? "text-[7px]" : ""} truncate text-center text-slate-500`}>{data.discipline || "No discipline"}</div>
           </div>
         </div>
       </div>
     </div>
   );
 }
+function ProcessHeadingNode({ data }: NodeProps<Node<FlowData>>) {
+  return (
+    <div className="flex h-full w-full flex-col border border-black bg-black px-2 py-1 text-white shadow-[0_6px_20px_rgba(15,23,42,0.18)]">
+      <div className="text-center text-[9px] font-semibold uppercase tracking-[0.18em]">Process</div>
+      <div className="flex flex-1 items-center justify-center truncate text-center text-[12px] font-semibold">{data.title || "New Process"}</div>
+    </div>
+  );
+}
 
 function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const relationshipPopupRef = useRef<HTMLDivElement | null>(null);
   const saveViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedPos = useRef<Record<string, { x: number; y: number }>>({});
   const lastMobileTapRef = useRef<{ id: string; ts: number } | null>(null);
@@ -167,6 +217,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [map, setMap] = useState<SystemMap | null>(null);
   const [types, setTypes] = useState<DocumentTypeRow[]>([]);
   const [nodes, setNodes] = useState<DocumentNodeRow[]>([]);
+  const [elements, setElements] = useState<CanvasElementRow[]>([]);
   const [relations, setRelations] = useState<NodeRelationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -188,10 +239,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const snapToMinorGrid = useCallback((v: number) => Math.round(v / minorGridSize) * minorGridSize, []);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [discipline, setDiscipline] = useState("");
   const [userGroup, setUserGroup] = useState("");
   const [ownerName, setOwnerName] = useState("");
+  const [processHeadingDraft, setProcessHeadingDraft] = useState("");
 
   const [contextNode, setContextNode] = useState<{ id: string; x: number; y: number } | null>(null);
   const [mobileNodeMenuId, setMobileNodeMenuId] = useState<string | null>(null);
@@ -207,6 +260,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [outlineCreateMode, setOutlineCreateMode] = useState<"heading" | "content" | null>(null);
   const [outlineEditItemId, setOutlineEditItemId] = useState<string | null>(null);
   const [confirmDeleteOutlineItemId, setConfirmDeleteOutlineItemId] = useState<string | null>(null);
+  const [relationshipPopup, setRelationshipPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [collapsedHeadingIds, setCollapsedHeadingIds] = useState<Set<string>>(new Set());
   const [newHeadingTitle, setNewHeadingTitle] = useState("");
   const [newHeadingLevel, setNewHeadingLevel] = useState<1 | 2 | 3>(1);
@@ -220,6 +274,29 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [editContentText, setEditContentText] = useState("");
 
   const typesById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+  const addDocumentTypes = useMemo(() => {
+    const grouped = new Map<string, DocumentTypeRow[]>();
+    types.forEach((t) => {
+      const key = `${getCanonicalTypeName(t.name)}::${t.level_rank}`;
+      const bucket = grouped.get(key);
+      if (bucket) bucket.push(t);
+      else grouped.set(key, [t]);
+    });
+    return [...grouped.values()]
+      .map((bucket) => {
+        bucket.sort((a, b) => {
+          const aCanonical = getCanonicalTypeName(a.name) === a.name.trim().toLowerCase() ? 1 : 0;
+          const bCanonical = getCanonicalTypeName(b.name) === b.name.trim().toLowerCase() ? 1 : 0;
+          if (aCanonical !== bCanonical) return bCanonical - aCanonical;
+          const aMapSpecific = a.map_id === mapId ? 1 : 0;
+          const bMapSpecific = b.map_id === mapId ? 1 : 0;
+          if (aMapSpecific !== bMapSpecific) return bMapSpecific - aMapSpecific;
+          return a.name.localeCompare(b.name);
+        });
+        return bucket[0];
+      })
+      .sort((a, b) => a.level_rank - b.level_rank || getDisplayTypeName(a.name).localeCompare(getDisplayTypeName(b.name)));
+  }, [types, mapId]);
 
   const ranks = useMemo(() => {
     const values = new Set<number>();
@@ -247,25 +324,96 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
     return rankLane.get(t.level_rank) ?? { min: 0, max: 3000 };
   }, [typesById, rankLane]);
+  const getNodeSize = useCallback((node: DocumentNodeRow) => {
+    const rawTypeName = typesById.get(node.type_id)?.name ?? "Document";
+    const isLandscape = isLandscapeTypeName(rawTypeName);
+    const width = node.width ?? (isLandscape ? landscapeDefaultWidth : defaultWidth);
+    const height = node.height ?? Math.round(isLandscape ? width / A4_RATIO : width * A4_RATIO);
+    return { width, height };
+  }, [typesById]);
+  const findNearestFreePosition = useCallback((nodeId: string, startX: number, startY: number) => {
+    const movingNode = nodes.find((n) => n.id === nodeId);
+    if (!movingNode) return null;
+    const movingSize = getNodeSize(movingNode);
+    const occupied = nodes
+      .filter((n) => n.id !== nodeId)
+      .map((n) => {
+        const size = getNodeSize(n);
+        return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+      });
+
+    const isFree = (x: number, y: number) =>
+      !occupied.some((box) =>
+        boxesOverlap(
+          { x, y, width: movingSize.width, height: movingSize.height },
+          box,
+          4
+        )
+      );
+
+    if (isFree(startX, startY)) return { x: startX, y: startY };
+
+    const step = minorGridSize;
+    const maxRing = 120;
+    for (let ring = 1; ring <= maxRing; ring += 1) {
+      for (let dx = -ring; dx <= ring; dx += 1) {
+        for (let dy = -ring; dy <= ring; dy += 1) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+          const x = snapToMinorGrid(startX + dx * step);
+          const y = snapToMinorGrid(startY + dy * step);
+          if (isFree(x, y)) return { x, y };
+        }
+      }
+    }
+    return null;
+  }, [nodes, getNodeSize, snapToMinorGrid]);
 
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState<Node<FlowData>>([]);
-  const nodeTypes = useMemo(() => ({ documentTile: DocumentTileNode }), []);
+  const nodeTypes = useMemo(() => ({ documentTile: DocumentTileNode, processHeading: ProcessHeadingNode }), []);
 
   useEffect(() => {
     setFlowNodes(
-      nodes.map((n) => {
-        const width = n.width ?? defaultWidth;
-        const height = Math.round(width * A4_RATIO);
-        const rawTypeName = typesById.get(n.type_id)?.name ?? "Document";
-        const typeName = getDisplayTypeName(rawTypeName);
-        const banner = getTypeBannerStyle(typeName);
-        return {
-          id: n.id,
-          type: "documentTile",
-          position: { x: n.pos_x, y: n.pos_y },
+      [
+        ...nodes.map((n) => {
+          const rawTypeName = typesById.get(n.type_id)?.name ?? "Document";
+          const isLandscape = isLandscapeTypeName(rawTypeName);
+          const width = n.width ?? (isLandscape ? landscapeDefaultWidth : defaultWidth);
+          const height = n.height ?? Math.round(isLandscape ? width / A4_RATIO : width * A4_RATIO);
+          const typeName = getDisplayTypeName(rawTypeName);
+          const banner = getTypeBannerStyle(typeName);
+          return {
+            id: n.id,
+            type: "documentTile",
+            position: { x: n.pos_x, y: n.pos_y },
+            style: {
+              width,
+              height,
+              borderRadius: 0,
+              border: "none",
+              background: "transparent",
+              boxShadow: "none",
+              padding: 0,
+              overflow: "hidden",
+            },
+            data: {
+              entityKind: "document" as const,
+              typeName,
+              title: n.title ?? "",
+              userGroup: n.user_group ?? "",
+              discipline: n.discipline ?? "",
+              bannerBg: banner.bg,
+              bannerText: banner.text,
+              isLandscape,
+            },
+          };
+        }),
+        ...elements.map((el) => ({
+          id: processFlowId(el.id),
+          type: "processHeading",
+          position: { x: el.pos_x, y: el.pos_y },
           style: {
-            width,
-            height,
+            width: el.width || processHeadingWidth,
+            height: el.height || processHeadingHeight,
             borderRadius: 0,
             border: "none",
             background: "transparent",
@@ -274,17 +422,19 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             overflow: "hidden",
           },
           data: {
-            typeName,
-            title: n.title ?? "",
-            userGroup: n.user_group ?? "",
-            discipline: n.discipline ?? "",
-            bannerBg: banner.bg,
-            bannerText: banner.text,
+            entityKind: "process_heading" as const,
+            typeName: "Process",
+            title: el.heading ?? "New Process",
+            userGroup: "",
+            discipline: "",
+            bannerBg: "#000000",
+            bannerText: "#ffffff",
+            isLandscape: true,
           },
-        };
-      })
+        })),
+      ]
     );
-  }, [nodes, typesById, setFlowNodes]);
+  }, [nodes, elements, typesById, setFlowNodes]);
 
   const flowEdges = useMemo<Edge[]>(
     () => {
@@ -337,7 +487,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           sourceHandle,
           targetHandle,
           type: "smoothstep",
-          label: r.relationship_description?.trim() || getDisplayRelationType(r.relation_type),
+          label: getDisplayRelationType(r.relation_type),
           style: { stroke: edgeStroke, strokeWidth: edgeWidth },
           labelStyle: { fill: edgeLabelColor, fontSize: 11 },
         };
@@ -349,6 +499,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const selectedNode = useMemo(
     () => (selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null),
     [selectedNodeId, nodes]
+  );
+  const selectedProcess = useMemo(
+    () => (selectedProcessId ? elements.find((el) => el.id === selectedProcessId) ?? null : null),
+    [selectedProcessId, elements]
   );
 
   const headingItems = useMemo(
@@ -417,10 +571,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       }
       setUserId(user.id);
 
-      const [mapRes, typeRes, nodeRes, relRes, viewRes] = await Promise.all([
+      const [mapRes, typeRes, nodeRes, elementRes, relRes, viewRes] = await Promise.all([
         supabaseBrowser.schema("ms").from("system_maps").select("id,title,description,updated_at,created_at").eq("id", mapId).maybeSingle(),
         supabaseBrowser.schema("ms").from("document_types").select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active").eq("is_active", true).or(`map_id.eq.${mapId},map_id.is.null`).order("level_rank", { ascending: true }),
         supabaseBrowser.schema("ms").from("document_nodes").select("id,map_id,type_id,title,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived").eq("map_id", mapId).eq("is_archived", false),
+        supabaseBrowser.schema("ms").from("canvas_elements").select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at").eq("map_id", mapId).order("created_at", { ascending: true }),
         supabaseBrowser.schema("ms").from("node_relations").select("id,map_id,from_node_id,to_node_id,relation_type,relationship_description").eq("map_id", mapId),
         supabaseBrowser.schema("ms").from("map_view_state").select("pan_x,pan_y,zoom").eq("map_id", mapId).eq("user_id", user.id).maybeSingle(),
       ]);
@@ -460,9 +615,39 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           loadedTypes = (createdTypes ?? []) as DocumentTypeRow[];
         }
       }
+      const existingCanonicalTypeNames = new Set(loadedTypes.map((t) => getCanonicalTypeName(t.name)));
+      const missingFallback = fallbackHierarchy.filter((item) => !existingCanonicalTypeNames.has(getCanonicalTypeName(item.name)));
+      if (missingFallback.length) {
+        const { data: insertedMissing, error: insertMissingError } = await supabaseBrowser
+          .schema("ms")
+          .from("document_types")
+          .insert(
+            missingFallback.map((item) => ({
+              map_id: mapId,
+              name: item.name,
+              level_rank: item.level_rank,
+              band_y_min: null,
+              band_y_max: null,
+              is_active: true,
+            }))
+          )
+          .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active");
+        if (insertMissingError) {
+          setError(insertMissingError.message || "Unable to add missing document types.");
+        } else if (insertedMissing?.length) {
+          loadedTypes = [...loadedTypes, ...(insertedMissing as DocumentTypeRow[])].sort((a, b) => a.level_rank - b.level_rank);
+        }
+      }
+      loadedTypes = normalizeTypeRanks(loadedTypes);
       setTypes(loadedTypes);
       const loadedNodes = (nodeRes.data ?? []) as DocumentNodeRow[];
       setNodes(loadedNodes);
+      if (elementRes.error) {
+        setElements([]);
+        console.warn("Unable to load process headings:", elementRes.error.message);
+      } else {
+        setElements((elementRes.data ?? []) as CanvasElementRow[]);
+      }
       setRelations((relRes.data ?? []) as NodeRelationRow[]);
       const nextSaved: Record<string, { x: number; y: number }> = {};
       loadedNodes.forEach((n) => (nextSaved[n.id] = { x: n.pos_x, y: n.pos_y }));
@@ -490,6 +675,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setUserGroup(selectedNode.user_group ?? "");
     setOwnerName(selectedNode.owner_name ?? "");
   }, [selectedNode]);
+  useEffect(() => {
+    if (!selectedProcess) return;
+    setProcessHeadingDraft(selectedProcess.heading ?? "");
+  }, [selectedProcess]);
 
   useEffect(() => {
     if (!map) return;
@@ -498,18 +687,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
   useEffect(() => {
     if (!showAdd) return;
-    if (!addTypeId && types.length) {
-      setAddTypeId(types[0].id);
+    if (!addTypeId && addDocumentTypes.length) {
+      setAddTypeId(addDocumentTypes[0].id);
     }
-  }, [showAdd, addTypeId, types]);
+  }, [showAdd, addTypeId, addDocumentTypes]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(max-width: 768px), (pointer: coarse)");
-    const apply = () => {
-      const touchCapable = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
-      setIsMobile(mq.matches || touchCapable || window.innerWidth <= 900);
-    };
+    const apply = () => setIsMobile(mq.matches || window.innerWidth <= 768);
     apply();
     const handleResize = () => apply();
     window.addEventListener("resize", handleResize);
@@ -547,6 +733,17 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
   }, [outlineCreateMode, newContentHeadingId, headingItems]);
 
+  useEffect(() => {
+    if (!relationshipPopup) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as globalThis.Node | null;
+      if (relationshipPopupRef.current && target && relationshipPopupRef.current.contains(target)) return;
+      setRelationshipPopup(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [relationshipPopup]);
+
   const onMoveEnd = useCallback((_event: unknown, viewport: Viewport) => {
     if (!userId) return;
     if (saveViewportTimer.current) clearTimeout(saveViewportTimer.current);
@@ -580,22 +777,44 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [map, mapTitleDraft]);
 
   const onNodeDragStop = useCallback(async (_event: unknown, node: Node<FlowData>) => {
+    if (node.data.entityKind === "process_heading") {
+      const processId = parseProcessFlowId(node.id);
+      const sourceElement = elements.find((el) => el.id === processId);
+      if (!sourceElement) return;
+      const finalX = snapToMinorGrid(node.position.x);
+      const finalY = snapToMinorGrid(node.position.y);
+      setElements((prev) => prev.map((el) => (el.id === processId ? { ...el, pos_x: finalX, pos_y: finalY } : el)));
+      const { error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .update({ pos_x: finalX, pos_y: finalY })
+        .eq("id", processId)
+        .eq("map_id", mapId);
+      if (e) {
+        setError(e.message || "Unable to save process position.");
+        setElements((prev) => prev.map((el) => (el.id === processId ? sourceElement : el)));
+      }
+      return;
+    }
     const source = nodes.find((n) => n.id === node.id);
     if (!source) return;
     const x = snapToMinorGrid(node.position.x);
     const y = snapToMinorGrid(node.position.y);
     const old = savedPos.current[node.id] ?? { x: source.pos_x, y: source.pos_y };
-    setFlowNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, position: { x, y } } : n)));
-    setNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, pos_x: x, pos_y: y } : n)));
+    const freePosition = findNearestFreePosition(node.id, x, y) ?? old;
+    const finalX = freePosition.x;
+    const finalY = freePosition.y;
+    setFlowNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, position: { x: finalX, y: finalY } } : n)));
+    setNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, pos_x: finalX, pos_y: finalY } : n)));
 
-    const { error: e } = await supabaseBrowser.schema("ms").from("document_nodes").update({ pos_x: x, pos_y: y }).eq("id", node.id).eq("map_id", mapId);
+    const { error: e } = await supabaseBrowser.schema("ms").from("document_nodes").update({ pos_x: finalX, pos_y: finalY }).eq("id", node.id).eq("map_id", mapId);
     if (e) {
       setError(e.message || "Unable to save position. Reverting.");
       setNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, pos_x: old.x, pos_y: old.y } : n)));
       return;
     }
-    savedPos.current[node.id] = { x, y };
-  }, [nodes, mapId, snapToMinorGrid]);
+    savedPos.current[node.id] = { x: finalX, y: finalY };
+  }, [nodes, elements, mapId, snapToMinorGrid, findNearestFreePosition]);
 
   const handleAddDocument = async () => {
     if (!addTypeId || !rf || !canvasRef.current) return;
@@ -609,7 +828,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     const { data, error: e } = await supabaseBrowser
       .schema("ms")
       .from("document_nodes")
-      .insert({ map_id: mapId, type_id: addTypeId, title: "Untitled Document", pos_x: x, pos_y: y, width: defaultWidth, height: defaultHeight })
+      .insert({
+        map_id: mapId,
+        type_id: addTypeId,
+        title: "Untitled Document",
+        pos_x: x,
+        pos_y: y,
+        width: isLandscapeTypeName(t.name) ? landscapeDefaultWidth : defaultWidth,
+        height: isLandscapeTypeName(t.name) ? landscapeDefaultHeight : defaultHeight,
+      })
       .select("id,map_id,type_id,title,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
       .single();
     if (e || !data) {
@@ -621,6 +848,52 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     savedPos.current[inserted.id] = { x: inserted.pos_x, y: inserted.pos_y };
     setAddTypeId("");
     setShowAdd(false);
+  };
+  const handleAddProcessHeading = async () => {
+    if (!rf || !canvasRef.current) return;
+    const box = canvasRef.current.getBoundingClientRect();
+    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    const x = snapToMinorGrid(center.x);
+    const y = snapToMinorGrid(center.y);
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .insert({
+        map_id: mapId,
+        element_type: "process_heading",
+        heading: "New Process",
+        pos_x: x,
+        pos_y: y,
+        width: processHeadingWidth,
+        height: processHeadingHeight,
+      })
+      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to create process heading.");
+      return;
+    }
+    setElements((prev) => [...prev, data as CanvasElementRow]);
+    setShowAdd(false);
+  };
+  const handleSaveProcessHeading = async () => {
+    if (!selectedProcessId) return;
+    const heading = processHeadingDraft.trim() || "New Process";
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update({ heading })
+      .eq("id", selectedProcessId)
+      .eq("map_id", mapId)
+      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to save process heading.");
+      return;
+    }
+    const updated = data as CanvasElementRow;
+    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+    setSelectedProcessId(null);
   };
 
   const handleSaveNode = async () => {
@@ -689,6 +962,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [relations, relationshipSourceNodeId]);
   const relationshipQueryLength = relationshipTargetQuery.trim().length;
   const showRelationshipDropdown = showRelationshipOptions && relationshipQueryLength >= 3;
+  const closeAddRelationshipModal = useCallback(() => {
+    setShowAddRelationship(false);
+    setRelationshipSourceNodeId(null);
+    setRelationshipTargetId("");
+    setRelationshipTargetQuery("");
+    setShowRelationshipOptions(false);
+    setRelationshipDescription("");
+  }, []);
 
   const handleAddRelation = async () => {
     if (!relationshipSourceNodeId || !relationshipTargetId) return;
@@ -708,7 +989,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         map_id: mapId,
         from_node_id: relationshipSourceNodeId,
         to_node_id: relationshipTargetId,
-        relation_type: "Related",
+        relation_type: "related",
         relationship_description: relationshipDescription.trim() || null,
       })
       .select("id,map_id,from_node_id,to_node_id,relation_type,relationship_description")
@@ -718,12 +999,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       return;
     }
     setRelations((prev) => [...prev, data as NodeRelationRow]);
-    setShowAddRelationship(false);
-    setRelationshipSourceNodeId(null);
-    setRelationshipTargetId("");
-    setRelationshipTargetQuery("");
-    setShowRelationshipOptions(false);
-    setRelationshipDescription("");
+    closeAddRelationshipModal();
   };
 
   const handleDeleteRelation = async (id: string) => {
@@ -1036,6 +1312,24 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             onInit={(instance) => setRf({ fitView: instance.fitView, screenToFlowPosition: instance.screenToFlowPosition, setViewport: instance.setViewport })}
             onNodesChange={onFlowNodesChange}
             onNodeClick={(_, n) => {
+              if (n.data.entityKind === "process_heading") {
+                if (isMobile) {
+                  const now = Date.now();
+                  const lastTap = lastMobileTapRef.current;
+                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
+                  if (isDoubleTap) {
+                    setSelectedNodeId(null);
+                    setSelectedProcessId(parseProcessFlowId(n.id));
+                    lastMobileTapRef.current = null;
+                  } else {
+                    lastMobileTapRef.current = { id: n.id, ts: now };
+                  }
+                  return;
+                }
+                setSelectedNodeId(null);
+                setSelectedProcessId(parseProcessFlowId(n.id));
+                return;
+              }
               if (isMobile) {
                 const now = Date.now();
                 const lastTap = lastMobileTapRef.current;
@@ -1048,10 +1342,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 }
                 return;
               }
+              setSelectedProcessId(null);
               setSelectedNodeId(n.id);
             }}
             onNodeContextMenu={(e, n) => {
               e.preventDefault();
+              if (n.data.entityKind === "process_heading") return;
               if (isMobile) {
                 setMobileNodeMenuId(n.id);
                 return;
@@ -1062,6 +1358,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             onNodeMouseLeave={() => setHoveredNodeId(null)}
             onNodeDragStop={onNodeDragStop}
             onMoveEnd={onMoveEnd}
+            onEdgeClick={(event, edge) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const rel = relations.find((r) => r.id === edge.id);
+              const text = rel?.relationship_description?.trim() || "No relationship context added by user";
+              setRelationshipPopup({ x: event.clientX, y: event.clientY, text });
+            }}
             panOnDrag
             zoomOnScroll
             snapToGrid
@@ -1078,8 +1381,18 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         </div>
 
         {contextNode && (
-          <div className="fixed z-50 min-w-[200px] rounded-lg border border-slate-200 bg-white p-1 shadow-xl" style={{ left: contextNode.x, top: contextNode.y }}>
-            <button className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100" onClick={() => {
+          <div className="fixed z-50 min-w-[220px] rounded-none border border-slate-300 bg-white p-1 shadow-xl" style={{ left: contextNode.x, top: contextNode.y }}>
+            <div className="flex justify-end px-1 pt-1">
+              <button
+                type="button"
+                aria-label="Close menu"
+                className="h-6 w-6 rounded-none text-sm font-normal text-slate-500 hover:bg-slate-100"
+                onClick={() => setContextNode(null)}
+              >
+                x
+              </button>
+            </div>
+            <button className="block w-full rounded-none px-3 py-2 text-left text-sm font-normal hover:bg-slate-100" onClick={() => {
               setRelationshipSourceNodeId(contextNode.id);
               setRelationshipTargetQuery("");
               setRelationshipTargetId("");
@@ -1088,7 +1401,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setShowAddRelationship(true);
               setContextNode(null);
             }}>Add Relationship</button>
-            <button className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-100" onClick={async () => {
+            <button className="block w-full rounded-none px-3 py-2 text-left text-sm font-normal hover:bg-slate-100" onClick={async () => {
               setOutlineCreateMode(null);
               closeOutlineEditor();
               setConfirmDeleteOutlineItemId(null);
@@ -1097,7 +1410,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setContextNode(null);
               await loadOutline(contextNode.id);
             }}>Open Document Structure</button>
-            <button className="block w-full rounded px-3 py-2 text-left text-sm text-rose-700 hover:bg-rose-50" onClick={() => {
+            <button className="block w-full rounded-none px-3 py-2 text-left text-sm font-normal text-rose-700 hover:bg-rose-50" onClick={() => {
               const id = contextNode.id;
               setContextNode(null);
               setConfirmDeleteNodeId(id);
@@ -1105,7 +1418,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           </div>
         )}
 
-        {mobileNodeMenuId && (
+        {isMobile && mobileNodeMenuId && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 p-0 sm:p-4">
             <div className="w-full rounded-t-2xl bg-white p-4 shadow-2xl ring-1 ring-slate-200/70 sm:max-w-md sm:rounded-xl">
               <div className="mb-2 text-sm font-semibold text-slate-900">
@@ -1113,6 +1426,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               </div>
               <div className="grid gap-2">
                 <button className="btn btn-outline justify-start" onClick={() => {
+                  setSelectedProcessId(null);
                   setSelectedNodeId(mobileNodeMenuId);
                   setMobileNodeMenuId(null);
                 }}>Edit Properties</button>
@@ -1141,6 +1455,16 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 <button className="btn btn-outline" onClick={() => setMobileNodeMenuId(null)}>Close</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {relationshipPopup && (
+          <div
+            ref={relationshipPopupRef}
+            className="fixed z-[65] max-w-[280px] rounded-md border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 shadow-lg"
+            style={{ left: relationshipPopup.x + 10, top: relationshipPopup.y + 10 }}
+          >
+            {relationshipPopup.text}
           </div>
         )}
 
@@ -1209,14 +1533,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 />
               </div>
               <div className="mt-4 flex justify-end gap-2">
-                <button className="btn btn-outline" onClick={() => {
-                  setShowAddRelationship(false);
-                  setRelationshipSourceNodeId(null);
-                  setRelationshipTargetId("");
-                  setRelationshipTargetQuery("");
-                  setShowRelationshipOptions(false);
-                  setRelationshipDescription("");
-                }}>Cancel</button>
+                <button className="btn btn-outline" onClick={closeAddRelationshipModal}>Cancel</button>
                 <button className="btn btn-primary" disabled={!relationshipTargetId} onClick={handleAddRelation}>Add relationship</button>
               </div>
             </div>
@@ -1257,15 +1574,40 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         {showAdd && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4">
             <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70">
-              <h2 className="text-lg font-semibold">Add Document</h2>
+              <h2 className="text-lg font-semibold">Add Item</h2>
               <select className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2" value={addTypeId} onChange={(e) => setAddTypeId(e.target.value)}>
                 <option value="">Select type...</option>
-                {types.map((t) => <option key={t.id} value={t.id}>{t.name} (rank {t.level_rank})</option>)}
+                {addDocumentTypes.map((t) => <option key={t.id} value={t.id}>{getDisplayTypeName(t.name)} (rank {t.level_rank})</option>)}
               </select>
-              {!types.length && <p className="mt-2 text-sm text-rose-700">No document types are available for this map.</p>}
+              {!addDocumentTypes.length && <p className="mt-2 text-sm text-rose-700">No document types are available for this map.</p>}
               <div className="mt-4 flex justify-end gap-2">
                 <button className="btn btn-outline" onClick={() => setShowAdd(false)}>Cancel</button>
+                <button className="btn btn-outline" onClick={handleAddProcessHeading}>Add Process Heading</button>
                 <button className="btn btn-primary" disabled={!addTypeId} onClick={handleAddDocument}>Create</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedProcess && (
+          <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/45 p-4 pt-16 md:items-center md:pt-4">
+            <div className="max-h-[calc(100svh-2rem)] w-full max-w-lg overflow-auto rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70 md:max-h-[90vh]">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Process Heading</h2>
+                <button className="text-sm text-slate-500" onClick={() => setSelectedProcessId(null)}>Close</button>
+              </div>
+              <div className="mt-4">
+                <label className="text-sm">Heading
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={processHeadingDraft}
+                    onChange={(e) => setProcessHeadingDraft(e.target.value)}
+                    placeholder="Enter process heading"
+                  />
+                </label>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button className="btn btn-primary" onClick={handleSaveProcessHeading}>Save heading</button>
               </div>
             </div>
           </div>
