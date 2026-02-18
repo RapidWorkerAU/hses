@@ -161,6 +161,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const saveViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedPos = useRef<Record<string, { x: number; y: number }>>({});
+  const lastMobileTapRef = useRef<{ id: string; ts: number } | null>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [map, setMap] = useState<SystemMap | null>(null);
@@ -1019,7 +1020,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           {error && <div className="mt-1 text-xs text-rose-700">{error}</div>}
         </div>
 
-        <div ref={canvasRef} className="h-full w-full bg-stone-50" onClick={() => { setContextNode(null); setMobileNodeMenuId(null); }}>
+        <div
+          ref={canvasRef}
+          className="h-full w-full bg-stone-50"
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            setContextNode(null);
+            setMobileNodeMenuId(null);
+          }}
+        >
           <ReactFlow
             nodes={flowNodes}
             edges={flowEdges}
@@ -1028,7 +1037,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             onNodesChange={onFlowNodesChange}
             onNodeClick={(_, n) => {
               if (isMobile) {
-                setMobileNodeMenuId(n.id);
+                const now = Date.now();
+                const lastTap = lastMobileTapRef.current;
+                const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
+                if (isDoubleTap) {
+                  setMobileNodeMenuId(n.id);
+                  lastMobileTapRef.current = null;
+                } else {
+                  lastMobileTapRef.current = { id: n.id, ts: now };
+                }
                 return;
               }
               setSelectedNodeId(n.id);
