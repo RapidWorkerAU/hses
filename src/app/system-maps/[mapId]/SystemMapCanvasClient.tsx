@@ -930,7 +930,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
   return (
     <div className="flex h-svh min-h-svh flex-col bg-stone-50 md:min-h-screen md:h-dvh">
-      <header className="site-header">
+      <header className="site-header fixed inset-x-0 top-0 z-50 md:static">
         <div className="header-inner">
           <div className="header-left">
             <a href="/"><img src="/images/logo-black.png" alt="HSES" className="header-logo" /></a>
@@ -999,7 +999,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       </header>
 
       <main className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="absolute left-4 top-4 z-20 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow">
+        <div className="absolute left-4 top-[11.5rem] z-20 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow md:top-4">
           <div className="text-xs uppercase tracking-[0.16em] text-slate-400">System Map</div>
           {isEditingMapTitle ? (
             <div className="mt-1 flex items-center gap-2">
@@ -1272,8 +1272,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         )}
 
         {selectedNode && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-4">
-            <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70">
+          <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/45 p-4 pt-16 md:items-center md:pt-4">
+            <div className="max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-auto rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70 md:max-h-[90vh]">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Document Properties</h2>
                 <button className="text-sm text-slate-500" onClick={() => setSelectedNodeId(null)}>Close</button>
