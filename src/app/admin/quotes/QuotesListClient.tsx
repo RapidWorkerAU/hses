@@ -192,7 +192,7 @@ export default function QuotesListClient() {
           <button
             type="button"
             className="admin-quotes-back mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
-            onClick={() => router.push("/sms-diagnostic/dashboard/business-admin")}
+            onClick={() => router.push("/dashboard/business-admin")}
           >
             ← Back
           </button>
@@ -446,3 +446,4 @@ export default function QuotesListClient() {
     </div>
   );
 }
+

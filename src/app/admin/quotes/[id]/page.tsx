@@ -1,4 +1,4 @@
-import "../quote-builder.css";
+﻿import "../quote-builder.css";
 import QuoteBuilderClient from "../QuoteBuilderClient";
 import DashboardLogoutLink from "@/app/sms-diagnostic/dashboard/DashboardLogoutLink";
 import DashboardSessionText from "@/app/sms-diagnostic/dashboard/DashboardSessionText";
@@ -41,13 +41,13 @@ export default async function QuoteBuilderPage({
             <div className="dashboard-sidebar-inner">
               <div className="dashboard-sidebar-title">Client portal</div>
               <nav className="dashboard-sidebar-nav">
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard">
+                <a className="dashboard-sidebar-link" href="/dashboard">
                   Overview
                 </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard/diagnostics">
+                <a className="dashboard-sidebar-link" href="/dashboard/diagnostics">
                   Diagnostics
                 </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard/codes">
+                <a className="dashboard-sidebar-link" href="/dashboard/codes">
                   Code register
                 </a>
                 <a className="dashboard-sidebar-link" href="/sms-diagnostic/access">
@@ -85,3 +85,4 @@ export default async function QuoteBuilderPage({
     </div>
   );
 }
+

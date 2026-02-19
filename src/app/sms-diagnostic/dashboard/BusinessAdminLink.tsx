@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 
@@ -21,9 +21,10 @@ export default function BusinessAdminLink({ className }: BusinessAdminLinkProps)
   return (
     <a
       className={className ? `${className} dashboard-sidebar-link--outline` : "dashboard-sidebar-link--outline"}
-      href="/sms-diagnostic/dashboard/business-admin"
+      href="/dashboard/business-admin"
     >
       Business Admin
     </a>
   );
 }
+

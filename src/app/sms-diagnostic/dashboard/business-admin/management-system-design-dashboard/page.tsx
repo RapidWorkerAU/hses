@@ -1,7 +1,6 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import DashboardLogoutLink from "../../DashboardLogoutLink";
 import DashboardSessionText from "../../DashboardSessionText";
-import BusinessAdminLink from "../../BusinessAdminLink";
 
 export const metadata: Metadata = {
   title: "Management System Design Dashboard",
@@ -9,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function ManagementSystemDesignDashboardPage() {
   return (
-    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--business-admin">
+    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--business-admin dashboard-portal--no-sidebar">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">
@@ -22,55 +21,31 @@ export default function ManagementSystemDesignDashboardPage() {
             </a>
           </div>
           <div className="header-actions">
-            <div className="dashboard-session">
-              <DashboardSessionText />
+            <div className="dashboard-session-controls">
+              <div className="dashboard-session">
+                <DashboardSessionText showMenuButton={false} />
+              </div>
+              <DashboardLogoutLink className="btn btn-outline btn-small" />
             </div>
           </div>
         </div>
       </header>
 
       <main>
-        <div className="dashboard-shell">
-          <aside className="dashboard-sidebar" aria-label="Dashboard navigation">
-            <div className="dashboard-sidebar-inner">
-              <div className="dashboard-sidebar-title">Client portal</div>
-              <nav className="dashboard-sidebar-nav">
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard">
-                  Overview
-                </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard/diagnostics">
-                  Diagnostics
-                </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard/codes">
-                  Code register
-                </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/access">
-                  Access landing
-                </a>
-              </nav>
-              <div className="dashboard-sidebar-footer">
-                <BusinessAdminLink className="dashboard-sidebar-link is-active" />
-                <DashboardLogoutLink className="dashboard-sidebar-link dashboard-sidebar-link--logout" />
-              </div>
+        <section className="dashboard-section dashboard-main">
+          <div className="diagnostic-container">
+            <a className="dashboard-back-link" href="/dashboard/business-admin">
+              <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
+              <span>Back</span>
+            </a>
+            <div className="dashboard-page-header dashboard-page-header--flush">
+              <h1>Management System Design Dashboard</h1>
+              <p className="dashboard-page-helper">
+                Placeholder page. Content for this dashboard will be added next.
+              </p>
             </div>
-          </aside>
-
-          <section className="dashboard-section dashboard-main">
-            <div className="diagnostic-container">
-              <div className="dashboard-page-header">
-                <img
-                  src="/images/SELF-Original-Logo.png"
-                  alt="Safety Energy Loop Framework logo"
-                  className="dashboard-page-logo"
-                />
-                <h1>Management System Design Dashboard</h1>
-                <p className="dashboard-page-helper">
-                  Placeholder page. Content for this dashboard will be added next.
-                </p>
-              </div>
-            </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </main>
 
       <footer className="site-footer">
@@ -89,3 +64,4 @@ export default function ManagementSystemDesignDashboardPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -121,9 +121,9 @@ export default function ProjectsListClient() {
         <button
           type="button"
           className="admin-projects-back mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
-          onClick={() => router.push("/sms-diagnostic/dashboard/business-admin")}
+          onClick={() => router.push("/dashboard/business-admin")}
         >
-          ← Back
+          â† Back
         </button>
         <h1 className="text-2xl font-semibold text-slate-900">Project Schedule Builder</h1>
         <p className="mt-1 text-sm text-slate-600">
@@ -284,3 +284,4 @@ export default function ProjectsListClient() {
     </div>
   );
 }
+

@@ -91,7 +91,7 @@ export default function LoginClient() {
       }
 
       const returnTo = searchParams.get("returnTo");
-      window.location.assign(returnTo || "/sms-diagnostic/dashboard");
+      window.location.assign(returnTo || "/dashboard");
     } catch (error) {
       setLoginNotice({
         tone: "error",
@@ -384,43 +384,7 @@ export default function LoginClient() {
 
       <main>
         <section className="login-hero">
-          <div className="login-container login-grid">
-            <div className="login-copy">
-              <p className="login-eyebrow">Client portal</p>
-              <h1>Welcome back. Log in to your diagnostic workspace.</h1>
-              <p className="login-lede">
-                This portal is for organisations that have purchased a Safety
-                Energy Loop Framework diagnostic assessment for their business
-                and teams. Log in to access your diagnostic dashboard,
-                participant progress, and reporting outputs.
-              </p>
-              <ul className="login-points">
-                <li>Access your purchased diagnostic assessment.</li>
-                <li>Track participation across teams and modules.</li>
-                <li>Review actionable insights and export results.</li>
-              </ul>
-              <div
-                className="login-lead-inline"
-                role="note"
-                aria-label="Diagnostic pathway"
-                hidden
-              >
-                <h3>Not a client yet?</h3>
-                <p>
-                  You can start with the diagnostic today and assess your system
-                  module by module with your team. We will turn the results into
-                  clear next steps.
-                </p>
-                <div className="login-lead-actions">
-                  <a className="btn btn-primary" href="/sms-diagnostic/purchase">
-                    Start the diagnostic
-                  </a>
-                  <a className="btn btn-ghost" href="/sms-diagnostic">
-                    See how it works
-                  </a>
-                </div>
-              </div>
-            </div>
+          <div className="login-container login-grid login-grid--single">
             <div className="login-panel">
               <img
                 src="/images/login-icon.png"
@@ -430,7 +394,7 @@ export default function LoginClient() {
               {mode === "login" ? (
                 <>
                   <h2>Client portal login</h2>
-                  <p>Use the login details provided to your diagnostic owner.</p>
+                  <p>Use login details that your HSES Representative has provided you</p>
                   <form className="login-form" onSubmit={handleLoginSubmit}>
                     <label className="field">
                       <span>Email</span>

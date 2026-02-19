@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { fetchWithSession } from "../portalAuth";
@@ -88,7 +88,7 @@ export default function DiagnosticsListClient() {
               month: "long",
               year: "numeric",
             })
-          : "—";
+          : "â€”";
 
         return (
           <article key={diagnostic.id} className="dashboard-card">
@@ -113,7 +113,7 @@ export default function DiagnosticsListClient() {
               </div>
             </div>
             <div className="dashboard-card-actions">
-              <a className="btn btn-primary" href={`/sms-diagnostic/dashboard/diagnostics/${diagnostic.id}`}>
+              <a className="btn btn-primary" href={`/dashboard/diagnostics/${diagnostic.id}`}>
                 Open diagnostic
               </a>
             </div>
@@ -123,3 +123,4 @@ export default function DiagnosticsListClient() {
     </div>
   );
 }
+

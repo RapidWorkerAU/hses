@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <>
+    <div className="home-page">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">
@@ -476,7 +476,7 @@ export default function HomePage() {
       </div>
 
       <HomePageScripts />
-    </>
+    </div>
   );
 }
 

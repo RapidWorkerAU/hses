@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { fetchWithSession } from "../portalAuth";
@@ -450,7 +450,7 @@ export default function CodesRegisterClient() {
                 const badgeClass = statusClass(displayStatus);
                 const openDiagnostic = () => {
                   if (typeof window === "undefined") return;
-                  window.location.assign(`/sms-diagnostic/dashboard/diagnostics/${code.diagnostic_id}`);
+                  window.location.assign(`/dashboard/diagnostics/${code.diagnostic_id}`);
                 };
                 return (
                   <tr
@@ -518,6 +518,7 @@ export default function CodesRegisterClient() {
     </div>
   );
 }
+
 
 
 

@@ -71,28 +71,6 @@ export default function BusinessAdminClient() {
           <span aria-hidden="true">â†’</span>
         </div>
       </a>
-      <a
-        href="/system-maps"
-        className="group block rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-      >
-        <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
-          <span>Management System Design</span>
-          <span className="rounded-full border border-indigo-200 px-2 py-1 text-[10px] text-indigo-600">
-            Coming soon
-          </span>
-        </div>
-        <h3 className="mt-4 text-lg font-semibold text-slate-900">
-          Design Dashboard
-        </h3>
-        <p className="mt-2 text-sm text-slate-600">
-          Prepare and structure management system design inputs, workflows, and
-          implementation planning.
-        </p>
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 group-hover:border-ocean group-hover:text-ocean">
-          Open dashboard
-          <span aria-hidden="true">{"->"}</span>
-        </div>
-      </a>
     </div>
   );
 }

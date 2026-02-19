@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { fetchWithSession } from "../../portalAuth";
@@ -60,7 +60,7 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
     if (!effectiveId || effectiveId === "undefined" || !isUuid(effectiveId)) {
       if (typeof window !== "undefined") {
         const match = window.location.pathname.match(
-          /\/sms-diagnostic\/dashboard\/diagnostics\/([0-9a-f-]{36})/i
+          /\/(?:sms-diagnostic\/)?dashboard\/diagnostics\/([0-9a-f-]{36})/i
         );
         if (match?.[1]) {
           effectiveId = match[1];
@@ -426,7 +426,7 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
       <div className="dashboard-empty">
         <h2>Diagnostic not found</h2>
         <p>Return to the diagnostics list to select another diagnostic.</p>
-        <a className="btn btn-primary" href="/sms-diagnostic/dashboard/diagnostics">
+        <a className="btn btn-primary" href="/dashboard/diagnostics">
           Open diagnostics
         </a>
       </div>
@@ -568,7 +568,7 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
             <p>Assign codes manually or ask us to email invitations for you.</p>
           </div>
           <div className="dashboard-table-actions">
-            <a className="btn btn-outline" href={`/sms-diagnostic/dashboard/diagnostics/${id}/results`}>
+            <a className="btn btn-outline" href={`/dashboard/diagnostics/${id}/results`}>
               Diagnostic Results
             </a>
           </div>
@@ -736,5 +736,6 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
     </>
   );
 }
+
 
 

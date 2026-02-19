@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-export default function DashboardSessionText() {
+type DashboardSessionTextProps = {
+  showMenuButton?: boolean;
+};
+
+export default function DashboardSessionText({ showMenuButton = true }: DashboardSessionTextProps) {
   const [email, setEmail] = useState<string>("");
   const [navOpen, setNavOpen] = useState(false);
 
@@ -26,18 +30,20 @@ export default function DashboardSessionText() {
 
   return (
     <div className="dashboard-session-row">
-      <button
-        type="button"
-        className="dashboard-mobile-toggle"
-        aria-label="Toggle navigation menu"
-        aria-expanded={navOpen}
-        onClick={() => setNavOpen((prev) => !prev)}
-      >
-        <span className="dashboard-mobile-bar"></span>
-        <span className="dashboard-mobile-bar"></span>
-        <span className="dashboard-mobile-bar"></span>
-        <span className="dashboard-mobile-label">Menu</span>
-      </button>
+      {showMenuButton ? (
+        <button
+          type="button"
+          className="dashboard-mobile-toggle"
+          aria-label="Toggle navigation menu"
+          aria-expanded={navOpen}
+          onClick={() => setNavOpen((prev) => !prev)}
+        >
+          <span className="dashboard-mobile-bar"></span>
+          <span className="dashboard-mobile-bar"></span>
+          <span className="dashboard-mobile-bar"></span>
+          <span className="dashboard-mobile-label">Menu</span>
+        </button>
+      ) : null}
       <span className="dashboard-session-text">
         {email ? `Logged in as ${email}` : "Logged in"}
       </span>

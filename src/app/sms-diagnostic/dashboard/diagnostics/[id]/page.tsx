@@ -1,8 +1,7 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import DiagnosticDetailClient from "./DiagnosticDetailClient";
 import DashboardLogoutLink from "../../DashboardLogoutLink";
 import DashboardSessionText from "../../DashboardSessionText";
-import BusinessAdminLink from "../../BusinessAdminLink";
 
 export function generateMetadata(): Metadata {
   return {
@@ -30,8 +29,11 @@ export default async function DiagnosticDetailPage({
             </a>
           </div>
           <div className="header-actions">
-            <div className="dashboard-session">
-              <DashboardSessionText />
+            <div className="dashboard-session-controls">
+              <div className="dashboard-session">
+                <DashboardSessionText />
+              </div>
+              <DashboardLogoutLink className="btn btn-outline btn-small" />
             </div>
           </div>
         </div>
@@ -43,25 +45,18 @@ export default async function DiagnosticDetailPage({
             <div className="dashboard-sidebar-inner">
               <div className="dashboard-sidebar-title">Client portal</div>
               <nav className="dashboard-sidebar-nav">
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard">
-                  Overview
-                </a>
-                <a className="dashboard-sidebar-link is-active" href="/sms-diagnostic/dashboard/diagnostics">
+                <a className="dashboard-sidebar-link" href="/dashboard/diagnostics">
                   Diagnostics
                 </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/dashboard/codes">
+                <a className="dashboard-sidebar-link" href="/dashboard/codes">
                   Code register
                 </a>
                 <a className="dashboard-sidebar-link" href="/sms-diagnostic/access">
                   Access landing
                 </a>
               </nav>
-              <div className="dashboard-sidebar-footer">
-                <BusinessAdminLink className="dashboard-sidebar-link" />
-                <DashboardLogoutLink className="dashboard-sidebar-link dashboard-sidebar-link--logout" />
-              </div>
             </div>
-            </aside>
+          </aside>
 
           <section className="dashboard-section dashboard-main">
             <div className="diagnostic-container">
@@ -87,3 +82,4 @@ export default async function DiagnosticDetailPage({
     </div>
   );
 }
+

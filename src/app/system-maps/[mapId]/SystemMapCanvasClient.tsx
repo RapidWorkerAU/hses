@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BaseEdge,
   Background,
   BackgroundVariant,
   type Edge,
+  EdgeLabelRenderer,
+  type EdgeProps,
   Handle,
   type NodeChange,
   type Node,
@@ -13,6 +16,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  getBezierPath,
   useNodesState,
   type Viewport,
 } from "@xyflow/react";
@@ -24,6 +28,8 @@ type SystemMap = {
   id: string;
   title: string;
   description: string | null;
+  owner_id: string;
+  map_code: string | null;
   updated_at: string;
   created_at: string;
 };
@@ -43,6 +49,7 @@ type DocumentNodeRow = {
   map_id: string;
   type_id: string;
   title: string;
+  document_number: string | null;
   discipline: string | null;
   owner_user_id: string | null;
   owner_name: string | null;
@@ -57,8 +64,10 @@ type DocumentNodeRow = {
 type NodeRelationRow = {
   id: string;
   map_id: string;
-  from_node_id: string;
+  from_node_id: string | null;
   to_node_id: string | null;
+  source_grouping_element_id: string | null;
+  target_grouping_element_id: string | null;
   relation_type: string;
   relationship_description: string | null;
   target_system_element_id: string | null;
@@ -69,14 +78,24 @@ type NodeRelationRow = {
 type CanvasElementRow = {
   id: string;
   map_id: string;
-  element_type: "category" | "system_circle" | "grouping_container" | "process_component";
+  element_type: "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note";
   heading: string;
+  color_hex: string | null;
+  created_by_user_id: string | null;
   pos_x: number;
   pos_y: number;
   width: number;
   height: number;
   created_at: string;
   updated_at: string;
+};
+type MapMemberProfileRow = {
+  map_id: string;
+  user_id: string;
+  role: "read" | "partial_write" | "full_write" | string;
+  email: string | null;
+  full_name: string | null;
+  is_owner: boolean;
 };
 
 type OutlineItemRow = {
@@ -94,9 +113,14 @@ type OutlineItemRow = {
 };
 
 type FlowData = {
-  entityKind: "document" | "category" | "system_circle" | "grouping_container" | "process_component";
+  entityKind: "document" | "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note";
   typeName: string;
   title: string;
+  documentNumber?: string;
+  categoryColor?: string;
+  canEdit?: boolean;
+  creatorName?: string;
+  createdAtLabel?: string;
   userGroup: string;
   disciplineKeys: string[];
   bannerBg: string;
@@ -106,8 +130,23 @@ type FlowData = {
 };
 type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "training";
 type RelationshipCategory = "information" | "systems" | "process" | "data" | "other";
+type SelectionMarquee = {
+  active: boolean;
+  startClientX: number;
+  startClientY: number;
+  currentClientX: number;
+  currentClientY: number;
+};
+type Rect = { x: number; y: number; width: number; height: number };
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const hashString = (value: string) => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+};
 const A4_RATIO = 1.414;
 const minorGridSize = 24;
 const majorGridSize = minorGridSize * 5;
@@ -120,6 +159,8 @@ const processHeadingWidth = minorGridSize * 18;
 const processHeadingHeight = minorGridSize * 3;
 const processMinWidth = minorGridSize * 10;
 const processMinHeight = minorGridSize * 3;
+const processMinWidthSquares = Math.round(processMinWidth / minorGridSize);
+const processMinHeightSquares = Math.round(processMinHeight / minorGridSize);
 const processComponentWidth = minorGridSize * 7;
 const processComponentBodyHeight = minorGridSize * 3;
 const processComponentLabelHeight = minorGridSize;
@@ -131,7 +172,20 @@ const groupingDefaultWidth = minorGridSize * 22;
 const groupingDefaultHeight = minorGridSize * 12;
 const groupingMinWidth = minorGridSize * 8;
 const groupingMinHeight = minorGridSize * 6;
+const groupingMinWidthSquares = Math.round(groupingMinWidth / minorGridSize);
+const groupingMinHeightSquares = Math.round(groupingMinHeight / minorGridSize);
+const stickyDefaultSize = minorGridSize * 5;
+const stickyMinSize = minorGridSize * 2;
 const unconfiguredDocumentTitle = "Click to configure";
+const defaultCategoryColor = "#000000";
+const categoryColorOptions = [
+  { name: "Light Blue", value: "#70cbff" },
+  { name: "Light Green", value: "#5cffb0" },
+  { name: "Pink", value: "#ff99d8" },
+  { name: "Purple", value: "#d8c7fa" },
+  { name: "Pale Red", value: "#ffc2c2" },
+  { name: "Pale Yellow", value: "#fff3c2" },
+] as const;
 const laneHeight = 260;
 const fallbackHierarchy = [
   { name: "System Manual", level_rank: 1 },
@@ -309,6 +363,76 @@ const lineIntersectsRect = (
     segmentsIntersect(p1, p2, bl, tl)
   );
 };
+const pointInRectXY = (x: number, y: number, rect: Rect) =>
+  x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+const pointInAnyRect = (x: number, y: number, rects: Rect[]) => rects.some((rect) => pointInRectXY(x, y, rect));
+
+function SmartBezierEdge(props: EdgeProps<Edge<{ displayLabel?: string; obstacleRects?: Rect[] }>>) {
+  const {
+    id,
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    markerEnd,
+    style,
+    labelStyle,
+    data,
+    pathOptions,
+  } = props;
+  const curvature =
+    pathOptions && typeof pathOptions === "object" && "curvature" in pathOptions && typeof pathOptions.curvature === "number"
+      ? pathOptions.curvature
+      : 0.25;
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+    curvature,
+  });
+  const obstacles = data?.obstacleRects ?? [];
+  let finalLabelX = labelX;
+  let finalLabelY = labelY;
+  if (obstacles.length && pointInAnyRect(finalLabelX, finalLabelY, obstacles)) {
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const candidateOffsets = [120, -120, 180, -180, 240, -240, 300, -300];
+    for (const offset of candidateOffsets) {
+      const cx = labelX + ux * offset;
+      const cy = labelY + uy * offset;
+      if (!pointInAnyRect(cx, cy, obstacles)) {
+        finalLabelX = cx;
+        finalLabelY = cy;
+        break;
+      }
+    }
+  }
+
+  const displayLabel = data?.displayLabel ?? "";
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
+      {displayLabel ? (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan pointer-events-auto absolute z-[8] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm border border-slate-200 bg-white px-1 py-0 text-[11px] shadow-sm"
+            style={{ left: finalLabelX, top: finalLabelY, color: labelStyle?.fill as string | undefined, zIndex: 8 }}
+          >
+            {displayLabel}
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
+  );
+}
 
 function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
   if (data.isUnconfigured) {
@@ -346,6 +470,11 @@ function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
         <div className={`overflow-hidden text-center font-semibold leading-tight text-slate-900 ${data.isLandscape ? "text-[9px]" : "text-[10px]"}`}>
           {data.title || "Untitled Document"}
         </div>
+        {data.documentNumber ? (
+          <div className={`mt-0.5 overflow-hidden text-center font-normal leading-tight text-slate-700 ${data.isLandscape ? "text-[8px]" : "text-[9px]"}`}>
+            {data.documentNumber}
+          </div>
+        ) : null}
         <div className="mt-auto space-y-1 text-[8px] leading-tight">
           <div className="space-y-[1px] border border-slate-300 px-1 py-[2px]">
             <div className="text-center font-semibold text-slate-700">User Group</div>
@@ -374,8 +503,13 @@ function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
   );
 }
 function ProcessHeadingNode({ data, selected }: NodeProps<Node<FlowData>>) {
+  const categoryColor = data.categoryColor ?? defaultCategoryColor;
+  const headingTextColor = categoryColor.toLowerCase() === defaultCategoryColor ? "#ffffff" : "#000000";
   return (
-    <div className="flex h-full w-full flex-col border border-black bg-black px-2 py-1 text-white shadow-[0_6px_20px_rgba(15,23,42,0.18)]">
+    <div
+      className="flex h-full w-full flex-col border px-2 py-1 shadow-[0_6px_20px_rgba(15,23,42,0.18)]"
+      style={{ backgroundColor: categoryColor, borderColor: categoryColor, color: headingTextColor }}
+    >
       {selected ? (
         <>
           <NodeResizeControl
@@ -465,12 +599,20 @@ function ProcessComponentNode({ data }: NodeProps<Node<FlowData>>) {
 function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div
-      className="relative h-full w-full rounded-[10px] border bg-transparent"
+      className={`relative h-full w-full rounded-[10px] border bg-transparent ${selected ? "pointer-events-auto" : "pointer-events-none"}`}
       style={{
         borderColor: "#000000",
         boxShadow: "0 6px 16px rgba(15, 23, 42, 0.12)",
       }}
     >
+      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
       {selected ? (
         <>
           <NodeResizeControl
@@ -488,7 +630,7 @@ function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
         </>
       ) : null}
       <div
-        className="absolute left-5 top-0 -translate-y-1/2 rounded-[999px] border bg-white px-3 py-0.5 text-center text-[11px] font-normal text-slate-800 whitespace-nowrap"
+        className="grouping-drag-handle pointer-events-auto absolute left-5 top-0 -translate-y-1/2 cursor-move rounded-[999px] border bg-white px-3 py-0.5 text-center text-[11px] font-normal text-slate-800 whitespace-nowrap"
         style={{
           borderColor: "#000000",
           boxShadow: "0 3px 8px rgba(15, 23, 42, 0.12)",
@@ -499,18 +641,56 @@ function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
     </div>
   );
 }
+function StickyNoteNode({ data, selected }: NodeProps<Node<FlowData>>) {
+  const canEdit = !!data.canEdit;
+  return (
+    <div className="relative h-full w-full border border-[#facc15] bg-[#fef08a] p-2 text-[11px] leading-snug text-black shadow-[0_10px_24px_rgba(15,23,42,0.22)]">
+      {selected && canEdit ? (
+        <>
+          <NodeResizeControl
+            position={Position.Right}
+            minWidth={stickyMinSize}
+            minHeight={stickyMinSize}
+            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #92400e", background: "#ffffff" }}
+          />
+          <NodeResizeControl
+            position={Position.Bottom}
+            minWidth={stickyMinSize}
+            minHeight={stickyMinSize}
+            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #92400e", background: "#ffffff" }}
+          />
+        </>
+      ) : null}
+      <div className="flex h-full w-full flex-col">
+        <div className="truncate text-[10px] font-bold text-black">{data.creatorName || "User"}</div>
+        <div className="mt-1 flex-1 overflow-hidden whitespace-pre-wrap break-words text-[11px] font-normal text-black">
+          {data.title || "Enter Text"}
+        </div>
+        <div className="mt-1 truncate text-right text-[9px] font-normal text-slate-700">{data.createdAtLabel || ""}</div>
+      </div>
+    </div>
+  );
+}
 const flowNodeTypes = {
   documentTile: DocumentTileNode,
   processHeading: ProcessHeadingNode,
   systemCircle: SystemCircleNode,
   processComponent: ProcessComponentNode,
   groupingContainer: GroupingContainerNode,
+  stickyNote: StickyNoteNode,
 } as const;
+const flowEdgeTypes = {
+  smartBezier: SmartBezierEdge,
+} as const;
+const canvasElementSelectColumns =
+  "id,map_id,element_type,heading,color_hex,created_by_user_id,pos_x,pos_y,width,height,created_at,updated_at";
 
 function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const relationshipPopupRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const mapInfoAsideRef = useRef<HTMLDivElement | null>(null);
+  const mapInfoButtonRef = useRef<HTMLButtonElement | null>(null);
   const disciplineMenuRef = useRef<HTMLDivElement | null>(null);
   const saveViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizePersistTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -519,6 +699,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const lastMobileTapRef = useRef<{ id: string; ts: number } | null>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [mapRole, setMapRole] = useState<"read" | "partial_write" | "full_write" | null>(null);
   const [map, setMap] = useState<SystemMap | null>(null);
   const [types, setTypes] = useState<DocumentTypeRow[]>([]);
   const [nodes, setNodes] = useState<DocumentNodeRow[]>([]);
@@ -531,6 +713,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [isEditingMapTitle, setIsEditingMapTitle] = useState(false);
   const [mapTitleDraft, setMapTitleDraft] = useState("");
   const [savingMapTitle, setSavingMapTitle] = useState(false);
+  const [mapTitleSavedFlash, setMapTitleSavedFlash] = useState(false);
+  const [showMapInfoAside, setShowMapInfoAside] = useState(false);
+  const [isEditingMapInfo, setIsEditingMapInfo] = useState(false);
+  const [mapInfoNameDraft, setMapInfoNameDraft] = useState("");
+  const [mapInfoDescriptionDraft, setMapInfoDescriptionDraft] = useState("");
+  const [mapCodeDraft, setMapCodeDraft] = useState("");
+  const [savingMapInfo, setSavingMapInfo] = useState(false);
+  const [mapMembers, setMapMembers] = useState<MapMemberProfileRow[]>([]);
+  const [savingMemberRoleUserId, setSavingMemberRoleUserId] = useState<string | null>(null);
 
   const [rf, setRf] = useState<{
     fitView: (opts?: { duration?: number; padding?: number }) => void;
@@ -541,12 +732,88 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const snapToMinorGrid = useCallback((v: number) => Math.round(v / minorGridSize) * minorGridSize, []);
+  const canWriteMap = mapRole === "partial_write" || mapRole === "full_write";
+  const canManageMapMetadata = mapRole === "full_write" && !!map && !!userId && map.owner_id === userId;
+  const canUseContextMenu = mapRole !== "read";
+  const canCreateSticky = !!userId;
+  const canEditElement = useCallback(
+    (element: CanvasElementRow) =>
+      canWriteMap || (mapRole === "read" && element.element_type === "sticky_note" && !!userId && element.created_by_user_id === userId),
+    [canWriteMap, mapRole, userId]
+  );
+  const mapRoleLabel = useCallback((role: string | null | undefined) => {
+    const normalized = (role || "").toLowerCase();
+    if (normalized === "full_write") return "Full write";
+    if (normalized === "partial_write") return "Partial write";
+    return "Read";
+  }, []);
+  const formatStickyDate = useCallback((value: string | null | undefined) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleDateString("en-AU", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }, []);
+  const memberDisplayNameByUserId = useMemo(() => {
+    const m = new Map<string, string>();
+    mapMembers.forEach((member) => {
+      const label = member.full_name?.trim() || member.email?.trim() || member.user_id;
+      if (label) m.set(member.user_id, label);
+    });
+    return m;
+  }, [mapMembers]);
+
+  const loadMapMembers = useCallback(
+    async (ownerId?: string | null) => {
+      const { data, error: profileError } = await supabaseBrowser
+        .schema("ms")
+        .from("map_member_profiles")
+        .select("map_id,user_id,role,email,full_name,is_owner")
+        .eq("map_id", mapId)
+        .order("is_owner", { ascending: false });
+
+      if (!profileError) {
+        setMapMembers((data ?? []) as MapMemberProfileRow[]);
+        return;
+      }
+
+      const { data: fallbackData, error: fallbackError } = await supabaseBrowser
+        .schema("ms")
+        .from("map_members")
+        .select("map_id,user_id,role")
+        .eq("map_id", mapId);
+
+      if (fallbackError) {
+        setError(fallbackError.message || "Unable to load map members.");
+        return;
+      }
+
+      const resolvedOwnerId = ownerId ?? map?.owner_id ?? null;
+      const fallbackMembers: MapMemberProfileRow[] = ((fallbackData ?? []) as Array<{ map_id: string; user_id: string; role: string }>).map(
+        (member) => ({
+          map_id: member.map_id,
+          user_id: member.user_id,
+          role: member.role,
+          email: null,
+          full_name: null,
+          is_owner: !!resolvedOwnerId && member.user_id === resolvedOwnerId,
+        })
+      );
+      fallbackMembers.sort((a, b) => Number(b.is_owner) - Number(a.is_owner));
+      setMapMembers(fallbackMembers);
+    },
+    [mapId, map?.owner_id]
+  );
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [selectedSystemId, setSelectedSystemId] = useState<string | null>(null);
   const [selectedProcessComponentId, setSelectedProcessComponentId] = useState<string | null>(null);
   const [selectedGroupingId, setSelectedGroupingId] = useState<string | null>(null);
+  const [selectedStickyId, setSelectedStickyId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState("");
   const [disciplineSelection, setDisciplineSelection] = useState<DisciplineKey[]>([]);
@@ -555,25 +822,32 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [showUserGroupSelectArrowUp, setShowUserGroupSelectArrowUp] = useState(false);
   const [userGroup, setUserGroup] = useState("");
   const [ownerName, setOwnerName] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
   const [processHeadingDraft, setProcessHeadingDraft] = useState("");
-  const [processWidthDraft, setProcessWidthDraft] = useState<number>(Math.round(processHeadingWidth / minorGridSize));
-  const [processHeightDraft, setProcessHeightDraft] = useState<number>(Math.round(processHeadingHeight / minorGridSize));
+  const [processWidthDraft, setProcessWidthDraft] = useState<string>(String(Math.round(processHeadingWidth / minorGridSize)));
+  const [processHeightDraft, setProcessHeightDraft] = useState<string>(String(Math.round(processHeadingHeight / minorGridSize)));
+  const [processColorDraft, setProcessColorDraft] = useState<string | null>(null);
   const [processComponentLabelDraft, setProcessComponentLabelDraft] = useState("");
   const [systemNameDraft, setSystemNameDraft] = useState("");
   const [groupingLabelDraft, setGroupingLabelDraft] = useState("");
-  const [groupingWidthDraft, setGroupingWidthDraft] = useState<number>(Math.round(groupingDefaultWidth / minorGridSize));
-  const [groupingHeightDraft, setGroupingHeightDraft] = useState<number>(Math.round(groupingDefaultHeight / minorGridSize));
+  const [groupingWidthDraft, setGroupingWidthDraft] = useState<string>(String(Math.round(groupingDefaultWidth / minorGridSize)));
+  const [groupingHeightDraft, setGroupingHeightDraft] = useState<string>(String(Math.round(groupingDefaultHeight / minorGridSize)));
+  const [stickyTextDraft, setStickyTextDraft] = useState("");
 
   const [desktopNodeAction, setDesktopNodeAction] = useState<"relationship" | "structure" | "delete" | null>(null);
   const [mobileNodeMenuId, setMobileNodeMenuId] = useState<string | null>(null);
   const [showAddRelationship, setShowAddRelationship] = useState(false);
   const [relationshipSourceNodeId, setRelationshipSourceNodeId] = useState<string | null>(null);
+  const [relationshipSourceGroupingId, setRelationshipSourceGroupingId] = useState<string | null>(null);
   const [relationshipDocumentQuery, setRelationshipDocumentQuery] = useState("");
   const [relationshipSystemQuery, setRelationshipSystemQuery] = useState("");
+  const [relationshipGroupingQuery, setRelationshipGroupingQuery] = useState("");
   const [relationshipTargetDocumentId, setRelationshipTargetDocumentId] = useState("");
   const [relationshipTargetSystemId, setRelationshipTargetSystemId] = useState("");
+  const [relationshipTargetGroupingId, setRelationshipTargetGroupingId] = useState("");
   const [showRelationshipDocumentOptions, setShowRelationshipDocumentOptions] = useState(false);
   const [showRelationshipSystemOptions, setShowRelationshipSystemOptions] = useState(false);
+  const [showRelationshipGroupingOptions, setShowRelationshipGroupingOptions] = useState(false);
   const [relationshipDescription, setRelationshipDescription] = useState("");
   const [relationshipDisciplineSelection, setRelationshipDisciplineSelection] = useState<DisciplineKey[]>([]);
   const [showRelationshipDisciplineMenu, setShowRelationshipDisciplineMenu] = useState(false);
@@ -601,6 +875,17 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     disciplines: string;
     description: string;
   } | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [selectedFlowIds, setSelectedFlowIds] = useState<Set<string>>(new Set());
+  const [selectionMarquee, setSelectionMarquee] = useState<SelectionMarquee>({
+    active: false,
+    startClientX: 0,
+    startClientY: 0,
+    currentClientX: 0,
+    currentClientY: 0,
+  });
+  const [showDeleteSelectionConfirm, setShowDeleteSelectionConfirm] = useState(false);
+  const [leftAsideSlideIn, setLeftAsideSlideIn] = useState(false);
   const [collapsedHeadingIds, setCollapsedHeadingIds] = useState<Set<string>>(new Set());
   const [newHeadingTitle, setNewHeadingTitle] = useState("");
   const [newHeadingLevel, setNewHeadingLevel] = useState<1 | 2 | 3>(1);
@@ -705,6 +990,45 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
     return null;
   }, [nodes, getNodeSize, snapToMinorGrid]);
+  const getFlowNodeBounds = useCallback((flowId: string) => {
+    if (flowId.startsWith("process:")) {
+      const elementId = parseProcessFlowId(flowId);
+      const el = elements.find((item) => item.id === elementId);
+      if (!el) return null;
+      if (el.element_type === "grouping_container") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
+          height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
+        };
+      }
+      if (el.element_type === "system_circle") {
+        return { x: el.pos_x, y: el.pos_y, width: systemCircleDiameter, height: systemCircleElementHeight };
+      }
+      if (el.element_type === "process_component") {
+        return { x: el.pos_x, y: el.pos_y, width: processComponentWidth, height: processComponentElementHeight };
+      }
+      if (el.element_type === "sticky_note") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(stickyMinSize, el.width || stickyDefaultSize),
+          height: Math.max(stickyMinSize, el.height || stickyDefaultSize),
+        };
+      }
+      return {
+        x: el.pos_x,
+        y: el.pos_y,
+        width: Math.max(processMinWidth, el.width || processHeadingWidth),
+        height: Math.max(processMinHeight, el.height || processHeadingHeight),
+      };
+    }
+    const node = nodes.find((n) => n.id === flowId);
+    if (!node) return null;
+    const size = getNodeSize(node);
+    return { x: node.pos_x, y: node.pos_y, width: size.width, height: size.height };
+  }, [elements, nodes, getNodeSize]);
 
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState<Node<FlowData>>([]);
   const handleFlowNodesChange = useCallback((changes: NodeChange<Node<FlowData>>[]) => {
@@ -720,6 +1044,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       const elementId = parseProcessFlowId(change.id);
       const current = elements.find((el) => el.id === elementId);
       if (!current) return;
+      if (!canEditElement(current)) return;
       if (current.element_type === "category") {
         const width = Math.max(processMinWidth, snapToMinorGrid(change.dimensions.width));
         const height = Math.max(processMinHeight, snapToMinorGrid(change.dimensions.height));
@@ -733,6 +1058,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const height = Math.max(groupingMinHeight, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(groupingMinWidth, snapToMinorGrid(current.width || groupingDefaultWidth));
         const currentHeight = Math.max(groupingMinHeight, snapToMinorGrid(current.height || groupingDefaultHeight));
+        if (width !== currentWidth || height !== currentHeight) nextSizes.set(elementId, { width, height });
+        return;
+      }
+      if (current.element_type === "sticky_note") {
+        const width = Math.max(stickyMinSize, snapToMinorGrid(change.dimensions.width));
+        const height = Math.max(stickyMinSize, snapToMinorGrid(change.dimensions.height));
+        const currentWidth = Math.max(stickyMinSize, snapToMinorGrid(current.width || stickyDefaultSize));
+        const currentHeight = Math.max(stickyMinSize, snapToMinorGrid(current.height || stickyDefaultSize));
         if (width !== currentWidth || height !== currentHeight) nextSizes.set(elementId, { width, height });
       }
     });
@@ -768,7 +1101,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       }, 220);
       resizePersistTimersRef.current.set(elementId, timer);
     });
-  }, [onFlowNodesChange, elements, mapId, snapToMinorGrid]);
+  }, [onFlowNodesChange, elements, mapId, snapToMinorGrid, canEditElement]);
 
   useEffect(() => {
     return () => {
@@ -783,51 +1116,65 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       [
         ...elements
           .filter((el) => el.element_type === "grouping_container")
-          .map((el) => ({
-            id: processFlowId(el.id),
-            type: "groupingContainer",
-            position: { x: el.pos_x, y: el.pos_y },
-            zIndex: 1,
-            style: {
-              width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
-              height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
-              borderRadius: 0,
-              border: "none",
-              background: "transparent",
-              boxShadow: "none",
-              padding: 0,
-              overflow: "visible",
-            },
-            data: {
-              entityKind: "grouping_container" as const,
-              typeName: "Grouping Container",
-              title: el.heading ?? "Group label",
-              userGroup: "",
-              disciplineKeys: [],
-              bannerBg: "#ffffff",
-              bannerText: "#111827",
-              isLandscape: true,
-              isUnconfigured: false,
-            },
-          })),
+          .map((el) => {
+            const flowId = processFlowId(el.id);
+            const isMarked = selectedFlowIds.has(flowId);
+            const canEditThis = canEditElement(el);
+            return {
+              id: flowId,
+              type: "groupingContainer",
+              position: { x: el.pos_x, y: el.pos_y },
+              zIndex: 1,
+              selected: isMarked,
+              draggable: canEditThis,
+              selectable: canWriteMap,
+              className: isMarked ? "pointer-events-auto" : "pointer-events-none",
+              style: {
+                width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
+                height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
+                borderRadius: 0,
+                border: "none",
+                background: "transparent",
+                boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
+                padding: 0,
+                overflow: "visible",
+              },
+              dragHandle: ".grouping-drag-handle",
+              data: {
+                entityKind: "grouping_container" as const,
+                typeName: "Grouping Container",
+                title: el.heading ?? "Group label",
+                userGroup: "",
+                disciplineKeys: [],
+                bannerBg: "#ffffff",
+                bannerText: "#111827",
+                isLandscape: true,
+                isUnconfigured: false,
+              },
+            };
+          }),
         ...nodes.map((n) => {
           const rawTypeName = typesById.get(n.type_id)?.name ?? "Document";
           const isLandscape = isLandscapeTypeName(rawTypeName);
           const { width, height } = getNodeSize(n);
           const typeName = getDisplayTypeName(rawTypeName);
           const banner = getTypeBannerStyle(typeName);
+          const isMarked = selectedFlowIds.has(n.id);
           return {
             id: n.id,
             type: "documentTile",
             position: { x: n.pos_x, y: n.pos_y },
             zIndex: 20,
+            selected: isMarked,
+            draggable: canWriteMap,
+            selectable: canWriteMap,
             style: {
               width,
               height,
               borderRadius: 0,
               border: "none",
               background: "transparent",
-              boxShadow: "none",
+              boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
               padding: 0,
               overflow: "hidden",
             },
@@ -835,6 +1182,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               entityKind: "document" as const,
               typeName,
               title: n.title ?? "",
+              documentNumber: n.document_number ?? "",
               userGroup: n.user_group ?? "",
               disciplineKeys: parseDisciplines(n.discipline),
               bannerBg: banner.bg,
@@ -847,19 +1195,68 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         ...elements.map((el) =>
           el.element_type === "grouping_container"
             ? null
+            : el.element_type === "sticky_note"
+            ? (() => {
+                const flowId = processFlowId(el.id);
+                const isMarked = selectedFlowIds.has(flowId);
+                const canEditThis = canEditElement(el);
+                return {
+                  id: flowId,
+                  type: "stickyNote",
+                  position: { x: el.pos_x, y: el.pos_y },
+                  zIndex: 60,
+                  selected: isMarked,
+                  draggable: canEditThis,
+                  selectable: canEditThis,
+                  style: {
+                    width: Math.max(stickyMinSize, el.width || stickyDefaultSize),
+                    height: Math.max(stickyMinSize, el.height || stickyDefaultSize),
+                    borderRadius: 0,
+                    border: "none",
+                    background: "transparent",
+                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
+                    padding: 0,
+                    overflow: "visible",
+                  },
+                  data: {
+                    entityKind: "sticky_note" as const,
+                    typeName: "Sticky Note",
+                    title: el.heading ?? "Enter Text",
+                    canEdit: canEditThis,
+                    creatorName:
+                      (el.created_by_user_id ? memberDisplayNameByUserId.get(el.created_by_user_id) : null) ||
+                      (el.created_by_user_id === userId ? userEmail : null) ||
+                      "User",
+                    createdAtLabel: formatStickyDate(el.created_at),
+                    userGroup: "",
+                    disciplineKeys: [],
+                    bannerBg: "#fef08a",
+                    bannerText: "#000000",
+                    isLandscape: false,
+                    isUnconfigured: false,
+                  },
+                };
+              })()
             : el.element_type === "process_component"
-            ? {
-                id: processFlowId(el.id),
+            ? (() => {
+                const flowId = processFlowId(el.id);
+                const isMarked = selectedFlowIds.has(flowId);
+                const canEditThis = canEditElement(el);
+                return {
+                id: flowId,
                 type: "processComponent",
                 position: { x: el.pos_x, y: el.pos_y },
                 zIndex: 30,
+                selected: isMarked,
+                draggable: canEditThis,
+                selectable: canWriteMap,
                 style: {
                   width: processComponentWidth,
                   height: processComponentElementHeight,
                   borderRadius: 0,
                   border: "none",
                   background: "transparent",
-                  boxShadow: "none",
+                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
                   padding: 0,
                   overflow: "visible",
                 },
@@ -874,20 +1271,28 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   isLandscape: true,
                   isUnconfigured: false,
                 },
-              }
+              };
+            })()
             : el.element_type === "system_circle"
-            ? {
-                id: processFlowId(el.id),
+            ? (() => {
+                const flowId = processFlowId(el.id);
+                const isMarked = selectedFlowIds.has(flowId);
+                const canEditThis = canEditElement(el);
+                return {
+                id: flowId,
                 type: "systemCircle",
                 position: { x: el.pos_x, y: el.pos_y },
                 zIndex: 30,
+                selected: isMarked,
+                draggable: canEditThis,
+                selectable: canWriteMap,
                 style: {
                   width: systemCircleDiameter,
                   height: systemCircleElementHeight,
                   borderRadius: 0,
                   border: "none",
                   background: "transparent",
-                  boxShadow: "none",
+                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
                   padding: 0,
                   overflow: "visible",
                 },
@@ -902,19 +1307,27 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   isLandscape: true,
                   isUnconfigured: false,
                 },
-              }
-            : {
-                id: processFlowId(el.id),
+              };
+            })()
+            : (() => {
+                const flowId = processFlowId(el.id);
+                const isMarked = selectedFlowIds.has(flowId);
+                const canEditThis = canEditElement(el);
+                return {
+                id: flowId,
                 type: "processHeading",
                 position: { x: el.pos_x, y: el.pos_y },
                 zIndex: 30,
+                selected: isMarked,
+                draggable: canEditThis,
+                selectable: canWriteMap,
                 style: {
                   width: Math.max(processMinWidth, el.width || processHeadingWidth),
                   height: el.height || processHeadingHeight,
                   borderRadius: 0,
                   border: "none",
                   background: "transparent",
-                  boxShadow: "none",
+                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
                   padding: 0,
                   overflow: "hidden",
                 },
@@ -922,6 +1335,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   entityKind: "category" as const,
                   typeName: "Category",
                   title: el.heading ?? "New Category",
+                  categoryColor: el.color_hex ?? defaultCategoryColor,
                   userGroup: "",
                   disciplineKeys: [],
                   bannerBg: "#000000",
@@ -929,28 +1343,110 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   isLandscape: true,
                   isUnconfigured: false,
                 },
-              }
+              };
+            })()
         ).filter(Boolean) as Node<FlowData>[],
       ]
     );
-  }, [nodes, elements, typesById, setFlowNodes, getNodeSize]);
+  }, [nodes, elements, typesById, setFlowNodes, getNodeSize, selectedFlowIds, canWriteMap, canEditElement, memberDisplayNameByUserId, userEmail, userId, formatStickyDate]);
 
   const flowEdges = useMemo<Edge[]>(
     () => {
+      const pairTotals = new Map<string, number>();
+      const pairSeen = new Map<string, number>();
       const nodesById = new Map(nodes.map((n) => [n.id, n]));
       const systemElementsById = new Map(elements.filter((el) => el.element_type === "system_circle").map((el) => [el.id, el]));
-      const hasHoveredRelations = !!hoveredNodeId && relations.some((rel) => rel.from_node_id === hoveredNodeId || rel.to_node_id === hoveredNodeId);
+      const groupingElementsById = new Map(elements.filter((el) => el.element_type === "grouping_container").map((el) => [el.id, el]));
+      const relationEndpointKey = (r: NodeRelationRow) => {
+        if (r.source_grouping_element_id && r.target_grouping_element_id) {
+          const a = processFlowId(r.source_grouping_element_id);
+          const b = processFlowId(r.target_grouping_element_id);
+          return a < b ? `group:${a}|${b}` : `group:${b}|${a}`;
+        }
+        if (r.from_node_id && r.to_node_id) {
+          const a = r.from_node_id;
+          const b = r.to_node_id;
+          return a < b ? `doc:${a}|${b}` : `doc:${b}|${a}`;
+        }
+        if (r.from_node_id && r.target_system_element_id) {
+          const a = r.from_node_id;
+          const b = processFlowId(r.target_system_element_id);
+          return a < b ? `docsys:${a}|${b}` : `docsys:${b}|${a}`;
+        }
+        return `rel:${r.id}`;
+      };
+      relations.forEach((r) => {
+        const key = relationEndpointKey(r);
+        pairTotals.set(key, (pairTotals.get(key) ?? 0) + 1);
+      });
+      const obstacleElementRects = elements
+        .filter((el) => el.element_type === "system_circle" || el.element_type === "process_component" || el.element_type === "category")
+        .map((el) => {
+          const width =
+            el.element_type === "system_circle"
+              ? systemCircleDiameter
+              : el.element_type === "process_component"
+                ? processComponentWidth
+                : Math.max(processMinWidth, el.width || processHeadingWidth);
+          const height =
+            el.element_type === "system_circle"
+              ? systemCircleElementHeight
+              : el.element_type === "process_component"
+                ? processComponentElementHeight
+                : Math.max(processMinHeight, el.height || processHeadingHeight);
+          return { id: el.id, x: el.pos_x, y: el.pos_y, width, height };
+        });
+      const labelObstacleRects: Rect[] = [
+        ...nodes.map((n) => {
+          const size = getNodeSize(n);
+          return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+        }),
+        ...obstacleElementRects.map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+      ];
+      const hoveredGroupingId = hoveredNodeId?.startsWith("process:") ? parseProcessFlowId(hoveredNodeId) : null;
+      const isRelationConnectedToHovered = (rel: NodeRelationRow) =>
+        !!hoveredNodeId &&
+        (rel.from_node_id === hoveredNodeId ||
+          rel.to_node_id === hoveredNodeId ||
+          (hoveredGroupingId !== null &&
+            (rel.source_grouping_element_id === hoveredGroupingId || rel.target_grouping_element_id === hoveredGroupingId)));
+      const hasHoveredRelations = !!hoveredEdgeId || (!!hoveredNodeId && relations.some((rel) => isRelationConnectedToHovered(rel)));
       return relations.map((r) => {
-        const sourceDoc = nodesById.get(r.from_node_id);
+        const sourceDoc = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
         const targetDoc = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
         const targetSystem = r.target_system_element_id ? systemElementsById.get(r.target_system_element_id) : undefined;
-        if (!sourceDoc || (!targetDoc && !targetSystem)) return null;
-        const from = nodesById.get(r.from_node_id);
+        const sourceGrouping = r.source_grouping_element_id ? groupingElementsById.get(r.source_grouping_element_id) : undefined;
+        const targetGrouping = r.target_grouping_element_id ? groupingElementsById.get(r.target_grouping_element_id) : undefined;
+        if (!sourceDoc && !(sourceGrouping && targetGrouping)) return null;
+        if (sourceDoc && !targetDoc && !targetSystem) return null;
+        const from = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
         const to = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
-        let source = r.from_node_id;
-        let target = r.to_node_id ?? "";
+        let source = from ? from.id : "";
+        let target = to ? to.id : "";
         let sourceHandle = "bottom";
         let targetHandle = "top";
+
+        if (sourceGrouping && targetGrouping) {
+          source = processFlowId(sourceGrouping.id);
+          target = processFlowId(targetGrouping.id);
+          const sourceWidth = Math.max(groupingMinWidth, sourceGrouping.width || groupingDefaultWidth);
+          const sourceHeight = Math.max(groupingMinHeight, sourceGrouping.height || groupingDefaultHeight);
+          const targetWidth = Math.max(groupingMinWidth, targetGrouping.width || groupingDefaultWidth);
+          const targetHeight = Math.max(groupingMinHeight, targetGrouping.height || groupingDefaultHeight);
+          const fromCenterX = sourceGrouping.pos_x + sourceWidth / 2;
+          const fromCenterY = sourceGrouping.pos_y + sourceHeight / 2;
+          const toCenterX = targetGrouping.pos_x + targetWidth / 2;
+          const toCenterY = targetGrouping.pos_y + targetHeight / 2;
+          const dx = toCenterX - fromCenterX;
+          const dy = toCenterY - fromCenterY;
+          if (Math.abs(dx) > Math.abs(dy)) {
+            sourceHandle = dx > 0 ? "right" : "left";
+            targetHandle = dx > 0 ? "left-target" : "right-target";
+          } else {
+            sourceHandle = dy > 0 ? "bottom" : "top-source";
+            targetHandle = dy > 0 ? "top" : "bottom-target";
+          }
+        }
 
         if (from && to) {
           const getAnchors = (node: DocumentNodeRow) => {
@@ -976,12 +1472,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             left: "left-target",
             right: "right-target",
           };
-          const blockingRects = nodes
+          const blockingRects = [
+            ...nodes
             .filter((n) => n.id !== from.id && n.id !== to.id)
             .map((n) => {
               const size = getNodeSize(n);
               return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
-            });
+            }),
+            ...obstacleElementRects.map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+          ];
           const pickClosest = (srcNode: DocumentNodeRow, dstNode: DocumentNodeRow) => {
             const srcAnchors = getAnchors(srcNode);
             const dstAnchors = getAnchors(dstNode);
@@ -1026,22 +1525,72 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         if (from && targetSystem) {
           target = processFlowId(targetSystem.id);
           const fromSize = getNodeSize(from);
-          const fromCenterX = from.pos_x + fromSize.width / 2;
-          const fromCenterY = from.pos_y + fromSize.height / 2;
-          const toCenterX = targetSystem.pos_x + systemCircleDiameter / 2;
-          const toCenterY = targetSystem.pos_y + systemCircleDiameter / 2;
-          const dx = toCenterX - fromCenterX;
-          const dy = toCenterY - fromCenterY;
-          if (Math.abs(dx) > Math.abs(dy)) {
-            sourceHandle = dx > 0 ? "right" : "left";
-            targetHandle = dx > 0 ? "left-target" : "right-target";
-          } else {
-            sourceHandle = dy > 0 ? "bottom" : "top-source";
-            targetHandle = dy > 0 ? "top" : "bottom-target";
+          const fromLeft = from.pos_x;
+          const fromTop = from.pos_y;
+          const toLeft = targetSystem.pos_x;
+          const toTop = targetSystem.pos_y;
+          const fromAnchors = {
+            top: { x: fromLeft + fromSize.width / 2, y: fromTop },
+            bottom: { x: fromLeft + fromSize.width / 2, y: fromTop + fromSize.height },
+            left: { x: fromLeft, y: fromTop + fromSize.height / 2 },
+            right: { x: fromLeft + fromSize.width, y: fromTop + fromSize.height / 2 },
+          };
+          const toAnchors = {
+            top: { x: toLeft + systemCircleDiameter / 2, y: toTop },
+            bottom: { x: toLeft + systemCircleDiameter / 2, y: toTop + systemCircleElementHeight },
+            left: { x: toLeft, y: toTop + systemCircleElementHeight / 2 },
+            right: { x: toLeft + systemCircleDiameter, y: toTop + systemCircleElementHeight / 2 },
+          };
+          const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+            top: "top-source",
+            bottom: "bottom",
+            left: "left",
+            right: "right",
+          };
+          const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+            top: "top",
+            bottom: "bottom-target",
+            left: "left-target",
+            right: "right-target",
+          };
+          const blockingRects = [
+            ...nodes
+              .filter((n) => n.id !== from.id)
+              .map((n) => {
+                const size = getNodeSize(n);
+                return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+              }),
+            ...obstacleElementRects
+              .filter((rect) => rect.id !== targetSystem.id)
+              .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+          ];
+          const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
+          let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
+          for (const srcSide of sides) {
+            for (const dstSide of sides) {
+              const srcAnchor = fromAnchors[srcSide];
+              const dstAnchor = toAnchors[dstSide];
+              const dx = srcAnchor.x - dstAnchor.x;
+              const dy = srcAnchor.y - dstAnchor.y;
+              const dist2 = dx * dx + dy * dy;
+              const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
+              const score = dist2 + (crosses ? 1_000_000_000 : 0);
+              if (!best || score < best.score) {
+                best = {
+                  sourceHandle: sourceSideToHandle[srcSide],
+                  targetHandle: targetSideToHandle[dstSide],
+                  score,
+                };
+              }
+            }
+          }
+          if (best) {
+            sourceHandle = best.sourceHandle;
+            targetHandle = best.targetHandle;
           }
         }
 
-        const isConnectedToHovered = hoveredNodeId ? (r.from_node_id === hoveredNodeId || r.to_node_id === hoveredNodeId) : false;
+        const isConnectedToHovered = hoveredEdgeId ? r.id === hoveredEdgeId : isRelationConnectedToHovered(r);
         const edgeStroke = hasHoveredRelations ? (isConnectedToHovered ? "#0f766e" : "#cbd5e1") : "#0f766e";
         const edgeWidth = hasHoveredRelations ? (isConnectedToHovered ? 1.8 : 1.1) : 1.25;
         const edgeLabelColor = hasHoveredRelations ? (isConnectedToHovered ? "#334155" : "#94a3b8") : "#334155";
@@ -1049,6 +1598,21 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const relationshipTypeLabel = getRelationshipCategoryLabel(r.relationship_category, r.relationship_custom_type);
         const disciplinesLabel = getRelationshipDisciplineLetters(r.relationship_disciplines);
         const edgeLabel = `${relationLabel} - [${relationshipTypeLabel}${disciplinesLabel ? ` - ${disciplinesLabel}` : ""}]`;
+        const pairKey = relationEndpointKey(r);
+        const totalForPair = pairTotals.get(pairKey) ?? 1;
+        const seenForPair = pairSeen.get(pairKey) ?? 0;
+        pairSeen.set(pairKey, seenForPair + 1);
+        const center = (totalForPair - 1) / 2;
+        const laneIndex = seenForPair - center;
+        const pairLaneOffset = Math.abs(laneIndex) * 16;
+        const globalLaneIndex = (hashString(`${r.id}:${pairKey}`) % 7) - 3; // -3..+3
+        const globalLaneOffset = Math.abs(globalLaneIndex) * 10;
+        const laneOffset = 28 + pairLaneOffset + globalLaneOffset;
+        const curveSeed = hashString(`curve:${r.id}:${pairKey}`);
+        const curveMagnitude = 0.22 + (curveSeed % 5) * 0.07; // 0.22..0.50
+        const curveDirection = curveSeed % 2 === 0 ? 1 : -1;
+        const pairDirection = laneIndex === 0 ? 1 : laneIndex > 0 ? 1 : -1;
+        const curvature = Math.max(0.12, Math.min(0.7, curveMagnitude + Math.abs(laneIndex) * 0.05)) * (curveDirection * pairDirection);
 
         return {
           id: r.id,
@@ -1056,14 +1620,19 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           target,
           sourceHandle,
           targetHandle,
-          type: "smoothstep",
-          label: edgeLabel,
+          type: "smartBezier",
+          zIndex: 5,
           style: { stroke: edgeStroke, strokeWidth: edgeWidth },
+          pathOptions: { curvature },
           labelStyle: { fill: edgeLabelColor, fontSize: 11 },
+          data: {
+            displayLabel: edgeLabel,
+            obstacleRects: labelObstacleRects,
+          },
         };
       }).filter(Boolean) as Edge[];
     },
-    [relations, nodes, elements, hoveredNodeId, getNodeSize]
+    [relations, nodes, elements, hoveredNodeId, hoveredEdgeId, getNodeSize]
   );
 
   const selectedNode = useMemo(
@@ -1085,6 +1654,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const selectedGrouping = useMemo(
     () => (selectedGroupingId ? elements.find((el) => el.id === selectedGroupingId && el.element_type === "grouping_container") ?? null : null),
     [selectedGroupingId, elements]
+  );
+  const selectedSticky = useMemo(
+    () => (selectedStickyId ? elements.find((el) => el.id === selectedStickyId && el.element_type === "sticky_note") ?? null : null),
+    [selectedStickyId, elements]
   );
 
   const headingItems = useMemo(
@@ -1126,8 +1699,28 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       return !hasCollapsedAncestor(item.heading_id);
     });
   }, [outlineItems, hasCollapsedAncestor]);
+  const activePrimaryLeftAsideKey = useMemo(() => {
+    if (isMobile) return null;
+    if (selectedSticky) return `sticky:${selectedSticky.id}`;
+    if (selectedProcess) return `category:${selectedProcess.id}`;
+    if (selectedSystem) return `system:${selectedSystem.id}`;
+    if (selectedProcessComponent) return `process:${selectedProcessComponent.id}`;
+    if (selectedGrouping) return `grouping:${selectedGrouping.id}`;
+    if (selectedNode) return `document:${selectedNode.id}`;
+    return null;
+  }, [isMobile, selectedSticky, selectedProcess, selectedSystem, selectedProcessComponent, selectedGrouping, selectedNode]);
   const shouldShowDesktopStructurePanel =
     !isMobile && !!selectedNodeId && desktopNodeAction === "structure" && !!outlineNodeId && outlineNodeId === selectedNodeId;
+
+  useEffect(() => {
+    if (!activePrimaryLeftAsideKey) {
+      setLeftAsideSlideIn(false);
+      return;
+    }
+    setLeftAsideSlideIn(false);
+    const raf = requestAnimationFrame(() => setLeftAsideSlideIn(true));
+    return () => cancelAnimationFrame(raf);
+  }, [activePrimaryLeftAsideKey]);
 
   const loadOutline = useCallback(async (nodeId: string) => {
     const { data, error: e } = await supabaseBrowser
@@ -1163,20 +1756,25 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         }
         setUserId(user.id);
 
-        const [mapRes, typeRes, nodeRes, elementRes, relRes, viewRes] = await Promise.all([
-          supabaseBrowser.schema("ms").from("system_maps").select("id,title,description,updated_at,created_at").eq("id", mapId).maybeSingle(),
+        const [memberRes, mapRes, typeRes, nodeRes, elementRes, relRes, viewRes] = await Promise.all([
+          supabaseBrowser.schema("ms").from("map_members").select("role").eq("map_id", mapId).eq("user_id", user.id).maybeSingle(),
+          supabaseBrowser.schema("ms").from("system_maps").select("id,title,description,owner_id,map_code,updated_at,created_at").eq("id", mapId).maybeSingle(),
           supabaseBrowser.schema("ms").from("document_types").select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active").eq("is_active", true).or(`map_id.eq.${mapId},map_id.is.null`).order("level_rank", { ascending: true }),
-          supabaseBrowser.schema("ms").from("document_nodes").select("id,map_id,type_id,title,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived").eq("map_id", mapId).eq("is_archived", false),
-          supabaseBrowser.schema("ms").from("canvas_elements").select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at").eq("map_id", mapId).order("created_at", { ascending: true }),
+          supabaseBrowser.schema("ms").from("document_nodes").select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived").eq("map_id", mapId).eq("is_archived", false),
+          supabaseBrowser.schema("ms").from("canvas_elements").select(canvasElementSelectColumns).eq("map_id", mapId).order("created_at", { ascending: true }),
           supabaseBrowser
             .schema("ms")
             .from("node_relations")
-            .select("id,map_id,from_node_id,to_node_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
+            .select("id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
             .eq("map_id", mapId),
           supabaseBrowser.schema("ms").from("map_view_state").select("pan_x,pan_y,zoom").eq("map_id", mapId).eq("user_id", user.id).maybeSingle(),
         ]);
         if (cancelled) return;
 
+        if (memberRes.error || !memberRes.data?.role) {
+          setError("Unable to load this map. You may not have access.");
+          return;
+        }
         if (mapRes.error || !mapRes.data) {
           setError("Unable to load this map. You may not have access.");
           return;
@@ -1186,7 +1784,9 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           return;
         }
 
+        setMapRole(memberRes.data.role as "read" | "partial_write" | "full_write");
         setMap(mapRes.data as SystemMap);
+        await loadMapMembers((mapRes.data as SystemMap).owner_id);
         let loadedTypes = (typeRes.data ?? []) as DocumentTypeRow[];
         if (!loadedTypes.length) {
           const { data: createdTypes, error: createTypesError } = await supabaseBrowser
@@ -1267,7 +1867,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [mapId]);
+  }, [mapId, loadMapMembers]);
 
   useEffect(() => {
     if (!rf || !pendingViewport) return;
@@ -1278,6 +1878,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   useEffect(() => {
     if (!selectedNode) return;
     setTitle(selectedNode.title ?? "");
+    setDocumentNumber(selectedNode.document_number ?? "");
     setSelectedTypeId(selectedNode.type_id ?? "");
     setDisciplineSelection(parseDisciplines(selectedNode.discipline));
     setUserGroup(selectedNode.user_group ?? "");
@@ -1288,10 +1889,16 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (!selectedNodeId) setDesktopNodeAction(null);
   }, [selectedNodeId]);
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    setUserEmail(localStorage.getItem("hses_user_email") || "");
+  }, []);
+
+  useEffect(() => {
     if (!selectedProcess) return;
     setProcessHeadingDraft(selectedProcess.heading ?? "");
-    setProcessWidthDraft(Math.max(10, Math.round((selectedProcess.width || processHeadingWidth) / minorGridSize)));
-    setProcessHeightDraft(Math.max(3, Math.round((selectedProcess.height || processHeadingHeight) / minorGridSize)));
+    setProcessWidthDraft(String(Math.max(processMinWidthSquares, Math.round((selectedProcess.width || processHeadingWidth) / minorGridSize))));
+    setProcessHeightDraft(String(Math.max(processMinHeightSquares, Math.round((selectedProcess.height || processHeadingHeight) / minorGridSize))));
+    setProcessColorDraft(selectedProcess.color_hex ?? null);
   }, [selectedProcess]);
   useEffect(() => {
     if (!selectedSystem) return;
@@ -1304,13 +1911,20 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   useEffect(() => {
     if (!selectedGrouping) return;
     setGroupingLabelDraft(selectedGrouping.heading ?? "");
-    setGroupingWidthDraft(Math.max(1, Math.round((selectedGrouping.width || groupingDefaultWidth) / minorGridSize)));
-    setGroupingHeightDraft(Math.max(1, Math.round((selectedGrouping.height || groupingDefaultHeight) / minorGridSize)));
+    setGroupingWidthDraft(String(Math.max(groupingMinWidthSquares, Math.round((selectedGrouping.width || groupingDefaultWidth) / minorGridSize))));
+    setGroupingHeightDraft(String(Math.max(groupingMinHeightSquares, Math.round((selectedGrouping.height || groupingDefaultHeight) / minorGridSize))));
   }, [selectedGrouping]);
+  useEffect(() => {
+    if (!selectedSticky) return;
+    setStickyTextDraft(selectedSticky.heading ?? "");
+  }, [selectedSticky]);
 
   useEffect(() => {
     if (!map) return;
     setMapTitleDraft(map.title);
+    setMapInfoNameDraft(map.title);
+    setMapInfoDescriptionDraft(map.description ?? "");
+    setMapCodeDraft(map.map_code ?? "");
   }, [map]);
 
   useEffect(() => {
@@ -1376,6 +1990,76 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [relationshipPopup]);
+  useEffect(() => {
+    if (!showMapInfoAside) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as globalThis.Node | null;
+      if (mapInfoAsideRef.current && target && mapInfoAsideRef.current.contains(target)) return;
+      if (mapInfoButtonRef.current && target && mapInfoButtonRef.current.contains(target)) return;
+      setShowMapInfoAside(false);
+      setIsEditingMapInfo(false);
+      if (map) {
+        setMapInfoNameDraft(map.title);
+        setMapInfoDescriptionDraft(map.description ?? "");
+        setMapCodeDraft(map.map_code ?? "");
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [showMapInfoAside, map]);
+  useEffect(() => {
+    if (!showMapInfoAside) return;
+    const hasAnyLeftAsideOpen =
+      !!selectedNodeId ||
+      !!selectedProcessId ||
+      !!selectedSystemId ||
+      !!selectedProcessComponentId ||
+      !!selectedStickyId ||
+      !!selectedGroupingId ||
+      !!outlineNodeId ||
+      !!desktopNodeAction ||
+      !!showAddRelationship ||
+      !!mobileNodeMenuId;
+    if (hasAnyLeftAsideOpen) {
+      setShowMapInfoAside(false);
+      setIsEditingMapInfo(false);
+      if (map) {
+        setMapInfoNameDraft(map.title);
+        setMapInfoDescriptionDraft(map.description ?? "");
+        setMapCodeDraft(map.map_code ?? "");
+      }
+    }
+  }, [
+    showMapInfoAside,
+    selectedNodeId,
+    selectedProcessId,
+    selectedSystemId,
+    selectedProcessComponentId,
+    selectedStickyId,
+    selectedGroupingId,
+    outlineNodeId,
+    desktopNodeAction,
+    showAddRelationship,
+    mobileNodeMenuId,
+    map,
+  ]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Delete") return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isEditable =
+        !!target &&
+        (target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select");
+      if (isEditable) return;
+      if (!selectedFlowIds.size) return;
+      event.preventDefault();
+      setShowDeleteSelectionConfirm(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedFlowIds]);
 
   const onMoveEnd = useCallback((_event: unknown, viewport: Viewport) => {
     if (!userId) return;
@@ -1390,6 +2074,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [mapId, userId]);
 
   const handleSaveMapTitle = useCallback(async () => {
+    if (!canManageMapMetadata) {
+      setError("Only the map owner can rename this map.");
+      return;
+    }
     const nextTitle = mapTitleDraft.trim();
     if (!map || !nextTitle) return;
     setSavingMapTitle(true);
@@ -1398,7 +2086,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .from("system_maps")
       .update({ title: nextTitle })
       .eq("id", map.id)
-      .select("id,title,description,updated_at,created_at")
+      .select("id,title,description,owner_id,map_code,updated_at,created_at")
       .maybeSingle();
     setSavingMapTitle(false);
     if (e || !data) {
@@ -1407,13 +2095,187 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
     setMap(data as SystemMap);
     setIsEditingMapTitle(false);
-  }, [map, mapTitleDraft]);
+    setMapTitleSavedFlash(true);
+    setTimeout(() => setMapTitleSavedFlash(false), 1200);
+  }, [canManageMapMetadata, map, mapTitleDraft]);
+  const handleCloseMapInfoAside = useCallback(() => {
+    setShowMapInfoAside(false);
+    setIsEditingMapInfo(false);
+    if (map) {
+      setMapInfoNameDraft(map.title);
+      setMapInfoDescriptionDraft(map.description ?? "");
+      setMapCodeDraft(map.map_code ?? "");
+    }
+  }, [map]);
+  const handleSaveMapInfo = useCallback(async () => {
+    if (!canManageMapMetadata) {
+      setError("Only the map owner can edit map details.");
+      return;
+    }
+    if (!map) return;
+    const nextTitle = mapInfoNameDraft.trim();
+    const nextMapCode = mapCodeDraft.trim().toUpperCase();
+    if (!nextTitle) return;
+    if (!nextMapCode) {
+      setError("Map code cannot be blank.");
+      return;
+    }
+    setSavingMapInfo(true);
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("system_maps")
+      .update({ title: nextTitle, description: mapInfoDescriptionDraft.trim() || null, map_code: nextMapCode })
+      .eq("id", map.id)
+      .select("id,title,description,owner_id,map_code,updated_at,created_at")
+      .maybeSingle();
+    if (e || !data) {
+      setSavingMapInfo(false);
+      setError(e?.message || "Unable to save map information.");
+      return;
+    }
+    const mapCodeChanged = (map.map_code ?? "").trim().toUpperCase() !== nextMapCode;
+    if (mapCodeChanged) {
+      const { error: revokeError } = await supabaseBrowser
+        .schema("ms")
+        .from("map_members")
+        .delete()
+        .eq("map_id", map.id)
+        .neq("user_id", map.owner_id);
+      if (revokeError) {
+        setSavingMapInfo(false);
+        setError(revokeError.message || "Map saved, but member access could not be reset.");
+        return;
+      }
+      const { error: ownerUpsertError } = await supabaseBrowser
+        .schema("ms")
+        .from("map_members")
+        .upsert(
+          { map_id: map.id, user_id: map.owner_id, role: "full_write" },
+          { onConflict: "map_id,user_id" }
+        );
+      if (ownerUpsertError) {
+        setSavingMapInfo(false);
+        setError(ownerUpsertError.message || "Map saved, but owner access could not be confirmed.");
+        return;
+      }
+    }
+    setSavingMapInfo(false);
+    setMap(data as SystemMap);
+    setMapTitleDraft((data as SystemMap).title);
+    setMapTitleSavedFlash(true);
+    setTimeout(() => setMapTitleSavedFlash(false), 1200);
+    setIsEditingMapInfo(false);
+    await loadMapMembers((data as SystemMap).owner_id);
+  }, [canManageMapMetadata, map, mapInfoNameDraft, mapInfoDescriptionDraft, mapCodeDraft, loadMapMembers]);
+
+  const handleUpdateMapMemberRole = useCallback(
+    async (targetUserId: string, nextRole: "read" | "partial_write" | "full_write") => {
+      if (!canManageMapMetadata || !map) {
+        setError("Only the map owner can change access.");
+        return;
+      }
+      if (targetUserId === map.owner_id) return;
+      setSavingMemberRoleUserId(targetUserId);
+      const { error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("map_members")
+        .update({ role: nextRole })
+        .eq("map_id", map.id)
+        .eq("user_id", targetUserId);
+      setSavingMemberRoleUserId(null);
+      if (e) {
+        setError(e.message || "Unable to update member access.");
+        return;
+      }
+      await loadMapMembers(map.owner_id);
+    },
+    [canManageMapMetadata, map, loadMapMembers]
+  );
 
   const onNodeDragStop = useCallback(async (_event: unknown, node: Node<FlowData>) => {
-    if (node.data.entityKind === "category" || node.data.entityKind === "system_circle" || node.data.entityKind === "grouping_container" || node.data.entityKind === "process_component") {
+    if (selectedFlowIds.size > 1 && selectedFlowIds.has(node.id)) {
+      if (!canWriteMap) {
+        setError("You have view access only for this map.");
+        return;
+      }
+      const selectedIds = [...selectedFlowIds];
+      const flowById = new Map(flowNodes.map((n) => [n.id, n]));
+      const elementUpdates: Array<{ id: string; x: number; y: number }> = [];
+      const documentUpdates: Array<{ id: string; x: number; y: number }> = [];
+      selectedIds.forEach((flowId) => {
+        const flowNode = flowById.get(flowId);
+        if (!flowNode) return;
+        const snappedX = snapToMinorGrid(flowNode.position.x);
+        const snappedY = snapToMinorGrid(flowNode.position.y);
+        if (flowId.startsWith("process:")) {
+          elementUpdates.push({ id: parseProcessFlowId(flowId), x: snappedX, y: snappedY });
+        } else {
+          documentUpdates.push({ id: flowId, x: snappedX, y: snappedY });
+        }
+      });
+
+      if (documentUpdates.length) {
+        const nextDocMap = new Map(documentUpdates.map((u) => [u.id, u]));
+        setNodes((prev) => prev.map((n) => {
+          const next = nextDocMap.get(n.id);
+          return next ? { ...n, pos_x: next.x, pos_y: next.y } : n;
+        }));
+      }
+      if (elementUpdates.length) {
+        const nextElementMap = new Map(elementUpdates.map((u) => [u.id, u]));
+        setElements((prev) => prev.map((el) => {
+          const next = nextElementMap.get(el.id);
+          return next ? { ...el, pos_x: next.x, pos_y: next.y } : el;
+        }));
+      }
+
+      const persistCalls: Promise<{ error: { message?: string } | null }>[] = [];
+      documentUpdates.forEach((u) => {
+        persistCalls.push(
+          (async () =>
+            await supabaseBrowser
+              .schema("ms")
+              .from("document_nodes")
+              .update({ pos_x: u.x, pos_y: u.y })
+              .eq("id", u.id)
+              .eq("map_id", mapId))()
+        );
+        savedPos.current[u.id] = { x: u.x, y: u.y };
+      });
+      elementUpdates.forEach((u) => {
+        persistCalls.push(
+          (async () =>
+            await supabaseBrowser
+              .schema("ms")
+              .from("canvas_elements")
+              .update({ pos_x: u.x, pos_y: u.y })
+              .eq("id", u.id)
+              .eq("map_id", mapId))()
+        );
+      });
+      const results = await Promise.all(persistCalls);
+      const failed = results.find((r) => {
+        const maybe = r as { error?: { message?: string } | null };
+        return !!maybe.error;
+      }) as { error?: { message?: string } | null } | undefined;
+      if (failed?.error?.message) setError(failed.error.message || "Unable to save group position.");
+      return;
+    }
+
+    if (
+      node.data.entityKind === "category" ||
+      node.data.entityKind === "system_circle" ||
+      node.data.entityKind === "grouping_container" ||
+      node.data.entityKind === "process_component" ||
+      node.data.entityKind === "sticky_note"
+    ) {
       const elementId = parseProcessFlowId(node.id);
       const sourceElement = elements.find((el) => el.id === elementId);
       if (!sourceElement) return;
+      if (!canEditElement(sourceElement)) {
+        setError("You can only edit sticky notes you created.");
+        return;
+      }
       const finalX = snapToMinorGrid(node.position.x);
       const finalY = snapToMinorGrid(node.position.y);
       setElements((prev) => prev.map((el) => (el.id === elementId ? { ...el, pos_x: finalX, pos_y: finalY } : el)));
@@ -1431,6 +2293,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
     const source = nodes.find((n) => n.id === node.id);
     if (!source) return;
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     const x = snapToMinorGrid(node.position.x);
     const y = snapToMinorGrid(node.position.y);
     const old = savedPos.current[node.id] ?? { x: source.pos_x, y: source.pos_y };
@@ -1447,9 +2313,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       return;
     }
     savedPos.current[node.id] = { x: finalX, y: finalY };
-  }, [nodes, elements, mapId, snapToMinorGrid, findNearestFreePosition]);
+  }, [canWriteMap, nodes, elements, mapId, snapToMinorGrid, findNearestFreePosition, selectedFlowIds, flowNodes, canEditElement]);
 
   const handleAddBlankDocument = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!rf || !canvasRef.current) return;
     const t = addDocumentTypes[0];
     if (!t) return;
@@ -1465,12 +2335,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         map_id: mapId,
         type_id: t.id,
         title: unconfiguredDocumentTitle,
+        document_number: null,
         pos_x: x,
         pos_y: y,
         width: isLandscapeTypeName(t.name) ? landscapeDefaultWidth : defaultWidth,
         height: isLandscapeTypeName(t.name) ? landscapeDefaultHeight : defaultHeight,
       })
-      .select("id,map_id,type_id,title,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
+      .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to create document.");
@@ -1482,6 +2353,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setShowAddMenu(false);
   };
   const handleAddProcessHeading = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!rf || !canvasRef.current) return;
     const box = canvasRef.current.getBoundingClientRect();
     const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
@@ -1494,12 +2369,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         map_id: mapId,
         element_type: "category",
         heading: "New Category",
+        color_hex: null,
+        created_by_user_id: userId,
         pos_x: x,
         pos_y: y,
         width: processHeadingWidth,
         height: processHeadingHeight,
       })
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to create process heading.");
@@ -1509,6 +2386,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setShowAddMenu(false);
   };
   const handleAddSystemCircle = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!rf || !canvasRef.current) return;
     const box = canvasRef.current.getBoundingClientRect();
     const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
@@ -1521,12 +2402,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         map_id: mapId,
         element_type: "system_circle",
         heading: "System Name",
+        color_hex: null,
+        created_by_user_id: userId,
         pos_x: x,
         pos_y: y,
         width: systemCircleDiameter,
         height: systemCircleElementHeight,
       })
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to create system element.");
@@ -1536,6 +2419,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setShowAddMenu(false);
   };
   const handleAddProcessComponent = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!rf || !canvasRef.current) return;
     const box = canvasRef.current.getBoundingClientRect();
     const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
@@ -1548,12 +2435,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         map_id: mapId,
         element_type: "process_component",
         heading: "Process",
+        color_hex: null,
+        created_by_user_id: userId,
         pos_x: x,
         pos_y: y,
         width: processComponentWidth,
         height: processComponentElementHeight,
       })
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to create process component.");
@@ -1563,6 +2452,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setShowAddMenu(false);
   };
   const handleAddGroupingContainer = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!rf || !canvasRef.current) return;
     const box = canvasRef.current.getBoundingClientRect();
     const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
@@ -1575,12 +2468,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         map_id: mapId,
         element_type: "grouping_container",
         heading: "Group label",
+        color_hex: null,
+        created_by_user_id: userId,
         pos_x: x,
         pos_y: y,
         width: groupingDefaultWidth,
         height: groupingDefaultHeight,
       })
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to create grouping container.");
@@ -1589,20 +2484,62 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setElements((prev) => [...prev, data as CanvasElementRow]);
     setShowAddMenu(false);
   };
-  const handleSaveProcessHeading = async () => {
-    if (!selectedProcessId) return;
-    const heading = processHeadingDraft.trim() || "New Category";
-    const widthSquares = Number.isFinite(processWidthDraft) ? processWidthDraft : 10;
-    const heightSquares = Number.isFinite(processHeightDraft) ? processHeightDraft : 3;
-    const width = Math.max(processMinWidth, snapToMinorGrid(widthSquares * minorGridSize));
-    const height = Math.max(processMinHeight, snapToMinorGrid(heightSquares * minorGridSize));
+  const handleAddStickyNote = async () => {
+    if (!canCreateSticky || !rf || !canvasRef.current || !userId) return;
+    const box = canvasRef.current.getBoundingClientRect();
+    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    const x = snapToMinorGrid(center.x);
+    const y = snapToMinorGrid(center.y);
     const { data, error: e } = await supabaseBrowser
       .schema("ms")
       .from("canvas_elements")
-      .update({ heading, width, height })
+      .insert({
+        map_id: mapId,
+        element_type: "sticky_note",
+        heading: "Enter Text",
+        color_hex: "#fef08a",
+        created_by_user_id: userId,
+        pos_x: x,
+        pos_y: y,
+        width: stickyDefaultSize,
+        height: stickyDefaultSize,
+      })
+      .select(canvasElementSelectColumns)
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to create sticky note.");
+      return;
+    }
+    setElements((prev) => [...prev, data as CanvasElementRow]);
+    setShowAddMenu(false);
+  };
+  const handleSaveProcessHeading = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    if (!selectedProcessId) return;
+    const heading = processHeadingDraft.trim() || "New Category";
+    const widthSquares = Number(processWidthDraft.trim());
+    const heightSquares = Number(processHeightDraft.trim());
+    if (!Number.isInteger(widthSquares) || !Number.isInteger(heightSquares)) {
+      setError(`Category size must be whole numbers. Minimum width is ${processMinWidthSquares} and minimum height is ${processMinHeightSquares} small squares.`);
+      return;
+    }
+    if (widthSquares < processMinWidthSquares || heightSquares < processMinHeightSquares) {
+      setError(`Category size is below limit. Minimum width is ${processMinWidthSquares} and minimum height is ${processMinHeightSquares} small squares.`);
+      return;
+    }
+    const width = Math.max(processMinWidth, snapToMinorGrid(widthSquares * minorGridSize));
+    const height = Math.max(processMinHeight, snapToMinorGrid(heightSquares * minorGridSize));
+    const colorHex = processColorDraft ?? null;
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update({ heading, width, height, color_hex: colorHex })
       .eq("id", selectedProcessId)
       .eq("map_id", mapId)
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to save process heading.");
@@ -1613,6 +2550,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedProcessId(null);
   };
   const handleSaveSystemName = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!selectedSystemId) return;
     const heading = systemNameDraft.trim() || "System Name";
     const { data, error: e } = await supabaseBrowser
@@ -1621,7 +2562,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .update({ heading })
       .eq("id", selectedSystemId)
       .eq("map_id", mapId)
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to save system name.");
@@ -1632,6 +2573,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedSystemId(null);
   };
   const handleSaveProcessComponent = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!selectedProcessComponentId) return;
     const heading = processComponentLabelDraft.trim() || "Process";
     const { data, error: e } = await supabaseBrowser
@@ -1640,7 +2585,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .update({ heading })
       .eq("id", selectedProcessComponentId)
       .eq("map_id", mapId)
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to save process.");
@@ -1651,10 +2596,22 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedProcessComponentId(null);
   };
   const handleSaveGroupingContainer = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!selectedGroupingId) return;
     const heading = groupingLabelDraft.trim() || "Group label";
-    const widthSquares = Number.isFinite(groupingWidthDraft) ? groupingWidthDraft : Math.round(groupingDefaultWidth / minorGridSize);
-    const heightSquares = Number.isFinite(groupingHeightDraft) ? groupingHeightDraft : Math.round(groupingDefaultHeight / minorGridSize);
+    const widthSquares = Number(groupingWidthDraft.trim());
+    const heightSquares = Number(groupingHeightDraft.trim());
+    if (!Number.isInteger(widthSquares) || !Number.isInteger(heightSquares)) {
+      setError(`Grouping size must be whole numbers. Minimum width is ${groupingMinWidthSquares} and minimum height is ${groupingMinHeightSquares} small squares.`);
+      return;
+    }
+    if (widthSquares < groupingMinWidthSquares || heightSquares < groupingMinHeightSquares) {
+      setError(`Grouping size is below limit. Minimum width is ${groupingMinWidthSquares} and minimum height is ${groupingMinHeightSquares} small squares.`);
+      return;
+    }
     const width = Math.max(groupingMinWidth, snapToMinorGrid(widthSquares * minorGridSize));
     const height = Math.max(groupingMinHeight, snapToMinorGrid(heightSquares * minorGridSize));
     const { data, error: e } = await supabaseBrowser
@@ -1663,7 +2620,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .update({ heading, width, height })
       .eq("id", selectedGroupingId)
       .eq("map_id", mapId)
-      .select("id,map_id,element_type,heading,pos_x,pos_y,width,height,created_at,updated_at")
+      .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to save grouping container.");
@@ -1673,8 +2630,35 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
     setSelectedGroupingId(null);
   };
+  const handleSaveStickyNote = async () => {
+    if (!selectedStickyId) return;
+    const current = elements.find((el) => el.id === selectedStickyId && el.element_type === "sticky_note");
+    if (!current || !canEditElement(current)) {
+      setError("You can only edit sticky notes you created.");
+      return;
+    }
+    const heading = stickyTextDraft.trim() || "Enter Text";
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update({ heading })
+      .eq("id", selectedStickyId)
+      .eq("map_id", mapId)
+      .select(canvasElementSelectColumns)
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to save sticky note.");
+      return;
+    }
+    setElements((prev) => prev.map((el) => (el.id === (data as CanvasElementRow).id ? (data as CanvasElementRow) : el)));
+    setSelectedStickyId(null);
+  };
 
   const handleSaveNode = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (!selectedNodeId) return;
     const current = nodes.find((n) => n.id === selectedNodeId);
     if (!current) return;
@@ -1686,6 +2670,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     const payload = {
       type_id: nextTypeId,
       title: title.trim() || "Untitled Document",
+      document_number: documentNumber.trim() || null,
       discipline: serializeDisciplines(disciplineSelection),
       user_group: userGroup.trim() || null,
       owner_name: ownerName.trim() || null,
@@ -1699,7 +2684,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .update(payload)
       .eq("id", selectedNodeId)
       .eq("map_id", mapId)
-      .select("id,map_id,type_id,title,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
+      .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to save node properties.");
@@ -1714,11 +2699,25 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (!selectedNodeId) return [];
     return relations.filter((r) => r.from_node_id === selectedNodeId || r.to_node_id === selectedNodeId);
   }, [relations, selectedNodeId]);
+  const relatedGroupingRows = useMemo(() => {
+    if (!selectedGroupingId) return [];
+    return relations.filter(
+      (r) => r.source_grouping_element_id === selectedGroupingId || r.target_grouping_element_id === selectedGroupingId
+    );
+  }, [relations, selectedGroupingId]);
 
   const relationshipSourceNode = useMemo(
     () => (relationshipSourceNodeId ? nodes.find((n) => n.id === relationshipSourceNodeId) ?? null : null),
     [nodes, relationshipSourceNodeId]
   );
+  const relationshipSourceGrouping = useMemo(
+    () =>
+      relationshipSourceGroupingId
+        ? elements.find((el) => el.id === relationshipSourceGroupingId && el.element_type === "grouping_container") ?? null
+        : null,
+    [elements, relationshipSourceGroupingId]
+  );
+  const relationshipModeGrouping = !!relationshipSourceGroupingId;
 
   const documentRelationCandidates = useMemo(() => {
     if (!relationshipSourceNodeId) return [];
@@ -1755,12 +2754,29 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     systemRelationCandidates.forEach((el) => m.set(el.heading || "System", el.id));
     return m;
   }, [systemRelationCandidates]);
+  const groupingRelationCandidates = useMemo(() => {
+    if (!relationshipSourceGroupingId) return [];
+    const term = relationshipGroupingQuery.trim().toLowerCase();
+    return elements
+      .filter((el) => el.element_type === "grouping_container" && el.id !== relationshipSourceGroupingId)
+      .filter((el) => (el.heading || "").toLowerCase().includes(term));
+  }, [elements, relationshipSourceGroupingId, relationshipGroupingQuery]);
+  const groupingRelationCandidateLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    groupingRelationCandidates.forEach((el) => m.set(el.id, el.heading || "Group label"));
+    return m;
+  }, [groupingRelationCandidates]);
+  const groupingRelationCandidateIdByLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    groupingRelationCandidates.forEach((el) => m.set(el.heading || "Group label", el.id));
+    return m;
+  }, [groupingRelationCandidates]);
   const alreadyRelatedDocumentTargetIds = useMemo(() => {
     const ids = new Set<string>();
     if (!relationshipSourceNodeId) return ids;
     relations.forEach((r) => {
       if (r.from_node_id === relationshipSourceNodeId && r.to_node_id) ids.add(r.to_node_id);
-      if (r.to_node_id === relationshipSourceNodeId) ids.add(r.from_node_id);
+      if (r.to_node_id === relationshipSourceNodeId && r.from_node_id) ids.add(r.from_node_id);
     });
     return ids;
   }, [relations, relationshipSourceNodeId]);
@@ -1772,15 +2788,28 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     });
     return ids;
   }, [relations, relationshipSourceNodeId]);
+  const alreadyRelatedGroupingTargetIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!relationshipSourceGroupingId) return ids;
+    relations.forEach((r) => {
+      if (r.source_grouping_element_id === relationshipSourceGroupingId && r.target_grouping_element_id) ids.add(r.target_grouping_element_id);
+      if (r.target_grouping_element_id === relationshipSourceGroupingId && r.source_grouping_element_id) ids.add(r.source_grouping_element_id);
+    });
+    return ids;
+  }, [relations, relationshipSourceGroupingId]);
   const closeAddRelationshipModal = useCallback(() => {
     setShowAddRelationship(false);
     setRelationshipSourceNodeId(null);
+    setRelationshipSourceGroupingId(null);
     setRelationshipTargetDocumentId("");
     setRelationshipTargetSystemId("");
+    setRelationshipTargetGroupingId("");
     setRelationshipDocumentQuery("");
     setRelationshipSystemQuery("");
+    setRelationshipGroupingQuery("");
     setShowRelationshipDocumentOptions(false);
     setShowRelationshipSystemOptions(false);
+    setShowRelationshipGroupingOptions(false);
     setRelationshipDescription("");
     setRelationshipDisciplineSelection([]);
     setShowRelationshipDisciplineMenu(false);
@@ -1805,23 +2834,50 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedNodeId(null);
     closeDesktopDrilldownPanels();
   }, [closeDesktopDrilldownPanels]);
+  const closeAllLeftAsides = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedProcessId(null);
+    setSelectedSystemId(null);
+    setSelectedProcessComponentId(null);
+    setSelectedGroupingId(null);
+    setSelectedStickyId(null);
+    closeDesktopDrilldownPanels();
+    setMobileNodeMenuId(null);
+  }, [closeDesktopDrilldownPanels]);
 
   const handleAddRelation = async () => {
-    if (!relationshipSourceNodeId) return;
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    const hasNodeSource = !!relationshipSourceNodeId;
+    const hasGroupingSource = !!relationshipSourceGroupingId;
+    if (!hasNodeSource && !hasGroupingSource) return;
+    const hasGroupingTarget = !!relationshipTargetGroupingId;
     const hasDocumentTarget = !!relationshipTargetDocumentId;
     const hasSystemTarget = !!relationshipTargetSystemId;
-    if (!hasDocumentTarget && !hasSystemTarget) return;
-    const exists = hasDocumentTarget
+    if (hasGroupingSource) {
+      if (!hasGroupingTarget) return;
+    } else if (!hasDocumentTarget && !hasSystemTarget) {
+      return;
+    }
+    const exists = hasGroupingSource
       ? relations.some(
           (r) =>
-            (r.from_node_id === relationshipSourceNodeId && r.to_node_id === relationshipTargetDocumentId) ||
-            (r.from_node_id === relationshipTargetDocumentId && r.to_node_id === relationshipSourceNodeId)
+            (r.source_grouping_element_id === relationshipSourceGroupingId && r.target_grouping_element_id === relationshipTargetGroupingId) ||
+            (r.source_grouping_element_id === relationshipTargetGroupingId && r.target_grouping_element_id === relationshipSourceGroupingId)
         )
-      : relations.some(
-          (r) =>
-            r.from_node_id === relationshipSourceNodeId &&
-            r.target_system_element_id === relationshipTargetSystemId
-        );
+      : hasDocumentTarget
+        ? relations.some(
+            (r) =>
+              (r.from_node_id === relationshipSourceNodeId && r.to_node_id === relationshipTargetDocumentId) ||
+              (r.from_node_id === relationshipTargetDocumentId && r.to_node_id === relationshipSourceNodeId)
+          )
+        : relations.some(
+            (r) =>
+              r.from_node_id === relationshipSourceNodeId &&
+              r.target_system_element_id === relationshipTargetSystemId
+          );
     if (exists) {
       setError("Relationship already exists for this target.");
       return;
@@ -1831,16 +2887,18 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .from("node_relations")
       .insert({
         map_id: mapId,
-        from_node_id: relationshipSourceNodeId,
-        to_node_id: hasDocumentTarget ? relationshipTargetDocumentId : null,
-        target_system_element_id: hasSystemTarget ? relationshipTargetSystemId : null,
+        from_node_id: hasNodeSource ? relationshipSourceNodeId : null,
+        to_node_id: hasNodeSource && hasDocumentTarget ? relationshipTargetDocumentId : null,
+        source_grouping_element_id: hasGroupingSource ? relationshipSourceGroupingId : null,
+        target_grouping_element_id: hasGroupingSource && hasGroupingTarget ? relationshipTargetGroupingId : null,
+        target_system_element_id: hasNodeSource && hasSystemTarget ? relationshipTargetSystemId : null,
         relation_type: "related",
         relationship_description: relationshipDescription.trim() || null,
         relationship_disciplines: relationshipDisciplineSelection.length ? relationshipDisciplineSelection : null,
         relationship_category: relationshipCategory,
         relationship_custom_type: relationshipCategory === "other" ? relationshipCustomType.trim() || null : null,
       })
-      .select("id,map_id,from_node_id,to_node_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
+      .select("id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to add relation.");
@@ -1851,6 +2909,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   };
 
   const handleDeleteRelation = async (id: string) => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     const { error: e } = await supabaseBrowser.schema("ms").from("node_relations").delete().eq("id", id).eq("map_id", mapId);
     if (e) {
       setError(e.message || "Unable to delete relation.");
@@ -1859,6 +2921,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setRelations((prev) => prev.filter((r) => r.id !== id));
   };
   const handleUpdateRelation = async (id: string) => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     if (editingRelationCategory === "other" && !editingRelationCustomType.trim()) {
       setError("Please enter a custom relationship type.");
       return;
@@ -1874,7 +2940,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       })
       .eq("id", id)
       .eq("map_id", mapId)
-      .select("id,map_id,from_node_id,to_node_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
+      .select("id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
       .single();
     if (e || !data) {
       setError(e?.message || "Unable to update relationship definition.");
@@ -1890,6 +2956,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   };
 
   const handleDeleteNode = async (id: string) => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
     const { error: e } = await supabaseBrowser.schema("ms").from("document_nodes").delete().eq("id", id).eq("map_id", mapId);
     if (e) {
       setError(e.message || "Unable to delete document.");
@@ -1897,6 +2967,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
     setNodes((prev) => prev.filter((n) => n.id !== id));
     setRelations((prev) => prev.filter((r) => r.from_node_id !== id && r.to_node_id !== id));
+    setSelectedFlowIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     if (selectedNodeId === id) setSelectedNodeId(null);
     if (outlineNodeId === id) {
       setOutlineNodeId(null);
@@ -1904,17 +2979,56 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
   };
   const handleDeleteProcessElement = async (id: string) => {
+    const target = elements.find((el) => el.id === id);
+    if (!target || !canEditElement(target)) {
+      setError("You do not have permission to delete this component.");
+      return;
+    }
+    await supabaseBrowser
+      .schema("ms")
+      .from("node_relations")
+      .delete()
+      .eq("map_id", mapId)
+      .or(`target_system_element_id.eq.${id},source_grouping_element_id.eq.${id},target_grouping_element_id.eq.${id}`);
     const { error: e } = await supabaseBrowser.schema("ms").from("canvas_elements").delete().eq("id", id).eq("map_id", mapId);
     if (e) {
       setError(e.message || "Unable to delete canvas element.");
       return;
     }
     setElements((prev) => prev.filter((el) => el.id !== id));
+    setRelations((prev) => prev.filter((r) => r.target_system_element_id !== id && r.source_grouping_element_id !== id && r.target_grouping_element_id !== id));
+    setSelectedFlowIds((prev) => {
+      const next = new Set(prev);
+      next.delete(processFlowId(id));
+      return next;
+    });
     if (selectedProcessId === id) setSelectedProcessId(null);
     if (selectedSystemId === id) setSelectedSystemId(null);
     if (selectedProcessComponentId === id) setSelectedProcessComponentId(null);
     if (selectedGroupingId === id) setSelectedGroupingId(null);
+    if (selectedStickyId === id) setSelectedStickyId(null);
   };
+  const handleDeleteSelectedComponents = useCallback(async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    if (!selectedFlowIds.size) return;
+    const selectedIds = [...selectedFlowIds];
+    const docIds = selectedIds.filter((id) => !id.startsWith("process:"));
+    const elementIds = selectedIds.filter((id) => id.startsWith("process:")).map(parseProcessFlowId);
+
+    for (const docId of docIds) {
+      // Reuse existing delete path so relationships and local panel states stay in sync.
+      await handleDeleteNode(docId);
+    }
+    for (const elementId of elementIds) {
+      await handleDeleteProcessElement(elementId);
+    }
+
+    setSelectedFlowIds(new Set());
+    setShowDeleteSelectionConfirm(false);
+  }, [canWriteMap, selectedFlowIds, handleDeleteNode, handleDeleteProcessElement]);
 
   const handleCreateHeading = async () => {
     if (!outlineNodeId) return;
@@ -2091,6 +3205,77 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     closeDesktopDrilldownPanels();
   }, [selectedNodeId, isMobile, closeDesktopDrilldownPanels]);
 
+  const handlePaneClickClearSelection = useCallback(() => {
+    setSelectedFlowIds(new Set());
+    setHoveredEdgeId(null);
+  }, []);
+
+  const handlePaneMouseDown = useCallback((event: { button: number; clientX: number; clientY: number; preventDefault: () => void; stopPropagation: () => void; target?: EventTarget | null }) => {
+    if (event.button !== 2 || !rf || !canUseContextMenu || !canWriteMap) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest?.(".react-flow__node")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    setSelectionMarquee({
+      active: true,
+      startClientX: startX,
+      startClientY: startY,
+      currentClientX: startX,
+      currentClientY: startY,
+    });
+
+    const onMove = (moveEvent: MouseEvent) => {
+      setSelectionMarquee((prev) => ({
+        ...prev,
+        active: true,
+        currentClientX: moveEvent.clientX,
+        currentClientY: moveEvent.clientY,
+      }));
+    };
+
+    const onUp = (upEvent: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      const endX = upEvent.clientX;
+      const endY = upEvent.clientY;
+      setSelectionMarquee({
+        active: false,
+        startClientX: 0,
+        startClientY: 0,
+        currentClientX: 0,
+        currentClientY: 0,
+      });
+
+      const movedEnough = Math.abs(endX - startX) > 4 || Math.abs(endY - startY) > 4;
+      if (!movedEnough) return;
+
+      const p1 = rf.screenToFlowPosition({ x: startX, y: startY });
+      const p2 = rf.screenToFlowPosition({ x: endX, y: endY });
+      const minX = Math.min(p1.x, p2.x);
+      const maxX = Math.max(p1.x, p2.x);
+      const minY = Math.min(p1.y, p2.y);
+      const maxY = Math.max(p1.y, p2.y);
+
+      const selected = new Set<string>();
+      flowNodes.forEach((flowNode) => {
+        const bounds = getFlowNodeBounds(flowNode.id);
+        if (!bounds) return;
+        const fullyInside =
+          bounds.x >= minX &&
+          bounds.y >= minY &&
+          bounds.x + bounds.width <= maxX &&
+          bounds.y + bounds.height <= maxY;
+        if (fullyInside) selected.add(flowNode.id);
+      });
+      setSelectedFlowIds(selected);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [rf, flowNodes, getFlowNodeBounds, canUseContextMenu, canWriteMap]);
+
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center">Loading map...</div>;
   }
@@ -2103,14 +3288,94 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     <div className="flex h-svh min-h-svh flex-col bg-stone-50 md:min-h-screen md:h-dvh">
       <header className="site-header fixed inset-x-0 top-0 z-[90] md:sticky" style={{ backgroundColor: "#000000", borderBottomColor: "#0f172a" }}>
         <div className="header-inner" style={{ paddingLeft: "12px", paddingRight: "20px", backgroundColor: "#000000" }}>
-          <div className="header-left">
+          <div className="header-left flex items-center gap-8">
             <a href="/"><img src="/images/logo-white.png" alt="HSES" className="header-logo" /></a>
+            <span className="text-xl font-semibold uppercase tracking-[0.14em]" style={{ color: "#05c3dd" }}>System Map</span>
           </div>
-          <div className="header-actions" />
+          <div className="header-actions flex items-center">
+            <div className="flex items-center gap-2">
+              <span
+                className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]"
+                style={{
+                  backgroundColor: mapRole === "full_write" ? "#166534" : mapRole === "partial_write" ? "#92400e" : "#1e3a8a",
+                  color: "#ffffff",
+                }}
+              >
+                {mapRole === "full_write" ? "Full Write" : mapRole === "partial_write" ? "Partial Write" : "Read"}
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-white">Document Name:</span>
+              {isEditingMapTitle ? (
+                <input
+                  autoFocus
+                  className="min-w-[240px] rounded-md border border-[#a78bfa] bg-transparent px-3 py-1.5 text-sm font-semibold text-white outline-none ring-1 ring-[#a78bfa]/70"
+                  value={mapTitleDraft}
+                  onChange={(e) => setMapTitleDraft(e.target.value)}
+                  onBlur={() => {
+                    if (!mapTitleDraft.trim()) {
+                      setMapTitleDraft(map.title);
+                      setIsEditingMapTitle(false);
+                      return;
+                    }
+                    void handleSaveMapTitle();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      (e.currentTarget as HTMLInputElement).blur();
+                    }
+                    if (e.key === "Escape") {
+                      setMapTitleDraft(map.title);
+                      setIsEditingMapTitle(false);
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="rounded-md border border-transparent px-2 py-1 text-sm font-semibold text-white hover:border-slate-600/60 hover:bg-slate-900/40"
+                  onClick={() => {
+                    if (!canManageMapMetadata) {
+                      setError("Only the map owner can rename this map.");
+                      return;
+                    }
+                    setIsEditingMapTitle(true);
+                  }}
+                >
+                  {map.title}
+                </button>
+              )}
+              {savingMapTitle ? <span className="text-xs font-medium text-[#05c3dd]">Saving...</span> : null}
+              {!savingMapTitle && mapTitleSavedFlash ? <span className="text-xs font-medium text-emerald-400">Saved</span> : null}
+              <button
+                ref={mapInfoButtonRef}
+                type="button"
+                aria-label="Open map information"
+                title="Map information"
+                className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600/60 bg-transparent text-white hover:bg-slate-900/50"
+                onClick={() => {
+                  closeAllLeftAsides();
+                  setShowMapInfoAside((prev) => {
+                    const next = !prev;
+                    if (next) setIsEditingMapInfo(false);
+                    return next;
+                  });
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 bg-current"
+                  style={{ WebkitMaskImage: "url('/icons/info.svg')", maskImage: "url('/icons/info.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
+                />
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
-      <div className="fixed right-5 top-[82px] z-[88]">
+      <div
+        className="fixed top-[82px] z-[88] transition-[right] duration-300 ease-out"
+        style={{ right: showMapInfoAside ? "315px" : "20px" }}
+      >
         <div className="relative flex items-center gap-3">
           <a
             href="/system-maps"
@@ -2155,7 +3420,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             aria-label="Add component"
             title="Add component"
             onClick={() => setShowAddMenu((prev) => !prev)}
-            className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
+            disabled={!canWriteMap && !canCreateSticky}
+            className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:bg-white disabled:hover:text-black disabled:hover:shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
           >
             <span
               aria-hidden="true"
@@ -2163,43 +3429,172 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               style={{ WebkitMaskImage: "url('/icons/addcomponent.svg')", maskImage: "url('/icons/addcomponent.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
             />
           </button>
-          {showAddMenu && (
+          {showAddMenu && (canWriteMap || canCreateSticky) && (
             <div ref={addMenuRef} className="absolute right-0 top-full z-[70] mt-2 min-w-[180px] rounded-none border border-slate-300 bg-white p-1 text-sm shadow-xl">
-              <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBlankDocument}>Document</button>
-              <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddSystemCircle}>System</button>
-              <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessComponent}>Process</button>
-              <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessHeading}>Category</button>
-              <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddGroupingContainer}>Grouping Container</button>
+              {canWriteMap ? (
+                <>
+                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBlankDocument}>Document</button>
+                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddSystemCircle}>System</button>
+                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessComponent}>Process</button>
+                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessHeading}>Category</button>
+                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddGroupingContainer}>Grouping Container</button>
+                </>
+              ) : null}
+              {canCreateSticky ? (
+                <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddStickyNote}>Sticky Note</button>
+              ) : null}
             </div>
           )}
         </div>
       </div>
 
-      <main className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="absolute left-4 top-[11.5rem] z-20 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow md:top-4">
-          <div className="text-xs uppercase tracking-[0.16em] text-slate-400">System Map</div>
-          {isEditingMapTitle ? (
-            <div className="mt-1 flex items-center gap-2">
-              <input
-                className="w-56 rounded border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900"
-                value={mapTitleDraft}
-                onChange={(e) => setMapTitleDraft(e.target.value)}
-              />
-              <button className="btn btn-outline px-2 py-1 text-xs" disabled={savingMapTitle} onClick={handleSaveMapTitle}>Save</button>
-              <button className="btn btn-outline px-2 py-1 text-xs" onClick={() => { setMapTitleDraft(map.title); setIsEditingMapTitle(false); }}>Cancel</button>
+      {showMapInfoAside && (
+        <aside
+          ref={mapInfoAsideRef}
+          className="fixed bottom-0 right-0 top-[70px] z-[79] w-full max-w-[294px] border-l border-slate-300 bg-white shadow-[-16px_0_30px_rgba(15,23,42,0.26),0_8px_22px_rgba(15,23,42,0.14)]"
+        >
+          <div className="flex h-full flex-col overflow-auto p-4">
+            <div className="flex items-center justify-between border-b border-slate-300 pb-3">
+              <h2 className="text-base font-semibold text-slate-900">Map Information</h2>
+              <button
+                className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
+                onClick={handleCloseMapInfoAside}
+              >
+                Close
+              </button>
             </div>
-          ) : (
-            <div className="mt-1 flex items-center gap-2">
-              <h1 className="text-base font-semibold text-slate-900">{map.title}</h1>
-              <button className="btn btn-outline px-2 py-1 text-xs" onClick={() => setIsEditingMapTitle(true)}>Edit</button>
-            </div>
-          )}
-          {error && <div className="mt-1 text-xs text-rose-700">{error}</div>}
-        </div>
 
+            <div className="mt-4 space-y-3">
+              <label className="text-sm text-slate-700">System Map Name
+                {isEditingMapInfo ? (
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+                    value={mapInfoNameDraft}
+                    onChange={(e) => setMapInfoNameDraft(e.target.value)}
+                  />
+                ) : (
+                  <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">{map.title}</div>
+                )}
+              </label>
+              {canManageMapMetadata ? (
+                <label className="text-sm text-slate-700">Map Code
+                  {isEditingMapInfo ? (
+                    <input
+                      className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-semibold uppercase tracking-[0.08em] text-black"
+                      value={mapCodeDraft}
+                      onChange={(e) => setMapCodeDraft(e.target.value.toUpperCase())}
+                      placeholder="Enter map code"
+                    />
+                  ) : (
+                    <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold uppercase tracking-[0.08em] text-slate-900">
+                      {map.map_code || "-"}
+                    </div>
+                  )}
+                </label>
+              ) : null}
+
+              <label className="text-sm text-slate-700">Description
+                {isEditingMapInfo ? (
+                  <textarea
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+                    rows={6}
+                    value={mapInfoDescriptionDraft}
+                    onChange={(e) => setMapInfoDescriptionDraft(e.target.value)}
+                  />
+                ) : (
+                  <div className="mt-1 min-h-[132px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">
+                    {map.description?.trim() || "No description"}
+                  </div>
+                )}
+              </label>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              {isEditingMapInfo ? (
+                <>
+                  <button
+                    className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100"
+                    onClick={() => void handleSaveMapInfo()}
+                    disabled={savingMapInfo}
+                  >
+                    {savingMapInfo ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                    onClick={() => {
+                      setIsEditingMapInfo(false);
+                      setMapInfoNameDraft(map.title);
+                      setMapInfoDescriptionDraft(map.description ?? "");
+                      setMapCodeDraft(map.map_code ?? "");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                canManageMapMetadata ? (
+                  <button
+                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                    onClick={() => setIsEditingMapInfo(true)}
+                  >
+                    Edit
+                  </button>
+                ) : null
+              )}
+            </div>
+
+            <div className="mt-5 border-t border-slate-300 pt-4">
+              <h3 className="text-sm font-semibold text-slate-900">Map Access</h3>
+              <div className="mt-2 space-y-2">
+                {mapMembers.length ? (
+                  mapMembers.map((member) => {
+                    const canEditMemberRole = canManageMapMetadata && member.user_id !== map.owner_id;
+                    const displayName = member.full_name?.trim() || (member.user_id === map.owner_id ? "Map Owner" : "User");
+                    const displayEmail = member.email?.trim() || (member.user_id === userId ? userEmail : "");
+                    return (
+                      <div key={member.user_id} className="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div className="text-sm font-semibold text-slate-900">{displayName}</div>
+                        <div className="text-xs text-slate-600">{displayEmail || member.user_id}</div>
+                        <div className="mt-2">
+                          {canEditMemberRole ? (
+                            <select
+                              className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+                              value={member.role}
+                              disabled={savingMemberRoleUserId === member.user_id}
+                              onChange={(e) =>
+                                void handleUpdateMapMemberRole(
+                                  member.user_id,
+                                  e.target.value as "read" | "partial_write" | "full_write"
+                                )
+                              }
+                            >
+                              <option value="read">Read</option>
+                              <option value="partial_write">Partial write</option>
+                              <option value="full_write">Full write</option>
+                            </select>
+                          ) : (
+                            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-700">
+                              {member.user_id === map.owner_id ? "Owner (Full write)" : mapRoleLabel(member.role)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">No linked users</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </aside>
+      )}
+
+      <main className="relative min-h-0 flex-1 overflow-hidden">
         <div
           ref={canvasRef}
           className="h-full w-full bg-stone-50"
+          onMouseDown={handlePaneMouseDown}
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
             setMobileNodeMenuId(null);
@@ -2210,9 +3605,27 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             nodes={flowNodes}
             edges={flowEdges}
             nodeTypes={flowNodeTypes}
+            edgeTypes={flowEdgeTypes}
             onInit={(instance) => setRf({ fitView: instance.fitView, screenToFlowPosition: instance.screenToFlowPosition, setViewport: instance.setViewport })}
             onNodesChange={handleFlowNodesChange}
-            onNodeClick={(_, n) => {
+            onNodeClick={(event, n) => {
+              if (mapRole === "read") {
+                if (n.data.entityKind === "sticky_note") {
+                  const stickyId = parseProcessFlowId(n.id);
+                  const sticky = elements.find((el) => el.id === stickyId && el.element_type === "sticky_note");
+                  if (sticky && canEditElement(sticky)) {
+                    setSelectedNodeId(null);
+                    setSelectedProcessId(null);
+                    setSelectedSystemId(null);
+                    setSelectedProcessComponentId(null);
+                    setSelectedGroupingId(null);
+                    setSelectedStickyId(stickyId);
+                    return;
+                  }
+                }
+                setSelectedStickyId(null);
+                return;
+              }
               if (n.data.entityKind === "category") {
                 if (isMobile) {
                   const now = Date.now();
@@ -2231,6 +3644,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedSystemId(null);
                 setSelectedProcessComponentId(null);
                 setSelectedGroupingId(null);
+                setSelectedStickyId(null);
                 setSelectedProcessId(parseProcessFlowId(n.id));
                 return;
               }
@@ -2255,6 +3669,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedProcessId(null);
                 setSelectedSystemId(null);
                 setSelectedGroupingId(null);
+                setSelectedStickyId(null);
                 setSelectedProcessComponentId(parseProcessFlowId(n.id));
                 return;
               }
@@ -2277,10 +3692,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedProcessId(null);
                 setSelectedProcessComponentId(null);
                 setSelectedGroupingId(null);
+                setSelectedStickyId(null);
                 setSelectedSystemId(parseProcessFlowId(n.id));
                 return;
               }
               if (n.data.entityKind === "grouping_container") {
+                const target = event.target as HTMLElement | null;
+                const clickedLabel = !!target?.closest(".grouping-drag-handle");
+                if (!clickedLabel) return;
                 if (isMobile) {
                   const now = Date.now();
                   const lastTap = lastMobileTapRef.current;
@@ -2300,7 +3719,17 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedProcessId(null);
                 setSelectedSystemId(null);
                 setSelectedProcessComponentId(null);
+                setSelectedStickyId(null);
                 setSelectedGroupingId(parseProcessFlowId(n.id));
+                return;
+              }
+              if (n.data.entityKind === "sticky_note") {
+                setSelectedNodeId(null);
+                setSelectedProcessId(null);
+                setSelectedSystemId(null);
+                setSelectedProcessComponentId(null);
+                setSelectedGroupingId(null);
+                setSelectedStickyId(parseProcessFlowId(n.id));
                 return;
               }
               if (isMobile) {
@@ -2319,31 +3748,58 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setSelectedSystemId(null);
               setSelectedProcessComponentId(null);
               setSelectedGroupingId(null);
+              setSelectedStickyId(null);
               setSelectedNodeId(n.id);
             }}
             onNodeContextMenu={(e, n) => {
+              if (!canUseContextMenu) return;
               e.preventDefault();
+              if (n.data.entityKind === "grouping_container") {
+                const target = e.target as HTMLElement | null;
+                const clickedLabel = !!target?.closest(".grouping-drag-handle");
+                if (!clickedLabel) return;
+              }
               if (isMobile) {
                 setMobileNodeMenuId(n.id);
                 return;
               }
+              setSelectedFlowIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(n.id)) next.delete(n.id);
+                else next.add(n.id);
+                return next;
+              });
+            }}
+            onPaneClick={handlePaneClickClearSelection}
+            onPaneContextMenu={(e) => {
+              if (!canUseContextMenu) return;
+              e.preventDefault();
             }}
             onNodeMouseEnter={(_, n) => setHoveredNodeId(n.id)}
             onNodeMouseLeave={() => setHoveredNodeId(null)}
             onNodeDragStop={onNodeDragStop}
             onMoveEnd={onMoveEnd}
+            nodesDraggable
+            onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+            onEdgeMouseLeave={() => setHoveredEdgeId(null)}
             onEdgeClick={(event, edge) => {
               event.preventDefault();
               event.stopPropagation();
               const rel = relations.find((r) => r.id === edge.id);
               if (!rel) return;
-              const fromNode = nodes.find((n) => n.id === rel.from_node_id);
+              const fromNode = rel.from_node_id ? nodes.find((n) => n.id === rel.from_node_id) : null;
+              const fromGrouping = rel.source_grouping_element_id
+                ? elements.find((el) => el.id === rel.source_grouping_element_id && el.element_type === "grouping_container")
+                : null;
               const toNode = rel.to_node_id ? nodes.find((n) => n.id === rel.to_node_id) : null;
               const toSystem = rel.target_system_element_id
                 ? elements.find((el) => el.id === rel.target_system_element_id && el.element_type === "system_circle")
                 : null;
-              const fromLabel = fromNode?.title || "Unknown document";
-              const toLabel = toNode?.title || toSystem?.heading || "Unknown destination";
+              const toGrouping = rel.target_grouping_element_id
+                ? elements.find((el) => el.id === rel.target_grouping_element_id && el.element_type === "grouping_container")
+                : null;
+              const fromLabel = fromNode?.title || fromGrouping?.heading || "Unknown source";
+              const toLabel = toNode?.title || toSystem?.heading || toGrouping?.heading || "Unknown destination";
               const relationLabel = getDisplayRelationType(rel.relation_type);
               const relationshipType = getRelationshipCategoryLabel(rel.relationship_category, rel.relationship_custom_type);
               const disciplines = getRelationshipDisciplineLetters(rel.relationship_disciplines);
@@ -2373,6 +3829,44 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             <Background id="major" variant={BackgroundVariant.Lines} gap={majorGridSize} size={1.2} color="#d6d3d1" />
           </ReactFlow>
         </div>
+
+        {selectionMarquee.active && (
+          <div
+            className="pointer-events-none fixed z-[66] border border-[#0f172a] bg-[#0f172a]/10"
+            style={{
+              left: Math.min(selectionMarquee.startClientX, selectionMarquee.currentClientX),
+              top: Math.min(selectionMarquee.startClientY, selectionMarquee.currentClientY),
+              width: Math.abs(selectionMarquee.currentClientX - selectionMarquee.startClientX),
+              height: Math.abs(selectionMarquee.currentClientY - selectionMarquee.startClientY),
+            }}
+          />
+        )}
+
+        {showDeleteSelectionConfirm && (
+          <div className="fixed inset-0 z-[92] flex items-center justify-center bg-slate-900/45 p-4">
+            <div className="w-full max-w-lg rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
+              <h2 className="text-lg font-semibold text-slate-900">Delete selected components?</h2>
+              <p className="mt-2 text-sm text-slate-700">
+                You are about to permanently delete {selectedFlowIds.size} selected component{selectedFlowIds.size === 1 ? "" : "s"} and associated data.
+                This action cannot be recovered.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                  onClick={handleDeleteSelectedComponents}
+                >
+                  Delete selected
+                </button>
+                <button
+                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                  onClick={() => setShowDeleteSelectionConfirm(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
 
         {isMobile && mobileNodeMenuId && (
@@ -2438,10 +3932,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 <div className="text-xs text-slate-800">{relationshipPopup.toLabel}</div>
               </div>
               <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relation Label</div>
-                <div className="text-xs text-slate-800">{relationshipPopup.relationLabel}</div>
-              </div>
-              <div>
                 <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Type</div>
                 <div className="text-xs text-slate-800">{relationshipPopup.relationshipType}</div>
               </div>
@@ -2461,8 +3951,66 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
             <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70">
               <h2 className="text-lg font-semibold">Add Relationship</h2>
-              <p className="mt-1 text-sm text-slate-600">From: {relationshipSourceNode?.title || "Unknown document"}</p>
+              <p className="mt-1 text-sm text-slate-600">From: {relationshipSourceNode?.title || relationshipSourceGrouping?.heading || "Unknown source"}</p>
               <div className="mt-4 grid gap-3">
+                {relationshipModeGrouping ? (
+                  <div className="relative">
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Grouping Containers</div>
+                    <div className="relative flex">
+                      <input
+                        className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
+                        placeholder="Search grouping containers..."
+                        value={relationshipGroupingQuery}
+                        onChange={(e) => {
+                          const query = e.target.value;
+                          setRelationshipGroupingQuery(query);
+                          const candidateId = groupingRelationCandidateIdByLabel.get(query) ?? "";
+                          setRelationshipTargetGroupingId(candidateId && !alreadyRelatedGroupingTargetIds.has(candidateId) ? candidateId : "");
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
+                        onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
+                      >
+                        {showRelationshipGroupingOptions ? "▲" : "▼"}
+                      </button>
+                    </div>
+                    {showRelationshipGroupingOptions && (
+                      <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
+                        {groupingRelationCandidates.length > 0 ? groupingRelationCandidates.map((el) => {
+                          const optionLabel = groupingRelationCandidateLabelById.get(el.id) ?? (el.heading || "Group label");
+                          const isDisabled = alreadyRelatedGroupingTargetIds.has(el.id);
+                          return (
+                            <button
+                              key={el.id}
+                              type="button"
+                              className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
+                                isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
+                              }`}
+                              disabled={isDisabled}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                if (isDisabled) return;
+                                setRelationshipTargetGroupingId(el.id);
+                                setRelationshipGroupingQuery(optionLabel);
+                                setShowRelationshipGroupingOptions(false);
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span>{optionLabel}</span>
+                                {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
+                              </div>
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
                 <div className="relative">
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
                   <div className="relative flex">
@@ -2581,6 +4129,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                     </div>
                   )}
                 </div>
+                  </>
+                )}
                 <div>
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Disciplines</div>
                   <div className="relative">
@@ -2659,7 +4209,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 <button className="btn btn-outline" onClick={closeAddRelationshipModal}>Cancel</button>
                 <button
                   className="btn btn-primary"
-                  disabled={(!relationshipTargetDocumentId && !relationshipTargetSystemId) || (relationshipCategory === "other" && !relationshipCustomType.trim())}
+                  disabled={
+                    (!relationshipModeGrouping && !relationshipTargetDocumentId && !relationshipTargetSystemId) ||
+                    (relationshipModeGrouping && !relationshipTargetGroupingId) ||
+                    (relationshipCategory === "other" && !relationshipCustomType.trim())
+                  }
                   onClick={handleAddRelation}
                 >
                   Add relationship
@@ -2702,9 +4256,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
         {selectedProcess && (
           <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] ${
+            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
               isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
             }`}
+            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
           >
             <div className="flex h-full flex-col overflow-auto p-4">
               <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
@@ -2720,34 +4275,47 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                     placeholder="Enter category label"
                   />
                 </label>
-                <label className="text-sm text-white">Width (small squares, min 10)
+                <label className="text-sm text-white">Width (small squares, min {processMinWidthSquares})
                   <input
-                    type="number"
-                    min={10}
-                    step={1}
+                    type="text"
+                    inputMode="numeric"
                     className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
                     value={processWidthDraft}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      if (!Number.isFinite(next)) return;
-                      setProcessWidthDraft(Math.max(10, Math.round(next)));
-                    }}
+                    onChange={(e) => setProcessWidthDraft(e.target.value)}
                   />
                 </label>
-                <label className="text-sm text-white">Height (small squares, min 3)
+                <label className="text-sm text-white">Height (small squares, min {processMinHeightSquares})
                   <input
-                    type="number"
-                    min={3}
-                    step={1}
+                    type="text"
+                    inputMode="numeric"
                     className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
                     value={processHeightDraft}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      if (!Number.isFinite(next)) return;
-                      setProcessHeightDraft(Math.max(3, Math.round(next)));
-                    }}
+                    onChange={(e) => setProcessHeightDraft(e.target.value)}
                   />
                 </label>
+                <div className="text-sm text-white">
+                  <div>Category Colour</div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {categoryColorOptions.map((option) => {
+                      const selected = (processColorDraft ?? "").toLowerCase() === option.value.toLowerCase();
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          title={option.name}
+                          aria-label={option.name}
+                          className={`h-8 rounded-none border ${selected ? "border-white ring-2 ring-white/80" : "border-slate-300"} shadow-sm`}
+                          style={{ backgroundColor: option.value }}
+                          onClick={() =>
+                            setProcessColorDraft((prev) =>
+                              (prev ?? "").toLowerCase() === option.value.toLowerCase() ? null : option.value
+                            )
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               <div className="mt-4 flex items-center justify-between">
                 <button
@@ -2765,9 +4333,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         )}
         {selectedSystem && (
           <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] ${
+            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
               isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
             }`}
+            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
           >
             <div className="flex h-full flex-col overflow-auto p-4">
               <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
@@ -2800,9 +4369,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         )}
         {selectedProcessComponent && (
           <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] ${
+            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
               isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
             }`}
+            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
           >
             <div className="flex h-full flex-col overflow-auto p-4">
               <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
@@ -2835,14 +4405,39 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         )}
         {selectedGrouping && (
           <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] ${
+            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
               isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
             }`}
+            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
           >
             <div className="flex h-full flex-col overflow-auto p-4">
               <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
                 <h2 className="text-lg font-semibold text-white">Grouping Container</h2>
                 <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedGroupingId(null)}>Close</button>
+              </div>
+              <div className="mt-3">
+                <button
+                  title="Add Relationship"
+                  aria-label="Add Relationship"
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
+                  onClick={() => {
+                    setRelationshipSourceGroupingId(selectedGrouping.id);
+                    setRelationshipSourceNodeId(null);
+                    setRelationshipGroupingQuery("");
+                    setRelationshipTargetGroupingId("");
+                    setShowRelationshipGroupingOptions(false);
+                    setRelationshipDescription("");
+                    setRelationshipDisciplineSelection([]);
+                    setShowRelationshipDisciplineMenu(false);
+                    setRelationshipCategory("information");
+                    setRelationshipCustomType("");
+                    setShowAddRelationship(true);
+                    setDesktopNodeAction("relationship");
+                  }}
+                >
+                  <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
+                  <span className="truncate">Relationship</span>
+                </button>
               </div>
               <div className="mt-4 space-y-3">
                 <label className="text-sm text-white">Group Label
@@ -2855,30 +4450,20 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 </label>
                 <label className="text-sm text-white">Width (small squares)
                   <input
-                    type="number"
-                    min={Math.round(groupingMinWidth / minorGridSize)}
-                    step={1}
+                    type="text"
+                    inputMode="numeric"
                     className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
                     value={groupingWidthDraft}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      if (!Number.isFinite(next)) return;
-                      setGroupingWidthDraft(Math.max(Math.round(groupingMinWidth / minorGridSize), Math.round(next)));
-                    }}
+                    onChange={(e) => setGroupingWidthDraft(e.target.value)}
                   />
                 </label>
                 <label className="text-sm text-white">Height (small squares)
                   <input
-                    type="number"
-                    min={Math.round(groupingMinHeight / minorGridSize)}
-                    step={1}
+                    type="text"
+                    inputMode="numeric"
                     className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
                     value={groupingHeightDraft}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      if (!Number.isFinite(next)) return;
-                      setGroupingHeightDraft(Math.max(Math.round(groupingMinHeight / minorGridSize), Math.round(next)));
-                    }}
+                    onChange={(e) => setGroupingHeightDraft(e.target.value)}
                   />
                 </label>
               </div>
@@ -2893,11 +4478,215 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 </button>
                 <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveGroupingContainer}>Save container</button>
               </div>
+              <div className="mt-6 border-t border-[#5f7894]/70 pt-4">
+                <h3 className="font-semibold text-white">Relationships</h3>
+                <div className="mt-3 space-y-2">
+                  {relatedGroupingRows.map((r) => {
+                    const sourceGrouping = r.source_grouping_element_id
+                      ? elements.find((el) => el.id === r.source_grouping_element_id && el.element_type === "grouping_container")
+                      : null;
+                    const targetGrouping = r.target_grouping_element_id
+                      ? elements.find((el) => el.id === r.target_grouping_element_id && el.element_type === "grouping_container")
+                      : null;
+                    const sourceLabel = sourceGrouping?.heading || "Unknown grouping container";
+                    const targetLabel = targetGrouping?.heading || "Unknown grouping container";
+                    const isEditing = editingRelationId === r.id;
+                    return (
+                      <div key={r.id} className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-800">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-sm font-medium">
+                            {sourceLabel} {"->"} {targetLabel} <span className="font-normal text-slate-500">(Grouping Container)</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              title="Edit relationship definition"
+                              aria-label="Edit relationship definition"
+                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
+                              onClick={() => {
+                                setEditingRelationId(r.id);
+                                setEditingRelationDescription(r.relationship_description ?? "");
+                                const nextCategory = (r.relationship_category || "information").toLowerCase();
+                                setEditingRelationCategory(
+                                  nextCategory === "information" || nextCategory === "systems" || nextCategory === "process" || nextCategory === "data" || nextCategory === "other"
+                                    ? (nextCategory as RelationshipCategory)
+                                    : "information"
+                                );
+                                setEditingRelationCustomType(r.relationship_custom_type ?? "");
+                                setEditingRelationDisciplines(
+                                  (r.relationship_disciplines ?? []).filter(
+                                    (key): key is DisciplineKey => disciplineKeySet.has(key as DisciplineKey)
+                                  )
+                                );
+                                setShowEditingRelationDisciplineMenu(false);
+                              }}
+                            >
+                              <img src="/icons/edit.svg" alt="" className="h-4 w-4" />
+                            </button>
+                            <button
+                              title="Delete relationship"
+                              aria-label="Delete relationship"
+                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
+                              onClick={() => handleDeleteRelation(r.id)}
+                            >
+                              <img src="/icons/delete.svg" alt="" className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                        {isEditing ? (
+                          <div className="mt-2 space-y-2">
+                            <div className="text-[11px]">
+                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Type</div>
+                              <div className="relative mt-1">
+                                <select
+                                  className="w-full appearance-none rounded-none border border-slate-300 bg-white px-2 py-1 text-xs text-black"
+                                  value={editingRelationCategory}
+                                  onChange={(e) => setEditingRelationCategory(e.target.value as RelationshipCategory)}
+                                >
+                                  <option value="information">Information</option>
+                                  <option value="systems">Systems</option>
+                                  <option value="process">Process</option>
+                                  <option value="data">Data</option>
+                                  <option value="other">Other</option>
+                                </select>
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-black">▼</span>
+                              </div>
+                            </div>
+                            {editingRelationCategory === "other" && (
+                              <div className="text-[11px]">
+                                <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Custom Type</div>
+                                <input
+                                  className="mt-1 w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
+                                  value={editingRelationCustomType}
+                                  onChange={(e) => setEditingRelationCustomType(e.target.value)}
+                                  placeholder="Enter custom relationship type"
+                                />
+                              </div>
+                            )}
+                            <div className="text-[11px]">
+                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Disciplines</div>
+                              <div className="relative mt-1">
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between rounded-none border border-slate-300 bg-white px-2 py-1 text-left text-xs text-black"
+                                  onClick={() => setShowEditingRelationDisciplineMenu((prev) => !prev)}
+                                >
+                                  <span className="truncate">
+                                    {editingRelationDisciplines.length
+                                      ? editingRelationDisciplines.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
+                                      : "Select disciplines"}
+                                  </span>
+                                  <span className="text-[10px] text-black">{showEditingRelationDisciplineMenu ? "▲" : "▼"}</span>
+                                </button>
+                                {showEditingRelationDisciplineMenu && (
+                                  <div className="absolute z-30 mt-1 w-full rounded-none border border-slate-300 bg-white p-2 shadow-lg">
+                                    {disciplineOptions.map((option) => {
+                                      const checked = editingRelationDisciplines.includes(option.key);
+                                      return (
+                                        <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-black hover:bg-slate-50">
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() =>
+                                              setEditingRelationDisciplines((prev) =>
+                                                prev.includes(option.key)
+                                                  ? prev.filter((key) => key !== option.key)
+                                                  : [...prev, option.key]
+                                              )
+                                            }
+                                          />
+                                          <span>{option.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
+                            <textarea
+                              className="w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
+                              rows={3}
+                              value={editingRelationDescription}
+                              onChange={(e) => setEditingRelationDescription(e.target.value)}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                className="rounded-none border border-black bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-slate-100"
+                                onClick={() => void handleUpdateRelation(r.id)}
+                              >
+                                Save
+                              </button>
+                              <button
+                                className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
+                                onClick={() => {
+                                  setEditingRelationId(null);
+                                  setEditingRelationDescription("");
+                                  setEditingRelationCategory("information");
+                                  setEditingRelationCustomType("");
+                                  setEditingRelationDisciplines([]);
+                                  setShowEditingRelationDisciplineMenu(false);
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
+                            <div className="mt-1 text-xs text-slate-600">{r.relationship_description?.trim() || "No relationship context added by user"}</div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </aside>
+        )}
+        {selectedSticky && (
+          <aside
+            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
+              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
+            }`}
+            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
+          >
+            <div className="flex h-full flex-col overflow-auto p-4">
+              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
+                <h2 className="text-lg font-semibold text-white">Sticky Note</h2>
+                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedStickyId(null)}>Close</button>
+              </div>
+              <div className="mt-4 space-y-3">
+                <label className="text-sm text-white">Note Text
+                  <textarea
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+                    rows={8}
+                    value={stickyTextDraft}
+                    onChange={(e) => setStickyTextDraft(e.target.value)}
+                    placeholder="Enter sticky note text"
+                  />
+                </label>
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <button
+                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
+                  onClick={async () => {
+                    await handleDeleteProcessElement(selectedSticky.id);
+                  }}
+                >
+                  Delete note
+                </button>
+                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveStickyNote}>Save note</button>
+              </div>
             </div>
           </aside>
         )}
         {selectedNode && !isMobile && (
-          <aside className="fixed bottom-0 left-0 top-[70px] z-[75] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)]">
+          <aside
+            className="fixed bottom-0 left-0 top-[70px] z-[75] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300"
+            style={{ transform: leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)" }}
+          >
             <div className="flex h-full flex-col overflow-auto p-4">
               <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
                 <h2 className="text-lg font-semibold text-white">Document Properties</h2>
@@ -2910,12 +4699,16 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   className="flex h-11 items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
                   onClick={() => {
                     setRelationshipSourceNodeId(selectedNode.id);
+                    setRelationshipSourceGroupingId(null);
                     setRelationshipDocumentQuery("");
                     setRelationshipSystemQuery("");
+                    setRelationshipGroupingQuery("");
                     setRelationshipTargetDocumentId("");
                     setRelationshipTargetSystemId("");
+                    setRelationshipTargetGroupingId("");
                     setShowRelationshipDocumentOptions(false);
                     setShowRelationshipSystemOptions(false);
+                    setShowRelationshipGroupingOptions(false);
                     setRelationshipDescription("");
                     setRelationshipDisciplineSelection([]);
                     setShowRelationshipDisciplineMenu(false);
@@ -2984,6 +4777,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   </div>
                 </label>
                 <label className="text-sm text-white">Name<input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+                <label className="text-sm text-white">Document Number<input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="Enter document number" /></label>
                 <div className="text-sm text-white">
                   <div className="text-white">Discipline</div>
                   <div ref={disciplineMenuRef} className="relative mt-1">
@@ -3225,7 +5019,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             </div>
           </aside>
         )}
-        {selectedNode && !isMobile && desktopNodeAction === "relationship" && showAddRelationship && (
+        {(selectedNode || selectedGrouping) && !isMobile && desktopNodeAction === "relationship" && showAddRelationship && (
           <aside
             className="fixed bottom-0 left-[420px] top-[70px] z-[74] w-full max-w-[420px] border-l border-r border-slate-300 bg-white shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform"
           >
@@ -3234,8 +5028,66 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 <h2 className="text-base font-semibold">Add Relationship</h2>
                 <button className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => { closeAddRelationshipModal(); setDesktopNodeAction(null); }}>Close</button>
               </div>
-              <p className="mt-3 text-sm text-slate-600">From: {relationshipSourceNode?.title || "Unknown document"}</p>
+              <p className="mt-3 text-sm text-slate-600">From: {relationshipSourceNode?.title || relationshipSourceGrouping?.heading || "Unknown source"}</p>
               <div className="mt-3 grid gap-3">
+                {relationshipModeGrouping ? (
+                  <div className="relative">
+                    <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Grouping Containers</div>
+                    <div className="relative flex">
+                      <input
+                        className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
+                        placeholder="Search grouping containers..."
+                        value={relationshipGroupingQuery}
+                        onChange={(e) => {
+                          const query = e.target.value;
+                          setRelationshipGroupingQuery(query);
+                          const candidateId = groupingRelationCandidateIdByLabel.get(query) ?? "";
+                          setRelationshipTargetGroupingId(candidateId && !alreadyRelatedGroupingTargetIds.has(candidateId) ? candidateId : "");
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
+                        onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
+                      >
+                        {showRelationshipGroupingOptions ? "▲" : "▼"}
+                      </button>
+                    </div>
+                    {showRelationshipGroupingOptions && (
+                      <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
+                        {groupingRelationCandidates.length > 0 ? groupingRelationCandidates.map((el) => {
+                          const optionLabel = groupingRelationCandidateLabelById.get(el.id) ?? (el.heading || "Group label");
+                          const isDisabled = alreadyRelatedGroupingTargetIds.has(el.id);
+                          return (
+                            <button
+                              key={el.id}
+                              type="button"
+                              className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
+                                isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
+                              }`}
+                              disabled={isDisabled}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                if (isDisabled) return;
+                                setRelationshipTargetGroupingId(el.id);
+                                setRelationshipGroupingQuery(optionLabel);
+                                setShowRelationshipGroupingOptions(false);
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span>{optionLabel}</span>
+                                {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
+                              </div>
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
                 <div className="relative">
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
                   <div className="relative flex">
@@ -3354,6 +5206,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                     </div>
                   )}
                 </div>
+                  </>
+                )}
                 <div>
                   <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Disciplines</div>
                   <div className="relative">
@@ -3431,7 +5285,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               <div className="mt-4 flex justify-end gap-2">
                 <button
                   className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={(!relationshipTargetDocumentId && !relationshipTargetSystemId) || (relationshipCategory === "other" && !relationshipCustomType.trim())}
+                  disabled={
+                    (!relationshipModeGrouping && !relationshipTargetDocumentId && !relationshipTargetSystemId) ||
+                    (relationshipModeGrouping && !relationshipTargetGroupingId) ||
+                    (relationshipCategory === "other" && !relationshipCustomType.trim())
+                  }
                   onClick={async () => { await handleAddRelation(); setDesktopNodeAction(null); }}
                 >
                   Add relationship
@@ -3479,6 +5337,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   </select>
                 </label>
                 <label className="text-sm">Name<input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+                <label className="text-sm">Document Number<input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="Enter document number" /></label>
                 <div className="text-sm">
                   <div>Discipline</div>
                   <div ref={disciplineMenuRef} className="relative mt-1">
@@ -3573,15 +5432,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             <div className="space-y-3 overflow-auto px-4 py-4">
               <div className="mt-2 rounded border border-slate-200 p-3">
                 <div className="text-sm font-semibold">Actions</div>
-                <div className="mt-2 flex gap-2">
-                  <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => {
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => {
                     closeOutlineEditor();
                     setOutlineCreateMode("heading");
                     setNewHeadingTitle("");
                     setNewHeadingLevel(1);
                     setNewHeadingParentId("");
                   }}>Add Heading</button>
-                  <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => {
+                  <button className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => {
                     closeOutlineEditor();
                     setOutlineCreateMode("content");
                     setNewContentText("");
