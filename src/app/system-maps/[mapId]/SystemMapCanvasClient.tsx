@@ -78,7 +78,7 @@ type NodeRelationRow = {
 type CanvasElementRow = {
   id: string;
   map_id: string;
-  element_type: "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note";
+  element_type: "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note" | "person";
   heading: string;
   color_hex: string | null;
   created_by_user_id: string | null;
@@ -113,7 +113,7 @@ type OutlineItemRow = {
 };
 
 type FlowData = {
-  entityKind: "document" | "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note";
+  entityKind: "document" | "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note" | "person";
   typeName: string;
   title: string;
   documentNumber?: string;
@@ -168,6 +168,11 @@ const processComponentElementHeight = processComponentBodyHeight + processCompon
 const systemCircleDiameter = minorGridSize * 5;
 const systemCircleLabelHeight = minorGridSize;
 const systemCircleElementHeight = systemCircleDiameter + systemCircleLabelHeight;
+const personIconSize = minorGridSize * 4;
+const personRoleLabelHeight = minorGridSize;
+const personDepartmentLabelHeight = minorGridSize;
+const personElementWidth = personIconSize;
+const personElementHeight = personIconSize + personRoleLabelHeight + personDepartmentLabelHeight;
 const groupingDefaultWidth = minorGridSize * 22;
 const groupingDefaultHeight = minorGridSize * 12;
 const groupingMinWidth = minorGridSize * 8;
@@ -211,6 +216,15 @@ const getDisplayTypeName = (typeName: string) =>
   typeName.trim().toLowerCase() === "management system manual" ? "System Manual" : typeName;
 const isLandscapeTypeName = (typeName: string) => typeName.trim().toLowerCase() === "risk document";
 const getCanonicalTypeName = (typeName: string) => getDisplayTypeName(typeName).trim().toLowerCase();
+const parsePersonLabels = (heading: string | null | undefined) => {
+  const raw = heading ?? "";
+  const [roleLine, ...rest] = raw.split("\n");
+  const role = roleLine?.trim() || "Role Name";
+  const department = rest.join("\n").trim() || "Department";
+  return { role, department };
+};
+const buildPersonHeading = (role: string, department: string) =>
+  `${role.trim() || "Role Name"}\n${department.trim() || "Department"}`;
 const processFlowId = (id: string) => `process:${id}`;
 const parseProcessFlowId = (id: string) => (id.startsWith("process:") ? id.slice(8) : id);
 const isAbortLikeError = (error: unknown) => {
@@ -316,6 +330,25 @@ const getRelationshipDisciplineLetters = (disciplines: string[] | null | undefin
     .map((key) => disciplineLetterByKey.get(key as DisciplineKey) || "")
     .filter(Boolean)
     .join("");
+};
+const getElementRelationshipTypeLabel = (elementType: CanvasElementRow["element_type"]) => {
+  if (elementType === "system_circle") return "System";
+  if (elementType === "process_component") return "Process";
+  if (elementType === "person") return "Person";
+  if (elementType === "grouping_container") return "Grouping Container";
+  if (elementType === "category") return "Category";
+  if (elementType === "sticky_note") return "Sticky Note";
+  return "Component";
+};
+const getElementDisplayName = (element: CanvasElementRow) => {
+  if (element.element_type === "person") {
+    const labels = parsePersonLabels(element.heading);
+    return labels.role;
+  }
+  return element.heading || "Untitled";
+};
+const getElementRelationshipDisplayLabel = (element: CanvasElementRow) => {
+  return `${getElementDisplayName(element)} (${getElementRelationshipTypeLabel(element.element_type)})`;
 };
 
 const getTypeBannerStyle = (typeName: string) => {
@@ -671,6 +704,42 @@ function StickyNoteNode({ data, selected }: NodeProps<Node<FlowData>>) {
     </div>
   );
 }
+function PersonNode({ data }: NodeProps<Node<FlowData>>) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-start overflow-visible">
+      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <div
+        className="flex items-center justify-center rounded-full border border-slate-300 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.16)]"
+        style={{ width: personIconSize, height: personIconSize }}
+      >
+        <img
+          src="/icons/account.svg"
+          alt=""
+          className="h-full w-full object-contain"
+        />
+      </div>
+      <div
+        className="mt-1 text-center text-[10px] font-semibold leading-tight text-slate-900 whitespace-normal break-words"
+        style={{ width: `${minorGridSize * 7}px`, maxWidth: `${minorGridSize * 7}px` }}
+      >
+        {parsePersonLabels(data.title).role}
+      </div>
+      <div
+        className="mt-0.5 text-center text-[9px] font-normal leading-tight text-slate-700 whitespace-normal break-words"
+        style={{ width: `${minorGridSize * 7}px`, maxWidth: `${minorGridSize * 7}px` }}
+      >
+        {parsePersonLabels(data.title).department}
+      </div>
+    </div>
+  );
+}
 const flowNodeTypes = {
   documentTile: DocumentTileNode,
   processHeading: ProcessHeadingNode,
@@ -678,6 +747,7 @@ const flowNodeTypes = {
   processComponent: ProcessComponentNode,
   groupingContainer: GroupingContainerNode,
   stickyNote: StickyNoteNode,
+  personNode: PersonNode,
 } as const;
 const flowEdgeTypes = {
   smartBezier: SmartBezierEdge,
@@ -812,6 +882,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [selectedSystemId, setSelectedSystemId] = useState<string | null>(null);
   const [selectedProcessComponentId, setSelectedProcessComponentId] = useState<string | null>(null);
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [selectedGroupingId, setSelectedGroupingId] = useState<string | null>(null);
   const [selectedStickyId, setSelectedStickyId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -829,6 +900,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [processColorDraft, setProcessColorDraft] = useState<string | null>(null);
   const [processComponentLabelDraft, setProcessComponentLabelDraft] = useState("");
   const [systemNameDraft, setSystemNameDraft] = useState("");
+  const [personRoleDraft, setPersonRoleDraft] = useState("");
+  const [personDepartmentDraft, setPersonDepartmentDraft] = useState("");
   const [groupingLabelDraft, setGroupingLabelDraft] = useState("");
   const [groupingWidthDraft, setGroupingWidthDraft] = useState<string>(String(Math.round(groupingDefaultWidth / minorGridSize)));
   const [groupingHeightDraft, setGroupingHeightDraft] = useState<string>(String(Math.round(groupingDefaultHeight / minorGridSize)));
@@ -1008,6 +1081,9 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       }
       if (el.element_type === "process_component") {
         return { x: el.pos_x, y: el.pos_y, width: processComponentWidth, height: processComponentElementHeight };
+      }
+      if (el.element_type === "person") {
+        return { x: el.pos_x, y: el.pos_y, width: personElementWidth, height: personElementHeight };
       }
       if (el.element_type === "sticky_note") {
         return {
@@ -1273,6 +1349,42 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 },
               };
             })()
+            : el.element_type === "person"
+            ? (() => {
+                const flowId = processFlowId(el.id);
+                const isMarked = selectedFlowIds.has(flowId);
+                const canEditThis = canEditElement(el);
+                return {
+                id: flowId,
+                type: "personNode",
+                position: { x: el.pos_x, y: el.pos_y },
+                zIndex: 30,
+                selected: isMarked,
+                draggable: canEditThis,
+                selectable: canWriteMap,
+                style: {
+                  width: personElementWidth,
+                  height: personElementHeight,
+                  borderRadius: 0,
+                  border: "none",
+                  background: "transparent",
+                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
+                  padding: 0,
+                  overflow: "visible",
+                },
+                data: {
+                  entityKind: "person" as const,
+                  typeName: "Person",
+                  title: el.heading ?? buildPersonHeading("Role Name", "Department"),
+                  userGroup: "",
+                  disciplineKeys: [],
+                  bannerBg: "#ffffff",
+                  bannerText: "#111827",
+                  isLandscape: true,
+                  isUnconfigured: false,
+                },
+              };
+            })()
             : el.element_type === "system_circle"
             ? (() => {
                 const flowId = processFlowId(el.id);
@@ -1355,8 +1467,23 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       const pairTotals = new Map<string, number>();
       const pairSeen = new Map<string, number>();
       const nodesById = new Map(nodes.map((n) => [n.id, n]));
-      const systemElementsById = new Map(elements.filter((el) => el.element_type === "system_circle").map((el) => [el.id, el]));
-      const groupingElementsById = new Map(elements.filter((el) => el.element_type === "grouping_container").map((el) => [el.id, el]));
+      const relationshipElementsById = new Map(
+        elements
+          .filter((el) => el.element_type === "system_circle" || el.element_type === "process_component" || el.element_type === "person" || el.element_type === "grouping_container")
+          .map((el) => [el.id, el])
+      );
+      const getElementDimensions = (el: CanvasElementRow) => {
+        if (el.element_type === "system_circle") return { width: systemCircleDiameter, height: systemCircleElementHeight };
+        if (el.element_type === "process_component") return { width: processComponentWidth, height: processComponentElementHeight };
+        if (el.element_type === "person") return { width: personElementWidth, height: personElementHeight };
+        if (el.element_type === "grouping_container") {
+          return {
+            width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
+            height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
+          };
+        }
+        return { width: Math.max(processMinWidth, el.width || processHeadingWidth), height: Math.max(processMinHeight, el.height || processHeadingHeight) };
+      };
       const relationEndpointKey = (r: NodeRelationRow) => {
         if (r.source_grouping_element_id && r.target_grouping_element_id) {
           const a = processFlowId(r.source_grouping_element_id);
@@ -1380,19 +1507,23 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         pairTotals.set(key, (pairTotals.get(key) ?? 0) + 1);
       });
       const obstacleElementRects = elements
-        .filter((el) => el.element_type === "system_circle" || el.element_type === "process_component" || el.element_type === "category")
+        .filter((el) => el.element_type === "system_circle" || el.element_type === "process_component" || el.element_type === "category" || el.element_type === "person")
         .map((el) => {
           const width =
             el.element_type === "system_circle"
               ? systemCircleDiameter
               : el.element_type === "process_component"
                 ? processComponentWidth
+                : el.element_type === "person"
+                  ? personElementWidth
                 : Math.max(processMinWidth, el.width || processHeadingWidth);
           const height =
             el.element_type === "system_circle"
               ? systemCircleElementHeight
               : el.element_type === "process_component"
                 ? processComponentElementHeight
+                : el.element_type === "person"
+                  ? personElementHeight
                 : Math.max(processMinHeight, el.height || processHeadingHeight);
           return { id: el.id, x: el.pos_x, y: el.pos_y, width, height };
         });
@@ -1414,11 +1545,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       return relations.map((r) => {
         const sourceDoc = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
         const targetDoc = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
-        const targetSystem = r.target_system_element_id ? systemElementsById.get(r.target_system_element_id) : undefined;
-        const sourceGrouping = r.source_grouping_element_id ? groupingElementsById.get(r.source_grouping_element_id) : undefined;
-        const targetGrouping = r.target_grouping_element_id ? groupingElementsById.get(r.target_grouping_element_id) : undefined;
+        const targetElement = r.target_system_element_id ? relationshipElementsById.get(r.target_system_element_id) : undefined;
+        const sourceGrouping = r.source_grouping_element_id ? relationshipElementsById.get(r.source_grouping_element_id) : undefined;
+        const targetGrouping = r.target_grouping_element_id ? relationshipElementsById.get(r.target_grouping_element_id) : undefined;
         if (!sourceDoc && !(sourceGrouping && targetGrouping)) return null;
-        if (sourceDoc && !targetDoc && !targetSystem) return null;
+        if (sourceDoc && !targetDoc && !targetElement) return null;
         const from = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
         const to = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
         let source = from ? from.id : "";
@@ -1429,10 +1560,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         if (sourceGrouping && targetGrouping) {
           source = processFlowId(sourceGrouping.id);
           target = processFlowId(targetGrouping.id);
-          const sourceWidth = Math.max(groupingMinWidth, sourceGrouping.width || groupingDefaultWidth);
-          const sourceHeight = Math.max(groupingMinHeight, sourceGrouping.height || groupingDefaultHeight);
-          const targetWidth = Math.max(groupingMinWidth, targetGrouping.width || groupingDefaultWidth);
-          const targetHeight = Math.max(groupingMinHeight, targetGrouping.height || groupingDefaultHeight);
+          const sourceDims = getElementDimensions(sourceGrouping);
+          const targetDims = getElementDimensions(targetGrouping);
+          const sourceWidth = sourceDims.width;
+          const sourceHeight = sourceDims.height;
+          const targetWidth = targetDims.width;
+          const targetHeight = targetDims.height;
           const fromCenterX = sourceGrouping.pos_x + sourceWidth / 2;
           const fromCenterY = sourceGrouping.pos_y + sourceHeight / 2;
           const toCenterX = targetGrouping.pos_x + targetWidth / 2;
@@ -1522,13 +1655,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             targetHandle = forward.targetHandle;
           }
         }
-        if (from && targetSystem) {
-          target = processFlowId(targetSystem.id);
+        if (from && targetElement) {
+          target = processFlowId(targetElement.id);
           const fromSize = getNodeSize(from);
           const fromLeft = from.pos_x;
           const fromTop = from.pos_y;
-          const toLeft = targetSystem.pos_x;
-          const toTop = targetSystem.pos_y;
+          const toLeft = targetElement.pos_x;
+          const toTop = targetElement.pos_y;
+          const targetSize = getElementDimensions(targetElement);
           const fromAnchors = {
             top: { x: fromLeft + fromSize.width / 2, y: fromTop },
             bottom: { x: fromLeft + fromSize.width / 2, y: fromTop + fromSize.height },
@@ -1536,10 +1670,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             right: { x: fromLeft + fromSize.width, y: fromTop + fromSize.height / 2 },
           };
           const toAnchors = {
-            top: { x: toLeft + systemCircleDiameter / 2, y: toTop },
-            bottom: { x: toLeft + systemCircleDiameter / 2, y: toTop + systemCircleElementHeight },
-            left: { x: toLeft, y: toTop + systemCircleElementHeight / 2 },
-            right: { x: toLeft + systemCircleDiameter, y: toTop + systemCircleElementHeight / 2 },
+            top: { x: toLeft + targetSize.width / 2, y: toTop },
+            bottom: { x: toLeft + targetSize.width / 2, y: toTop + targetSize.height },
+            left: { x: toLeft, y: toTop + targetSize.height / 2 },
+            right: { x: toLeft + targetSize.width, y: toTop + targetSize.height / 2 },
           };
           const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
             top: "top-source",
@@ -1561,7 +1695,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
               }),
             ...obstacleElementRects
-              .filter((rect) => rect.id !== targetSystem.id)
+              .filter((rect) => rect.id !== targetElement.id)
               .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
           ];
           const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
@@ -1651,6 +1785,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     () => (selectedProcessComponentId ? elements.find((el) => el.id === selectedProcessComponentId && el.element_type === "process_component") ?? null : null),
     [selectedProcessComponentId, elements]
   );
+  const selectedPerson = useMemo(
+    () => (selectedPersonId ? elements.find((el) => el.id === selectedPersonId && el.element_type === "person") ?? null : null),
+    [selectedPersonId, elements]
+  );
   const selectedGrouping = useMemo(
     () => (selectedGroupingId ? elements.find((el) => el.id === selectedGroupingId && el.element_type === "grouping_container") ?? null : null),
     [selectedGroupingId, elements]
@@ -1705,10 +1843,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (selectedProcess) return `category:${selectedProcess.id}`;
     if (selectedSystem) return `system:${selectedSystem.id}`;
     if (selectedProcessComponent) return `process:${selectedProcessComponent.id}`;
+    if (selectedPerson) return `person:${selectedPerson.id}`;
     if (selectedGrouping) return `grouping:${selectedGrouping.id}`;
     if (selectedNode) return `document:${selectedNode.id}`;
     return null;
-  }, [isMobile, selectedSticky, selectedProcess, selectedSystem, selectedProcessComponent, selectedGrouping, selectedNode]);
+  }, [isMobile, selectedSticky, selectedProcess, selectedSystem, selectedProcessComponent, selectedPerson, selectedGrouping, selectedNode]);
   const shouldShowDesktopStructurePanel =
     !isMobile && !!selectedNodeId && desktopNodeAction === "structure" && !!outlineNodeId && outlineNodeId === selectedNodeId;
 
@@ -1909,6 +2048,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setProcessComponentLabelDraft(selectedProcessComponent.heading ?? "");
   }, [selectedProcessComponent]);
   useEffect(() => {
+    if (!selectedPerson) return;
+    const labels = parsePersonLabels(selectedPerson.heading);
+    setPersonRoleDraft(labels.role);
+    setPersonDepartmentDraft(labels.department);
+  }, [selectedPerson]);
+  useEffect(() => {
     if (!selectedGrouping) return;
     setGroupingLabelDraft(selectedGrouping.heading ?? "");
     setGroupingWidthDraft(String(Math.max(groupingMinWidthSquares, Math.round((selectedGrouping.width || groupingDefaultWidth) / minorGridSize))));
@@ -2014,6 +2159,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       !!selectedProcessId ||
       !!selectedSystemId ||
       !!selectedProcessComponentId ||
+      !!selectedPersonId ||
       !!selectedStickyId ||
       !!selectedGroupingId ||
       !!outlineNodeId ||
@@ -2035,6 +2181,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     selectedProcessId,
     selectedSystemId,
     selectedProcessComponentId,
+    selectedPersonId,
     selectedStickyId,
     selectedGroupingId,
     outlineNodeId,
@@ -2267,6 +2414,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       node.data.entityKind === "system_circle" ||
       node.data.entityKind === "grouping_container" ||
       node.data.entityKind === "process_component" ||
+      node.data.entityKind === "person" ||
       node.data.entityKind === "sticky_note"
     ) {
       const elementId = parseProcessFlowId(node.id);
@@ -2451,6 +2599,39 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setElements((prev) => [...prev, data as CanvasElementRow]);
     setShowAddMenu(false);
   };
+  const handleAddPerson = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    if (!rf || !canvasRef.current) return;
+    const box = canvasRef.current.getBoundingClientRect();
+    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    const x = snapToMinorGrid(center.x);
+    const y = snapToMinorGrid(center.y);
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .insert({
+        map_id: mapId,
+        element_type: "person",
+        heading: buildPersonHeading("Role Name", "Department"),
+        color_hex: null,
+        created_by_user_id: userId,
+        pos_x: x,
+        pos_y: y,
+        width: personElementWidth,
+        height: personElementHeight,
+      })
+      .select(canvasElementSelectColumns)
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to create person component.");
+      return;
+    }
+    setElements((prev) => [...prev, data as CanvasElementRow]);
+    setShowAddMenu(false);
+  };
   const handleAddGroupingContainer = async () => {
     if (!canWriteMap) {
       setError("You have view access only for this map.");
@@ -2595,6 +2776,29 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
     setSelectedProcessComponentId(null);
   };
+  const handleSavePerson = async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    if (!selectedPersonId) return;
+    const heading = buildPersonHeading(personRoleDraft, personDepartmentDraft);
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update({ heading, width: personElementWidth, height: personElementHeight })
+      .eq("id", selectedPersonId)
+      .eq("map_id", mapId)
+      .select(canvasElementSelectColumns)
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to save person.");
+      return;
+    }
+    const updated = data as CanvasElementRow;
+    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+    setSelectedPersonId(null);
+  };
   const handleSaveGroupingContainer = async () => {
     if (!canWriteMap) {
       setError("You have view access only for this map.");
@@ -2705,6 +2909,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       (r) => r.source_grouping_element_id === selectedGroupingId || r.target_grouping_element_id === selectedGroupingId
     );
   }, [relations, selectedGroupingId]);
+  const relatedPersonRows = useMemo(() => {
+    if (!selectedPersonId) return [];
+    return relations.filter((r) => r.target_system_element_id === selectedPersonId);
+  }, [relations, selectedPersonId]);
 
   const relationshipSourceNode = useMemo(
     () => (relationshipSourceNodeId ? nodes.find((n) => n.id === relationshipSourceNodeId) ?? null : null),
@@ -2741,17 +2949,17 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const systemRelationCandidates = useMemo(() => {
     const term = relationshipSystemQuery.trim().toLowerCase();
     return elements
-      .filter((el) => el.element_type === "system_circle")
+      .filter((el) => el.element_type === "system_circle" || el.element_type === "process_component" || el.element_type === "person")
       .filter((el) => (el.heading || "").toLowerCase().includes(term));
   }, [elements, relationshipSystemQuery]);
   const systemRelationCandidateLabelById = useMemo(() => {
     const m = new Map<string, string>();
-    systemRelationCandidates.forEach((el) => m.set(el.id, el.heading || "System"));
+    systemRelationCandidates.forEach((el) => m.set(el.id, getElementRelationshipDisplayLabel(el)));
     return m;
   }, [systemRelationCandidates]);
   const systemRelationCandidateIdByLabel = useMemo(() => {
     const m = new Map<string, string>();
-    systemRelationCandidates.forEach((el) => m.set(el.heading || "System", el.id));
+    systemRelationCandidates.forEach((el) => m.set(getElementRelationshipDisplayLabel(el), el.id));
     return m;
   }, [systemRelationCandidates]);
   const groupingRelationCandidates = useMemo(() => {
@@ -2839,6 +3047,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedProcessId(null);
     setSelectedSystemId(null);
     setSelectedProcessComponentId(null);
+    setSelectedPersonId(null);
     setSelectedGroupingId(null);
     setSelectedStickyId(null);
     closeDesktopDrilldownPanels();
@@ -3005,6 +3214,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (selectedProcessId === id) setSelectedProcessId(null);
     if (selectedSystemId === id) setSelectedSystemId(null);
     if (selectedProcessComponentId === id) setSelectedProcessComponentId(null);
+    if (selectedPersonId === id) setSelectedPersonId(null);
     if (selectedGroupingId === id) setSelectedGroupingId(null);
     if (selectedStickyId === id) setSelectedStickyId(null);
   };
@@ -3436,6 +3646,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBlankDocument}>Document</button>
                   <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddSystemCircle}>System</button>
                   <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessComponent}>Process</button>
+                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddPerson}>Person</button>
                   <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessHeading}>Category</button>
                   <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddGroupingContainer}>Grouping Container</button>
                 </>
@@ -3618,12 +3829,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                     setSelectedProcessId(null);
                     setSelectedSystemId(null);
                     setSelectedProcessComponentId(null);
+                    setSelectedPersonId(null);
                     setSelectedGroupingId(null);
                     setSelectedStickyId(stickyId);
                     return;
                   }
                 }
                 setSelectedStickyId(null);
+                setSelectedPersonId(null);
                 return;
               }
               if (n.data.entityKind === "category") {
@@ -3643,6 +3856,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedNodeId(null);
                 setSelectedSystemId(null);
                 setSelectedProcessComponentId(null);
+                setSelectedPersonId(null);
                 setSelectedGroupingId(null);
                 setSelectedStickyId(null);
                 setSelectedProcessId(parseProcessFlowId(n.id));
@@ -3658,6 +3872,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                     setSelectedProcessId(null);
                     setSelectedSystemId(null);
                     setSelectedGroupingId(null);
+                    setSelectedPersonId(null);
                     setSelectedProcessComponentId(parseProcessFlowId(n.id));
                     lastMobileTapRef.current = null;
                   } else {
@@ -3668,6 +3883,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedNodeId(null);
                 setSelectedProcessId(null);
                 setSelectedSystemId(null);
+                setSelectedPersonId(null);
                 setSelectedGroupingId(null);
                 setSelectedStickyId(null);
                 setSelectedProcessComponentId(parseProcessFlowId(n.id));
@@ -3681,6 +3897,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   if (isDoubleTap) {
                     setSelectedNodeId(null);
                     setSelectedProcessId(null);
+                    setSelectedPersonId(null);
                     setSelectedSystemId(parseProcessFlowId(n.id));
                     lastMobileTapRef.current = null;
                   } else {
@@ -3691,9 +3908,38 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedNodeId(null);
                 setSelectedProcessId(null);
                 setSelectedProcessComponentId(null);
+                setSelectedPersonId(null);
                 setSelectedGroupingId(null);
                 setSelectedStickyId(null);
                 setSelectedSystemId(parseProcessFlowId(n.id));
+                return;
+              }
+              if (n.data.entityKind === "person") {
+                if (isMobile) {
+                  const now = Date.now();
+                  const lastTap = lastMobileTapRef.current;
+                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
+                  if (isDoubleTap) {
+                    setSelectedNodeId(null);
+                    setSelectedProcessId(null);
+                    setSelectedSystemId(null);
+                    setSelectedProcessComponentId(null);
+                    setSelectedGroupingId(null);
+                    setSelectedStickyId(null);
+                    setSelectedPersonId(parseProcessFlowId(n.id));
+                    lastMobileTapRef.current = null;
+                  } else {
+                    lastMobileTapRef.current = { id: n.id, ts: now };
+                  }
+                  return;
+                }
+                setSelectedNodeId(null);
+                setSelectedProcessId(null);
+                setSelectedSystemId(null);
+                setSelectedProcessComponentId(null);
+                setSelectedGroupingId(null);
+                setSelectedStickyId(null);
+                setSelectedPersonId(parseProcessFlowId(n.id));
                 return;
               }
               if (n.data.entityKind === "grouping_container") {
@@ -3708,6 +3954,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                     setSelectedNodeId(null);
                     setSelectedProcessId(null);
                     setSelectedSystemId(null);
+                    setSelectedPersonId(null);
                     setSelectedGroupingId(parseProcessFlowId(n.id));
                     lastMobileTapRef.current = null;
                   } else {
@@ -3719,6 +3966,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedProcessId(null);
                 setSelectedSystemId(null);
                 setSelectedProcessComponentId(null);
+                setSelectedPersonId(null);
                 setSelectedStickyId(null);
                 setSelectedGroupingId(parseProcessFlowId(n.id));
                 return;
@@ -3728,6 +3976,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedProcessId(null);
                 setSelectedSystemId(null);
                 setSelectedProcessComponentId(null);
+                setSelectedPersonId(null);
                 setSelectedGroupingId(null);
                 setSelectedStickyId(parseProcessFlowId(n.id));
                 return;
@@ -3747,6 +3996,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setSelectedProcessId(null);
               setSelectedSystemId(null);
               setSelectedProcessComponentId(null);
+              setSelectedPersonId(null);
               setSelectedGroupingId(null);
               setSelectedStickyId(null);
               setSelectedNodeId(n.id);
@@ -3793,13 +4043,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 : null;
               const toNode = rel.to_node_id ? nodes.find((n) => n.id === rel.to_node_id) : null;
               const toSystem = rel.target_system_element_id
-                ? elements.find((el) => el.id === rel.target_system_element_id && el.element_type === "system_circle")
+                ? elements.find((el) => el.id === rel.target_system_element_id && el.element_type !== "grouping_container")
                 : null;
               const toGrouping = rel.target_grouping_element_id
                 ? elements.find((el) => el.id === rel.target_grouping_element_id && el.element_type === "grouping_container")
                 : null;
               const fromLabel = fromNode?.title || fromGrouping?.heading || "Unknown source";
-              const toLabel = toNode?.title || toSystem?.heading || toGrouping?.heading || "Unknown destination";
+              const toLabel = toNode?.title || (toSystem ? getElementDisplayName(toSystem) : null) || toGrouping?.heading || "Unknown destination";
               const relationLabel = getDisplayRelationType(rel.relation_type);
               const relationshipType = getRelationshipCategoryLabel(rel.relationship_category, rel.relationship_custom_type);
               const disciplines = getRelationshipDisciplineLetters(rel.relationship_disciplines);
@@ -4071,11 +4321,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   )}
                 </div>
                 <div className="relative">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Systems</div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Components (Systems, Processes, People)</div>
                   <div className="relative flex">
                     <input
                       className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                      placeholder="Search systems..."
+                      placeholder="Search components..."
                       value={relationshipSystemQuery}
                       onChange={(e) => {
                         const query = e.target.value;
@@ -4098,7 +4348,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   {showRelationshipSystemOptions && (
                     <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
                       {systemRelationCandidates.length > 0 ? systemRelationCandidates.map((el) => {
-                        const optionLabel = systemRelationCandidateLabelById.get(el.id) ?? (el.heading || "System");
+                        const optionLabel = systemRelationCandidateLabelById.get(el.id) ?? getElementRelationshipDisplayLabel(el);
                         const isDisabled = alreadyRelatedSystemTargetIds.has(el.id);
                         return (
                           <button
@@ -4399,6 +4649,214 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   Delete process
                 </button>
                 <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveProcessComponent}>Save label</button>
+              </div>
+            </div>
+          </aside>
+        )}
+        {selectedPerson && (
+          <aside
+            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
+              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
+            }`}
+            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
+          >
+            <div className="flex h-full flex-col overflow-auto p-4">
+              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
+                <h2 className="text-lg font-semibold text-white">Person Properties</h2>
+                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedPersonId(null)}>Close</button>
+              </div>
+              <div className="mt-4 space-y-3">
+                <label className="text-sm text-white">Role Name
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal text-black"
+                    value={personRoleDraft}
+                    onChange={(e) => setPersonRoleDraft(e.target.value)}
+                    placeholder="Enter role name"
+                  />
+                </label>
+                <label className="text-sm text-white">Department
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal text-black"
+                    value={personDepartmentDraft}
+                    onChange={(e) => setPersonDepartmentDraft(e.target.value)}
+                    placeholder="Enter department"
+                  />
+                </label>
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <button
+                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
+                  onClick={async () => {
+                    await handleDeleteProcessElement(selectedPerson.id);
+                  }}
+                >
+                  Delete person
+                </button>
+                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSavePerson}>Save person</button>
+              </div>
+              <div className="mt-6 border-t border-[#5f7894]/70 pt-4">
+                <h3 className="font-semibold text-white">Relationships</h3>
+                <div className="mt-3 space-y-2">
+                  {relatedPersonRows.map((r) => {
+                    const fromNode = nodes.find((n) => n.id === r.from_node_id) ?? null;
+                    const toNode = r.to_node_id ? nodes.find((n) => n.id === r.to_node_id) ?? null : null;
+                    const toSystem = r.target_system_element_id
+                      ? elements.find((el) => el.id === r.target_system_element_id && el.element_type !== "grouping_container") ?? null
+                      : null;
+                    const fromLabel = fromNode?.title || "Unknown source";
+                    const toLabel = toNode?.title || (toSystem ? getElementDisplayName(toSystem) : null) || "Unknown destination";
+                    const toType = toNode ? "Document" : toSystem ? getElementRelationshipTypeLabel(toSystem.element_type) : "Component";
+                    const isEditing = editingRelationId === r.id;
+                    return (
+                      <div key={r.id} className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-800">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-sm font-medium">
+                            {fromLabel} {"->"} {toLabel} <span className="font-normal text-slate-500">({toType})</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              title="Edit relationship definition"
+                              aria-label="Edit relationship definition"
+                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
+                              onClick={() => {
+                                setEditingRelationId(r.id);
+                                setEditingRelationDescription(r.relationship_description ?? "");
+                                const nextCategory = (r.relationship_category || "information").toLowerCase();
+                                setEditingRelationCategory(
+                                  nextCategory === "information" || nextCategory === "systems" || nextCategory === "process" || nextCategory === "data" || nextCategory === "other"
+                                    ? (nextCategory as RelationshipCategory)
+                                    : "information"
+                                );
+                                setEditingRelationCustomType(r.relationship_custom_type ?? "");
+                                setEditingRelationDisciplines(
+                                  (r.relationship_disciplines ?? []).filter(
+                                    (key): key is DisciplineKey => disciplineKeySet.has(key as DisciplineKey)
+                                  )
+                                );
+                                setShowEditingRelationDisciplineMenu(false);
+                              }}
+                            >
+                              <img src="/icons/edit.svg" alt="" className="h-4 w-4" />
+                            </button>
+                            <button
+                              title="Delete relationship"
+                              aria-label="Delete relationship"
+                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
+                              onClick={() => handleDeleteRelation(r.id)}
+                            >
+                              <img src="/icons/delete.svg" alt="" className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                        {isEditing ? (
+                          <div className="mt-2 space-y-2">
+                            <div className="text-[11px]">
+                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Type</div>
+                              <div className="relative mt-1">
+                                <select
+                                  className="w-full appearance-none rounded-none border border-slate-300 bg-white px-2 py-1 text-xs text-black"
+                                  value={editingRelationCategory}
+                                  onChange={(e) => setEditingRelationCategory(e.target.value as RelationshipCategory)}
+                                >
+                                  <option value="information">Information</option>
+                                  <option value="systems">Systems</option>
+                                  <option value="process">Process</option>
+                                  <option value="data">Data</option>
+                                  <option value="other">Other</option>
+                                </select>
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-black">▼</span>
+                              </div>
+                            </div>
+                            {editingRelationCategory === "other" && (
+                              <div className="text-[11px]">
+                                <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Custom Type</div>
+                                <input
+                                  className="mt-1 w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
+                                  value={editingRelationCustomType}
+                                  onChange={(e) => setEditingRelationCustomType(e.target.value)}
+                                  placeholder="Enter custom relationship type"
+                                />
+                              </div>
+                            )}
+                            <div className="text-[11px]">
+                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Disciplines</div>
+                              <div className="relative mt-1">
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between rounded-none border border-slate-300 bg-white px-2 py-1 text-left text-xs text-black"
+                                  onClick={() => setShowEditingRelationDisciplineMenu((prev) => !prev)}
+                                >
+                                  <span className="truncate">
+                                    {editingRelationDisciplines.length
+                                      ? editingRelationDisciplines.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
+                                      : "Select disciplines"}
+                                  </span>
+                                  <span className="text-[10px] text-black">{showEditingRelationDisciplineMenu ? "▲" : "▼"}</span>
+                                </button>
+                                {showEditingRelationDisciplineMenu && (
+                                  <div className="absolute z-30 mt-1 w-full rounded-none border border-slate-300 bg-white p-2 shadow-lg">
+                                    {disciplineOptions.map((option) => {
+                                      const checked = editingRelationDisciplines.includes(option.key);
+                                      return (
+                                        <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-black hover:bg-slate-50">
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() =>
+                                              setEditingRelationDisciplines((prev) =>
+                                                prev.includes(option.key)
+                                                  ? prev.filter((key) => key !== option.key)
+                                                  : [...prev, option.key]
+                                              )
+                                            }
+                                          />
+                                          <span>{option.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
+                            <textarea
+                              className="w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
+                              rows={3}
+                              value={editingRelationDescription}
+                              onChange={(e) => setEditingRelationDescription(e.target.value)}
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                className="rounded-none border border-black bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-slate-100"
+                                onClick={() => void handleUpdateRelation(r.id)}
+                              >
+                                Save
+                              </button>
+                              <button
+                                className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
+                                onClick={() => {
+                                  setEditingRelationId(null);
+                                  setEditingRelationDescription("");
+                                  setEditingRelationCategory("information");
+                                  setEditingRelationCustomType("");
+                                  setEditingRelationDisciplines([]);
+                                  setShowEditingRelationDisciplineMenu(false);
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
+                            <div className="mt-1 text-xs text-slate-600">{r.relationship_description?.trim() || "No relationship context added by user"}</div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </aside>
@@ -4859,11 +5317,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                     const fromNode = nodes.find((n) => n.id === r.from_node_id) ?? null;
                     const toNode = r.to_node_id ? nodes.find((n) => n.id === r.to_node_id) ?? null : null;
                     const toSystem = r.target_system_element_id
-                      ? elements.find((el) => el.id === r.target_system_element_id && el.element_type === "system_circle") ?? null
+                      ? elements.find((el) => el.id === r.target_system_element_id && el.element_type !== "grouping_container") ?? null
                       : null;
                     const fromLabel = fromNode?.title || "Unknown document";
-                    const toLabel = toNode?.title || toSystem?.heading || "Unknown destination";
-                    const toType = toNode ? "Document" : toSystem ? "System" : "Component";
+                    const toLabel = toNode?.title || (toSystem ? getElementDisplayName(toSystem) : null) || "Unknown destination";
+                    const toType = toNode ? "Document" : toSystem ? getElementRelationshipTypeLabel(toSystem.element_type) : "Component";
                     const isEditing = editingRelationId === r.id;
                     return (
                       <div key={r.id} className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-800">
@@ -5148,11 +5606,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   )}
                 </div>
                 <div className="relative">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Systems</div>
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Components (Systems, Processes, People)</div>
                   <div className="relative flex">
                     <input
                       className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                      placeholder="Search systems..."
+                      placeholder="Search components..."
                       value={relationshipSystemQuery}
                       onChange={(e) => {
                         const query = e.target.value;
@@ -5175,7 +5633,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   {showRelationshipSystemOptions && (
                     <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
                       {systemRelationCandidates.length > 0 ? systemRelationCandidates.map((el) => {
-                        const optionLabel = systemRelationCandidateLabelById.get(el.id) ?? (el.heading || "System");
+                        const optionLabel = systemRelationCandidateLabelById.get(el.id) ?? getElementRelationshipDisplayLabel(el);
                         const isDisabled = alreadyRelatedSystemTargetIds.has(el.id);
                         return (
                           <button
@@ -5404,8 +5862,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                         : otherId
                           ? elements.find((el) => el.id === otherId)
                           : null;
-                    const otherLabel = otherNode?.title || otherElement?.heading || otherId || "Linked Item";
-                    const otherType = otherNode ? "Document" : otherElement?.element_type === "system_circle" ? "System" : "Component";
+                    const otherLabel = otherNode?.title || (otherElement ? getElementDisplayName(otherElement) : null) || otherId || "Linked Item";
+                    const otherType = otherNode ? "Document" : otherElement ? getElementRelationshipTypeLabel(otherElement.element_type) : "Component";
                     return <div key={r.id} className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"><span>{otherLabel} ({otherType})</span><button className="text-rose-700" onClick={() => handleDeleteRelation(r.id)}>Remove</button></div>;
                   })}
                 </div>
