@@ -224,6 +224,7 @@ section {
   z-index: 50;
   background: var(--bg);
   border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 12px 16px -14px rgba(15, 23, 42, 0.7);
 }
 
 .mobile-blocked-message {
