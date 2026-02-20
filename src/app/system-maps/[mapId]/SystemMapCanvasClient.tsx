@@ -1931,7 +1931,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           const { data: createdTypes, error: createTypesError } = await supabaseBrowser
             .schema("ms")
             .from("document_types")
-            .insert(
+            .upsert(
               fallbackHierarchy.map((item) => ({
                 map_id: mapId,
                 name: item.name,
@@ -1939,7 +1939,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 band_y_min: null,
                 band_y_max: null,
                 is_active: true,
-              }))
+              })),
+              {
+                onConflict: "map_id,name",
+                ignoreDuplicates: true,
+              }
             )
             .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active")
             .order("level_rank", { ascending: true });
@@ -1955,7 +1959,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           const { data: insertedMissing, error: insertMissingError } = await supabaseBrowser
             .schema("ms")
             .from("document_types")
-            .insert(
+            .upsert(
               missingFallback.map((item) => ({
                 map_id: mapId,
                 name: item.name,
@@ -1963,7 +1967,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 band_y_min: null,
                 band_y_max: null,
                 is_active: true,
-              }))
+              })),
+              {
+                onConflict: "map_id,name",
+                ignoreDuplicates: true,
+              }
             )
             .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active");
           if (insertMissingError) {

@@ -299,7 +299,7 @@ export default function HomePage() {
                   Explore how the SELF pillars connect governance, risk
                   controls, operational delivery, and incident learning.
                 </p>
-                <a className="btn btn-primary" href="/self-framework">
+                <a className="btn btn-outline" href="/self-framework">
                   Learn about the Safety Energy Loop Framework&trade;
                 </a>
               </div>

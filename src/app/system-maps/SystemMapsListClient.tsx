@@ -121,6 +121,7 @@ export default function SystemMapsListClient() {
         return;
       }
 
+      let createdMapId: string | null = null;
       const { data, error: createError } = await supabaseBrowser
         .schema("ms")
         .from("system_maps")
@@ -131,8 +132,41 @@ export default function SystemMapsListClient() {
         .select("id")
         .single();
 
-      if (createError || !data?.id) {
-        setError(createError?.message || "Unable to create a new system map.");
+      if (!createError && data?.id) {
+        createdMapId = data.id;
+      } else {
+        // Some RLS setups allow INSERT but block RETURNING payloads.
+        const insertWithoutReturning = await supabaseBrowser
+          .schema("ms")
+          .from("system_maps")
+          .insert({
+            owner_id: user.id,
+            title: "Untitled System Map",
+          });
+
+        if (insertWithoutReturning.error) {
+          setError(createError?.message || insertWithoutReturning.error.message || "Unable to create a new system map.");
+          return;
+        }
+
+        const latestMap = await supabaseBrowser
+          .schema("ms")
+          .from("system_maps")
+          .select("id")
+          .eq("owner_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestMap.error || !latestMap.data?.id) {
+          setError(latestMap.error?.message || "Map created, but the new map id could not be resolved.");
+          return;
+        }
+        createdMapId = latestMap.data.id;
+      }
+
+      if (!createdMapId) {
+        setError("Map created, but the new map id could not be resolved.");
         return;
       }
 
@@ -141,7 +175,7 @@ export default function SystemMapsListClient() {
         .from("map_members")
         .upsert(
           {
-            map_id: data.id,
+            map_id: createdMapId,
             user_id: user.id,
             role: "full_write",
           },
@@ -153,7 +187,7 @@ export default function SystemMapsListClient() {
         return;
       }
 
-      router.push(`/system-maps/${data.id}`);
+      router.push(`/system-maps/${createdMapId}`);
     } catch (createError) {
       setError("Unable to create a new system map.");
     } finally {
