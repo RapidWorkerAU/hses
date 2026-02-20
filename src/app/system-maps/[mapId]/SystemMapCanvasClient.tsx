@@ -8,12 +8,8 @@ import {
   type Edge,
   EdgeLabelRenderer,
   type EdgeProps,
-  Handle,
   type NodeChange,
   type Node,
-  type NodeProps,
-  NodeResizeControl,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   getBezierPath,
@@ -23,382 +19,115 @@ import {
 import "@xyflow/react/dist/style.css";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
-
-type SystemMap = {
-  id: string;
-  title: string;
-  description: string | null;
-  owner_id: string;
-  map_code: string | null;
-  updated_at: string;
-  created_at: string;
-};
-
-type DocumentTypeRow = {
-  id: string;
-  map_id: string | null;
-  name: string;
-  level_rank: number;
-  band_y_min: number | null;
-  band_y_max: number | null;
-  is_active: boolean;
-};
-
-type DocumentNodeRow = {
-  id: string;
-  map_id: string;
-  type_id: string;
-  title: string;
-  document_number: string | null;
-  discipline: string | null;
-  owner_user_id: string | null;
-  owner_name: string | null;
-  user_group: string | null;
-  pos_x: number;
-  pos_y: number;
-  width: number | null;
-  height: number | null;
-  is_archived: boolean;
-};
-
-type NodeRelationRow = {
-  id: string;
-  map_id: string;
-  from_node_id: string | null;
-  to_node_id: string | null;
-  source_grouping_element_id: string | null;
-  target_grouping_element_id: string | null;
-  relation_type: string;
-  relationship_description: string | null;
-  target_system_element_id: string | null;
-  relationship_disciplines: string[] | null;
-  relationship_category: string | null;
-  relationship_custom_type: string | null;
-};
-type CanvasElementRow = {
-  id: string;
-  map_id: string;
-  element_type: "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note" | "person";
-  heading: string;
-  color_hex: string | null;
-  created_by_user_id: string | null;
-  pos_x: number;
-  pos_y: number;
-  width: number;
-  height: number;
-  created_at: string;
-  updated_at: string;
-};
-type MapMemberProfileRow = {
-  map_id: string;
-  user_id: string;
-  role: "read" | "partial_write" | "full_write" | string;
-  email: string | null;
-  full_name: string | null;
-  is_owner: boolean;
-};
-
-type OutlineItemRow = {
-  id: string;
-  map_id: string;
-  node_id: string;
-  kind: "heading" | "content";
-  heading_level: 1 | 2 | 3 | null;
-  parent_heading_id: string | null;
-  heading_id: string | null;
-  title: string | null;
-  content_text: string | null;
-  sort_order: number;
-  created_at: string;
-};
-
-type FlowData = {
-  entityKind: "document" | "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note" | "person";
-  typeName: string;
-  title: string;
-  documentNumber?: string;
-  categoryColor?: string;
-  canEdit?: boolean;
-  creatorName?: string;
-  createdAtLabel?: string;
-  userGroup: string;
-  disciplineKeys: string[];
-  bannerBg: string;
-  bannerText: string;
-  isLandscape: boolean;
-  isUnconfigured: boolean;
-};
-type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "training";
-type RelationshipCategory = "information" | "systems" | "process" | "data" | "other";
-type SelectionMarquee = {
-  active: boolean;
-  startClientX: number;
-  startClientY: number;
-  currentClientX: number;
-  currentClientY: number;
-};
-type Rect = { x: number; y: number; width: number; height: number };
-
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-const hashString = (value: string) => {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
-};
-const A4_RATIO = 1.414;
-const minorGridSize = 24;
-const majorGridSize = minorGridSize * 5;
-const tileGridSpan = 5;
-const defaultWidth = minorGridSize * tileGridSpan;
-const defaultHeight = Math.round(defaultWidth * A4_RATIO);
-const landscapeDefaultWidth = defaultHeight;
-const landscapeDefaultHeight = defaultWidth;
-const processHeadingWidth = minorGridSize * 18;
-const processHeadingHeight = minorGridSize * 3;
-const processMinWidth = minorGridSize * 10;
-const processMinHeight = minorGridSize * 3;
-const processMinWidthSquares = Math.round(processMinWidth / minorGridSize);
-const processMinHeightSquares = Math.round(processMinHeight / minorGridSize);
-const processComponentWidth = minorGridSize * 7;
-const processComponentBodyHeight = minorGridSize * 3;
-const processComponentLabelHeight = minorGridSize;
-const processComponentElementHeight = processComponentBodyHeight + processComponentLabelHeight;
-const systemCircleDiameter = minorGridSize * 5;
-const systemCircleLabelHeight = minorGridSize;
-const systemCircleElementHeight = systemCircleDiameter + systemCircleLabelHeight;
-const personIconSize = minorGridSize * 4;
-const personRoleLabelHeight = minorGridSize;
-const personDepartmentLabelHeight = minorGridSize;
-const personElementWidth = personIconSize;
-const personElementHeight = personIconSize + personRoleLabelHeight + personDepartmentLabelHeight;
-const groupingDefaultWidth = minorGridSize * 22;
-const groupingDefaultHeight = minorGridSize * 12;
-const groupingMinWidth = minorGridSize * 8;
-const groupingMinHeight = minorGridSize * 6;
-const groupingMinWidthSquares = Math.round(groupingMinWidth / minorGridSize);
-const groupingMinHeightSquares = Math.round(groupingMinHeight / minorGridSize);
-const stickyDefaultSize = minorGridSize * 5;
-const stickyMinSize = minorGridSize * 2;
-const unconfiguredDocumentTitle = "Click to configure";
-const defaultCategoryColor = "#000000";
-const categoryColorOptions = [
-  { name: "Light Blue", value: "#70cbff" },
-  { name: "Light Green", value: "#5cffb0" },
-  { name: "Pink", value: "#ff99d8" },
-  { name: "Purple", value: "#d8c7fa" },
-  { name: "Pale Red", value: "#ffc2c2" },
-  { name: "Pale Yellow", value: "#fff3c2" },
-] as const;
-const laneHeight = 260;
-const fallbackHierarchy = [
-  { name: "System Manual", level_rank: 1 },
-  { name: "Policy", level_rank: 2 },
-  { name: "Risk Document", level_rank: 3 },
-  { name: "Management Plan", level_rank: 4 },
-  { name: "Procedure", level_rank: 5 },
-  { name: "Guidance Note", level_rank: 6 },
-  { name: "Work Instruction", level_rank: 7 },
-  { name: "Form / Template", level_rank: 8 },
-  { name: "Record", level_rank: 9 },
-] as const;
-const fallbackRankByName = new Map(fallbackHierarchy.map((item) => [item.name.trim().toLowerCase(), item.level_rank]));
-const normalizeTypeRanks = (items: DocumentTypeRow[]) =>
-  items
-    .map((item) => {
-      const normalizedRank = fallbackRankByName.get(item.name.trim().toLowerCase());
-      return normalizedRank ? { ...item, level_rank: normalizedRank } : item;
-    })
-    .sort((a, b) => a.level_rank - b.level_rank);
-
-const getDisplayTypeName = (typeName: string) =>
-  typeName.trim().toLowerCase() === "management system manual" ? "System Manual" : typeName;
-const isLandscapeTypeName = (typeName: string) => typeName.trim().toLowerCase() === "risk document";
-const getCanonicalTypeName = (typeName: string) => getDisplayTypeName(typeName).trim().toLowerCase();
-const parsePersonLabels = (heading: string | null | undefined) => {
-  const raw = heading ?? "";
-  const [roleLine, ...rest] = raw.split("\n");
-  const role = roleLine?.trim() || "Role Name";
-  const department = rest.join("\n").trim() || "Department";
-  return { role, department };
-};
-const buildPersonHeading = (role: string, department: string) =>
-  `${role.trim() || "Role Name"}\n${department.trim() || "Department"}`;
-const processFlowId = (id: string) => `process:${id}`;
-const parseProcessFlowId = (id: string) => (id.startsWith("process:") ? id.slice(8) : id);
-const isAbortLikeError = (error: unknown) => {
-  if (!error) return false;
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = message.toLowerCase();
-  return normalized.includes("aborterror") || normalized.includes("signal is aborted") || normalized.includes("aborted");
-};
-const userGroupOptions = [
-  "Group/ Corporate",
-  "Business Unit/ Division",
-  "Site/ Project/ Client",
-  "Team/ Contractor",
-  "Not Applicable",
-] as const;
-const disciplineOptions: Array<{ key: DisciplineKey; label: string; letter: string }> = [
-  { key: "health", label: "Health", letter: "H" },
-  { key: "safety", label: "Safety", letter: "S" },
-  { key: "environment", label: "Environment", letter: "E" },
-  { key: "security", label: "Security", letter: "S" },
-  { key: "communities", label: "Communities", letter: "C" },
-  { key: "training", label: "Training", letter: "T" },
-];
-const disciplineKeySet = new Set<DisciplineKey>(disciplineOptions.map((option) => option.key));
-const disciplineLabelByKey = new Map(disciplineOptions.map((option) => [option.key, option.label]));
-const disciplineLetterByKey = new Map(disciplineOptions.map((option) => [option.key, option.letter]));
-const parseDisciplines = (value: string | null | undefined): DisciplineKey[] => {
-  if (!value) return [];
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return [];
-  const selected = new Set<DisciplineKey>();
-  const addMatch = (token: string) => {
-    const t = token.trim().toLowerCase();
-    if (!t) return;
-    if (t === "hset") {
-      selected.add("health");
-      selected.add("safety");
-      selected.add("environment");
-      selected.add("training");
-      return;
-    }
-    if (t === "hse") {
-      selected.add("health");
-      selected.add("safety");
-      selected.add("environment");
-      return;
-    }
-    disciplineOptions.forEach((option) => {
-      if (option.key === t || option.label.toLowerCase() === t) selected.add(option.key);
-    });
-  };
-  normalized
-    .split(/[;,|/]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .forEach(addMatch);
-  if (!selected.size) addMatch(normalized);
-  return disciplineOptions.filter((option) => selected.has(option.key)).map((option) => option.key);
-};
-const serializeDisciplines = (keys: DisciplineKey[]) => {
-  if (!keys.length) return null;
-  const labels = keys.map((key) => disciplineLabelByKey.get(key)).filter(Boolean) as string[];
-  return labels.join(", ");
-};
-const disciplineSummary = (value: string | null | undefined) => {
-  const keys = parseDisciplines(value);
-  if (!keys.length) return "No discipline";
-  return keys.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ");
-};
-const getNormalizedDocumentSize = (
-  isLandscape: boolean,
-  width: number | null,
-  height: number | null
-) => {
-  let nextWidth = width ?? (isLandscape ? landscapeDefaultWidth : defaultWidth);
-  let nextHeight = height ?? Math.round(isLandscape ? nextWidth / A4_RATIO : nextWidth * A4_RATIO);
-  if (isLandscape && nextHeight > nextWidth) {
-    [nextWidth, nextHeight] = [nextHeight, nextWidth];
-  }
-  if (!isLandscape && nextWidth > nextHeight) {
-    [nextWidth, nextHeight] = [nextHeight, nextWidth];
-  }
-  return { width: nextWidth, height: nextHeight };
-};
-const getDisplayRelationType = (relationType: string) => {
-  if (!relationType) return "Related";
-  const trimmed = relationType.trim();
-  if (!trimmed) return "Related";
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-};
-const getRelationshipCategoryLabel = (category: string | null | undefined, customType: string | null | undefined) => {
-  const normalized = (category || "").trim().toLowerCase();
-  if (normalized === "other") {
-    const custom = (customType || "").trim();
-    return custom || "Other";
-  }
-  if (!normalized) return "Information";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-};
-const getRelationshipDisciplineLetters = (disciplines: string[] | null | undefined) => {
-  if (!disciplines?.length) return "";
-  return disciplines
-    .map((key) => disciplineLetterByKey.get(key as DisciplineKey) || "")
-    .filter(Boolean)
-    .join("");
-};
-const getElementRelationshipTypeLabel = (elementType: CanvasElementRow["element_type"]) => {
-  if (elementType === "system_circle") return "System";
-  if (elementType === "process_component") return "Process";
-  if (elementType === "person") return "Person";
-  if (elementType === "grouping_container") return "Grouping Container";
-  if (elementType === "category") return "Category";
-  if (elementType === "sticky_note") return "Sticky Note";
-  return "Component";
-};
-const getElementDisplayName = (element: CanvasElementRow) => {
-  if (element.element_type === "person") {
-    const labels = parsePersonLabels(element.heading);
-    return labels.role;
-  }
-  return element.heading || "Untitled";
-};
-const getElementRelationshipDisplayLabel = (element: CanvasElementRow) => {
-  return `${getElementDisplayName(element)} (${getElementRelationshipTypeLabel(element.element_type)})`;
-};
-
-const getTypeBannerStyle = (typeName: string) => {
-  const key = typeName.toLowerCase();
-  if (key.includes("manual")) return { bg: "#b91c1c", text: "#ffffff" };
-  if (key.includes("policy")) return { bg: "#7e22ce", text: "#ffffff" };
-  if (key.includes("management plan")) return { bg: "#1d4ed8", text: "#ffffff" };
-  if (key.includes("procedure")) return { bg: "#c2410c", text: "#ffffff" };
-  if (key.includes("guidance")) return { bg: "#8b5a2b", text: "#ffffff" };
-  if (key.includes("work instruction")) return { bg: "#facc15", text: "#1f2937" };
-  if (key.includes("form")) return { bg: "#15803d", text: "#ffffff" };
-  if (key.includes("record")) return { bg: "#475569", text: "#ffffff" };
-  if (key.includes("risk")) return { bg: "#0ea5a4", text: "#ffffff" };
-  return { bg: "#64748b", text: "#ffffff" };
-};
-const boxesOverlap = (
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number },
-  gap = 0
-) =>
-  a.x < b.x + b.width + gap &&
-  a.x + a.width + gap > b.x &&
-  a.y < b.y + b.height + gap &&
-  a.y + a.height + gap > b.y;
-const pointInRect = (p: { x: number; y: number }, r: { x: number; y: number; width: number; height: number }) =>
-  p.x > r.x && p.x < r.x + r.width && p.y > r.y && p.y < r.y + r.height;
-const ccw = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) =>
-  (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
-const segmentsIntersect = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) =>
-  ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
-const lineIntersectsRect = (
-  p1: { x: number; y: number },
-  p2: { x: number; y: number },
-  rect: { x: number; y: number; width: number; height: number }
-) => {
-  if (pointInRect(p1, rect) || pointInRect(p2, rect)) return true;
-  const tl = { x: rect.x, y: rect.y };
-  const tr = { x: rect.x + rect.width, y: rect.y };
-  const br = { x: rect.x + rect.width, y: rect.y + rect.height };
-  const bl = { x: rect.x, y: rect.y + rect.height };
-  return (
-    segmentsIntersect(p1, p2, tl, tr) ||
-    segmentsIntersect(p1, p2, tr, br) ||
-    segmentsIntersect(p1, p2, br, bl) ||
-    segmentsIntersect(p1, p2, bl, tl)
-  );
-};
-const pointInRectXY = (x: number, y: number, rect: Rect) =>
-  x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
-const pointInAnyRect = (x: number, y: number, rects: Rect[]) => rects.some((rect) => pointInRectXY(x, y, rect));
+import {
+  A4_RATIO,
+  type CanvasElementRow,
+  categoryColorOptions,
+  ccw,
+  clamp,
+  defaultCategoryColor,
+  defaultHeight,
+  defaultWidth,
+  type DisciplineKey,
+  disciplineKeySet,
+  disciplineLabelByKey,
+  disciplineLetterByKey,
+  disciplineOptions,
+  getElementDisplayName,
+  getElementRelationshipTypeLabel,
+  getElementRelationshipDisplayLabel,
+  type DocumentNodeRow,
+  type DocumentTypeRow,
+  fallbackHierarchy,
+  getCanonicalTypeName,
+  getDisplayRelationType,
+  getDisplayTypeName,
+  getNormalizedDocumentSize,
+  getRelationshipCategoryLabel,
+  getRelationshipDisciplineLetters,
+  getTypeBannerStyle,
+  groupingDefaultHeight,
+  groupingDefaultWidth,
+  groupingMinHeight,
+  groupingMinHeightSquares,
+  groupingMinWidth,
+  groupingMinWidthSquares,
+  hashString,
+  isAbortLikeError,
+  isLandscapeTypeName,
+  laneHeight,
+  landscapeDefaultHeight,
+  landscapeDefaultWidth,
+  lineIntersectsRect,
+  majorGridSize,
+  minorGridSize,
+  type FlowData,
+  normalizeTypeRanks,
+  type NodeRelationRow,
+  type OutlineItemRow,
+  parseDisciplines,
+  buildPersonHeading,
+  parsePersonLabels,
+  parseProcessFlowId,
+  pointInAnyRect,
+  processComponentBodyHeight,
+  processComponentElementHeight,
+  processComponentLabelHeight,
+  processComponentWidth,
+  processFlowId,
+  processHeadingHeight,
+  processHeadingWidth,
+  processMinHeight,
+  processMinHeightSquares,
+  processMinWidth,
+  processMinWidthSquares,
+  type Rect,
+  type RelationshipCategory,
+  type SelectionMarquee,
+  segmentsIntersect,
+  serializeDisciplines,
+  stickyDefaultSize,
+  stickyMinSize,
+  systemCircleDiameter,
+  systemCircleElementHeight,
+  systemCircleLabelHeight,
+  tileGridSpan,
+  type SystemMap,
+  type MapMemberProfileRow,
+  unconfiguredDocumentTitle,
+  userGroupOptions,
+  boxesOverlap,
+  pointInRect,
+  personIconSize,
+  personRoleLabelHeight,
+  personDepartmentLabelHeight,
+  personElementWidth,
+  personElementHeight,
+} from "./canvasShared";
+import { flowNodeTypes } from "./canvasNodes";
+import { CanvasActionButtons, MapInfoAside } from "./canvasPanels";
+import { MapCanvasHeader } from "./canvasHeader";
+import {
+  CategoryPropertiesAside,
+  DocumentPropertiesAside,
+  GroupingContainerAside,
+  MobileDocumentPropertiesModal,
+  PersonPropertiesAside,
+  ProcessPropertiesAside,
+  StickyNoteAside,
+  SystemPropertiesAside,
+} from "./canvasElementAsides";
+import { AddRelationshipAside, DeleteDocumentAside, DocumentStructureAside } from "./canvasDrilldownAsides";
+import { ConfirmDialog } from "./canvasDialogs";
+import { defaultMapCategoryId, getAllowedNodeKindsForCategory, type MapCategoryId } from "./mapCategories";
+import { useCanvasRelationNodeActions } from "./useCanvasRelationNodeActions";
+import { useCanvasElementActions } from "./useCanvasElementActions";
+import { useCanvasDeleteSelectionActions } from "./useCanvasDeleteSelectionActions";
+import { useCanvasMapInfoActions } from "./useCanvasMapInfoActions";
+import { useCanvasOutlineActions } from "./useCanvasOutlineActions";
+import { useCanvasPaneSelectionActions } from "./useCanvasPaneSelectionActions";
+import { useCanvasNodeDragStop } from "./useCanvasNodeDragStop";
+import { useCanvasRelationshipDerived } from "./useCanvasRelationshipDerived";
 
 function SmartBezierEdge(props: EdgeProps<Edge<{ displayLabel?: string; obstacleRects?: Rect[] }>>) {
   const {
@@ -466,289 +195,6 @@ function SmartBezierEdge(props: EdgeProps<Edge<{ displayLabel?: string; obstacle
     </>
   );
 }
-
-function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
-  if (data.isUnconfigured) {
-    return (
-      <div className="relative flex h-full w-full items-center justify-center border border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
-        <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <div className="text-center text-[12px] font-semibold text-slate-600">{unconfiguredDocumentTitle}</div>
-      </div>
-    );
-  }
-  return (
-    <div className="relative flex h-full w-full flex-col border border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
-      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <div
-        className="flex h-6 items-center justify-center px-1 text-center text-[7px] font-semibold uppercase tracking-[0.04em] leading-tight"
-        style={{ backgroundColor: data.bannerBg, color: data.bannerText }}
-      >
-        <span className="block w-full truncate">{data.typeName}</span>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col px-2 pt-1 pb-2">
-        <div className={`overflow-hidden text-center font-semibold leading-tight text-slate-900 ${data.isLandscape ? "text-[9px]" : "text-[10px]"}`}>
-          {data.title || "Untitled Document"}
-        </div>
-        {data.documentNumber ? (
-          <div className={`mt-0.5 overflow-hidden text-center font-normal leading-tight text-slate-700 ${data.isLandscape ? "text-[8px]" : "text-[9px]"}`}>
-            {data.documentNumber}
-          </div>
-        ) : null}
-        <div className="mt-auto space-y-1 text-[8px] leading-tight">
-          <div className="space-y-[1px] border border-slate-300 px-1 py-[2px]">
-            <div className="text-center font-semibold text-slate-700">User Group</div>
-            <div className={`${data.isLandscape ? "text-[7px]" : ""} truncate text-center text-slate-500`}>{data.userGroup || "Unassigned"}</div>
-          </div>
-          <div className="space-y-[1px] px-1 py-[2px]">
-            <div className="text-center font-semibold text-slate-700">Discipline</div>
-            <div className="mt-0.5 grid grid-cols-6 gap-[2px]">
-              {disciplineOptions.map((option) => {
-                const active = data.disciplineKeys.includes(option.key);
-                return (
-                  <div
-                    key={option.key}
-                    title={option.label}
-                    className={`flex h-4 w-full items-center justify-center border border-slate-300 text-[8px] leading-none ${active ? "bg-emerald-200 font-bold text-emerald-900" : "bg-white font-medium text-slate-500"}`}
-                  >
-                    {option.letter}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-function ProcessHeadingNode({ data, selected }: NodeProps<Node<FlowData>>) {
-  const categoryColor = data.categoryColor ?? defaultCategoryColor;
-  const headingTextColor = categoryColor.toLowerCase() === defaultCategoryColor ? "#ffffff" : "#000000";
-  return (
-    <div
-      className="flex h-full w-full flex-col border px-2 py-1 shadow-[0_6px_20px_rgba(15,23,42,0.18)]"
-      style={{ backgroundColor: categoryColor, borderColor: categoryColor, color: headingTextColor }}
-    >
-      {selected ? (
-        <>
-          <NodeResizeControl
-            position={Position.Left}
-            minWidth={processMinWidth}
-            minHeight={processMinHeight}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-          <NodeResizeControl
-            position={Position.Right}
-            minWidth={processMinWidth}
-            minHeight={processMinHeight}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-          <NodeResizeControl
-            position={Position.Bottom}
-            minWidth={processMinWidth}
-            minHeight={processMinHeight}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-        </>
-      ) : null}
-      <div className="text-center text-[9px] font-semibold uppercase tracking-[0.18em]">Category</div>
-      <div className="flex flex-1 items-center justify-center overflow-hidden text-center text-[12px] font-semibold leading-tight">
-        <span className="line-clamp-3 break-words whitespace-normal">{data.title || "New Category"}</span>
-      </div>
-    </div>
-  );
-}
-function SystemCircleNode({ data }: NodeProps<Node<FlowData>>) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-start overflow-hidden">
-      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <div
-        className="flex w-full items-center justify-center rounded-full bg-[#1e3a8a] px-2 text-center text-[11px] font-semibold text-white shadow-[0_8px_20px_rgba(30,58,138,0.35)]"
-        style={{ height: systemCircleDiameter }}
-      >
-        <span className="line-clamp-3">{data.title || "System Name"}</span>
-      </div>
-      <div
-        className="flex w-full items-center justify-center text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-700"
-        style={{ height: systemCircleLabelHeight }}
-      >
-        System
-      </div>
-    </div>
-  );
-}
-function ProcessComponentNode({ data }: NodeProps<Node<FlowData>>) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-start overflow-hidden">
-      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <div className="relative w-full" style={{ height: processComponentBodyHeight }}>
-        <svg viewBox="0 0 700 500" preserveAspectRatio="none" className="h-full w-full drop-shadow-[0_6px_16px_rgba(15,23,42,0.18)]">
-          <path
-            d="M0 0H700V500C640 458 560 450 486 485C435 510 389 509 338 484C260 447 186 446 112 479C74 496 37 503 0 500V0Z"
-            fill="#ff751f"
-          />
-        </svg>
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-2 text-center text-[11px] font-semibold text-white">
-          {data.title || "Process"}
-        </div>
-      </div>
-      <div
-        className="flex w-full items-center justify-center text-center text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-700"
-        style={{ height: processComponentLabelHeight }}
-      >
-        Process
-      </div>
-    </div>
-  );
-}
-function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
-  return (
-    <div
-      className={`relative h-full w-full rounded-[10px] border bg-transparent ${selected ? "pointer-events-auto" : "pointer-events-none"}`}
-      style={{
-        borderColor: "#000000",
-        boxShadow: "0 6px 16px rgba(15, 23, 42, 0.12)",
-      }}
-    >
-      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      {selected ? (
-        <>
-          <NodeResizeControl
-            position={Position.Right}
-            minWidth={groupingMinWidth}
-            minHeight={groupingMinHeight}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-          <NodeResizeControl
-            position={Position.Bottom}
-            minWidth={groupingMinWidth}
-            minHeight={groupingMinHeight}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-        </>
-      ) : null}
-      <div
-        className="grouping-drag-handle pointer-events-auto absolute left-5 top-0 -translate-y-1/2 cursor-move rounded-[999px] border bg-white px-3 py-0.5 text-center text-[11px] font-normal text-slate-800 whitespace-nowrap"
-        style={{
-          borderColor: "#000000",
-          boxShadow: "0 3px 8px rgba(15, 23, 42, 0.12)",
-        }}
-      >
-        {data.title || "Group label"}
-      </div>
-    </div>
-  );
-}
-function StickyNoteNode({ data, selected }: NodeProps<Node<FlowData>>) {
-  const canEdit = !!data.canEdit;
-  return (
-    <div className="relative h-full w-full border border-[#facc15] bg-[#fef08a] p-2 text-[11px] leading-snug text-black shadow-[0_10px_24px_rgba(15,23,42,0.22)]">
-      {selected && canEdit ? (
-        <>
-          <NodeResizeControl
-            position={Position.Right}
-            minWidth={stickyMinSize}
-            minHeight={stickyMinSize}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #92400e", background: "#ffffff" }}
-          />
-          <NodeResizeControl
-            position={Position.Bottom}
-            minWidth={stickyMinSize}
-            minHeight={stickyMinSize}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #92400e", background: "#ffffff" }}
-          />
-        </>
-      ) : null}
-      <div className="flex h-full w-full flex-col">
-        <div className="truncate text-[10px] font-bold text-black">{data.creatorName || "User"}</div>
-        <div className="mt-1 flex-1 overflow-hidden whitespace-pre-wrap break-words text-[11px] font-normal text-black">
-          {data.title || "Enter Text"}
-        </div>
-        <div className="mt-1 truncate text-right text-[9px] font-normal text-slate-700">{data.createdAtLabel || ""}</div>
-      </div>
-    </div>
-  );
-}
-function PersonNode({ data }: NodeProps<Node<FlowData>>) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-start overflow-visible">
-      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <div
-        className="flex items-center justify-center rounded-full border border-slate-300 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.16)]"
-        style={{ width: personIconSize, height: personIconSize }}
-      >
-        <img
-          src="/icons/account.svg"
-          alt=""
-          className="h-full w-full object-contain"
-        />
-      </div>
-      <div
-        className="mt-1 text-center text-[10px] font-semibold leading-tight text-slate-900 whitespace-normal break-words"
-        style={{ width: `${minorGridSize * 7}px`, maxWidth: `${minorGridSize * 7}px` }}
-      >
-        {parsePersonLabels(data.title).role}
-      </div>
-      <div
-        className="mt-0.5 text-center text-[9px] font-normal leading-tight text-slate-700 whitespace-normal break-words"
-        style={{ width: `${minorGridSize * 7}px`, maxWidth: `${minorGridSize * 7}px` }}
-      >
-        {parsePersonLabels(data.title).department}
-      </div>
-    </div>
-  );
-}
-const flowNodeTypes = {
-  documentTile: DocumentTileNode,
-  processHeading: ProcessHeadingNode,
-  systemCircle: SystemCircleNode,
-  processComponent: ProcessComponentNode,
-  groupingContainer: GroupingContainerNode,
-  stickyNote: StickyNoteNode,
-  personNode: PersonNode,
-} as const;
 const flowEdgeTypes = {
   smartBezier: SmartBezierEdge,
 } as const;
@@ -759,6 +205,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const relationshipPopupRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const searchMenuRef = useRef<HTMLDivElement | null>(null);
   const mapInfoAsideRef = useRef<HTMLDivElement | null>(null);
   const mapInfoButtonRef = useRef<HTMLButtonElement | null>(null);
   const disciplineMenuRef = useRef<HTMLDivElement | null>(null);
@@ -767,11 +214,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const resizePersistValuesRef = useRef<Map<string, { width: number; height: number }>>(new Map());
   const savedPos = useRef<Record<string, { x: number; y: number }>>({});
   const lastMobileTapRef = useRef<{ id: string; ts: number } | null>(null);
+  const clipboardPasteCountRef = useRef(1);
 
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>("");
   const [mapRole, setMapRole] = useState<"read" | "partial_write" | "full_write" | null>(null);
   const [map, setMap] = useState<SystemMap | null>(null);
+  const [mapCategoryId] = useState<MapCategoryId>(defaultMapCategoryId);
   const [types, setTypes] = useState<DocumentTypeRow[]>([]);
   const [nodes, setNodes] = useState<DocumentNodeRow[]>([]);
   const [elements, setElements] = useState<CanvasElementRow[]>([]);
@@ -801,11 +250,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [pendingViewport, setPendingViewport] = useState<Viewport | null>(null);
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showSearchMenu, setShowSearchMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const snapToMinorGrid = useCallback((v: number) => Math.round(v / minorGridSize) * minorGridSize, []);
   const canWriteMap = mapRole === "partial_write" || mapRole === "full_write";
   const canManageMapMetadata = mapRole === "full_write" && !!map && !!userId && map.owner_id === userId;
   const canUseContextMenu = mapRole !== "read";
   const canCreateSticky = !!userId;
+  const allowedNodeKinds = useMemo(() => getAllowedNodeKindsForCategory(mapCategoryId), [mapCategoryId]);
   const canEditElement = useCallback(
     (element: CanvasElementRow) =>
       canWriteMap || (mapRole === "read" && element.element_type === "sticky_note" && !!userId && element.created_by_user_id === userId),
@@ -911,6 +363,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [mobileNodeMenuId, setMobileNodeMenuId] = useState<string | null>(null);
   const [showAddRelationship, setShowAddRelationship] = useState(false);
   const [relationshipSourceNodeId, setRelationshipSourceNodeId] = useState<string | null>(null);
+  const [relationshipSourceSystemId, setRelationshipSourceSystemId] = useState<string | null>(null);
   const [relationshipSourceGroupingId, setRelationshipSourceGroupingId] = useState<string | null>(null);
   const [relationshipDocumentQuery, setRelationshipDocumentQuery] = useState("");
   const [relationshipSystemQuery, setRelationshipSystemQuery] = useState("");
@@ -950,6 +403,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   } | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [selectedFlowIds, setSelectedFlowIds] = useState<Set<string>>(new Set());
+  const [copiedFlowIds, setCopiedFlowIds] = useState<string[]>([]);
   const [selectionMarquee, setSelectionMarquee] = useState<SelectionMarquee>({
     active: false,
     startClientX: 0,
@@ -1500,6 +954,16 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           const b = processFlowId(r.target_system_element_id);
           return a < b ? `docsys:${a}|${b}` : `docsys:${b}|${a}`;
         }
+        if (r.source_system_element_id && r.to_node_id) {
+          const a = processFlowId(r.source_system_element_id);
+          const b = r.to_node_id;
+          return a < b ? `sysdoc:${a}|${b}` : `sysdoc:${b}|${a}`;
+        }
+        if (r.source_system_element_id && r.target_system_element_id) {
+          const a = processFlowId(r.source_system_element_id);
+          const b = processFlowId(r.target_system_element_id);
+          return a < b ? `syssys:${a}|${b}` : `syssys:${b}|${a}`;
+        }
         return `rel:${r.id}`;
       };
       relations.forEach((r) => {
@@ -1538,18 +1002,21 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       const isRelationConnectedToHovered = (rel: NodeRelationRow) =>
         !!hoveredNodeId &&
         (rel.from_node_id === hoveredNodeId ||
+          rel.source_system_element_id === parseProcessFlowId(hoveredNodeId) ||
           rel.to_node_id === hoveredNodeId ||
+          rel.target_system_element_id === parseProcessFlowId(hoveredNodeId) ||
           (hoveredGroupingId !== null &&
             (rel.source_grouping_element_id === hoveredGroupingId || rel.target_grouping_element_id === hoveredGroupingId)));
       const hasHoveredRelations = !!hoveredEdgeId || (!!hoveredNodeId && relations.some((rel) => isRelationConnectedToHovered(rel)));
       return relations.map((r) => {
         const sourceDoc = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
+        const sourceElement = r.source_system_element_id ? relationshipElementsById.get(r.source_system_element_id) : undefined;
         const targetDoc = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
         const targetElement = r.target_system_element_id ? relationshipElementsById.get(r.target_system_element_id) : undefined;
         const sourceGrouping = r.source_grouping_element_id ? relationshipElementsById.get(r.source_grouping_element_id) : undefined;
         const targetGrouping = r.target_grouping_element_id ? relationshipElementsById.get(r.target_grouping_element_id) : undefined;
-        if (!sourceDoc && !(sourceGrouping && targetGrouping)) return null;
-        if (sourceDoc && !targetDoc && !targetElement) return null;
+        if (!sourceDoc && !sourceElement && !(sourceGrouping && targetGrouping)) return null;
+        if ((sourceDoc || sourceElement) && !targetDoc && !targetElement) return null;
         const from = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
         const to = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
         let source = from ? from.id : "";
@@ -1723,6 +1190,135 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             targetHandle = best.targetHandle;
           }
         }
+        if (sourceElement && targetDoc) {
+          source = processFlowId(sourceElement.id);
+          target = targetDoc.id;
+          const sourceSize = getElementDimensions(sourceElement);
+          const targetSize = getNodeSize(targetDoc);
+          const sourceAnchors = {
+            top: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y },
+            bottom: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y + sourceSize.height },
+            left: { x: sourceElement.pos_x, y: sourceElement.pos_y + sourceSize.height / 2 },
+            right: { x: sourceElement.pos_x + sourceSize.width, y: sourceElement.pos_y + sourceSize.height / 2 },
+          };
+          const targetAnchors = {
+            top: { x: targetDoc.pos_x + targetSize.width / 2, y: targetDoc.pos_y },
+            bottom: { x: targetDoc.pos_x + targetSize.width / 2, y: targetDoc.pos_y + targetSize.height },
+            left: { x: targetDoc.pos_x, y: targetDoc.pos_y + targetSize.height / 2 },
+            right: { x: targetDoc.pos_x + targetSize.width, y: targetDoc.pos_y + targetSize.height / 2 },
+          };
+          const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+            top: "top-source",
+            bottom: "bottom",
+            left: "left",
+            right: "right",
+          };
+          const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+            top: "top",
+            bottom: "bottom-target",
+            left: "left-target",
+            right: "right-target",
+          };
+          const blockingRects = [
+            ...nodes
+              .filter((n) => n.id !== targetDoc.id)
+              .map((n) => {
+                const size = getNodeSize(n);
+                return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+              }),
+            ...obstacleElementRects
+              .filter((rect) => rect.id !== sourceElement.id)
+              .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+          ];
+          const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
+          let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
+          for (const srcSide of sides) {
+            for (const dstSide of sides) {
+              const srcAnchor = sourceAnchors[srcSide];
+              const dstAnchor = targetAnchors[dstSide];
+              const dx = srcAnchor.x - dstAnchor.x;
+              const dy = srcAnchor.y - dstAnchor.y;
+              const dist2 = dx * dx + dy * dy;
+              const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
+              const score = dist2 + (crosses ? 1_000_000_000 : 0);
+              if (!best || score < best.score) {
+                best = {
+                  sourceHandle: sourceSideToHandle[srcSide],
+                  targetHandle: targetSideToHandle[dstSide],
+                  score,
+                };
+              }
+            }
+          }
+          if (best) {
+            sourceHandle = best.sourceHandle;
+            targetHandle = best.targetHandle;
+          }
+        }
+        if (sourceElement && targetElement) {
+          source = processFlowId(sourceElement.id);
+          target = processFlowId(targetElement.id);
+          const sourceSize = getElementDimensions(sourceElement);
+          const targetSize = getElementDimensions(targetElement);
+          const sourceAnchors = {
+            top: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y },
+            bottom: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y + sourceSize.height },
+            left: { x: sourceElement.pos_x, y: sourceElement.pos_y + sourceSize.height / 2 },
+            right: { x: sourceElement.pos_x + sourceSize.width, y: sourceElement.pos_y + sourceSize.height / 2 },
+          };
+          const targetAnchors = {
+            top: { x: targetElement.pos_x + targetSize.width / 2, y: targetElement.pos_y },
+            bottom: { x: targetElement.pos_x + targetSize.width / 2, y: targetElement.pos_y + targetSize.height },
+            left: { x: targetElement.pos_x, y: targetElement.pos_y + targetSize.height / 2 },
+            right: { x: targetElement.pos_x + targetSize.width, y: targetElement.pos_y + targetSize.height / 2 },
+          };
+          const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+            top: "top-source",
+            bottom: "bottom",
+            left: "left",
+            right: "right",
+          };
+          const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+            top: "top",
+            bottom: "bottom-target",
+            left: "left-target",
+            right: "right-target",
+          };
+          const blockingRects = [
+            ...nodes.map((n) => {
+              const size = getNodeSize(n);
+              return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+            }),
+            ...obstacleElementRects
+              .filter((rect) => rect.id !== sourceElement.id && rect.id !== targetElement.id)
+              .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+          ];
+          const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
+          let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
+          for (const srcSide of sides) {
+            for (const dstSide of sides) {
+              const srcAnchor = sourceAnchors[srcSide];
+              const dstAnchor = targetAnchors[dstSide];
+              const dx = srcAnchor.x - dstAnchor.x;
+              const dy = srcAnchor.y - dstAnchor.y;
+              const dist2 = dx * dx + dy * dy;
+              const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
+              const score = dist2 + (crosses ? 1_000_000_000 : 0);
+              if (!best || score < best.score) {
+                best = {
+                  sourceHandle: sourceSideToHandle[srcSide],
+                  targetHandle: targetSideToHandle[dstSide],
+                  score,
+                };
+              }
+            }
+          }
+          if (best) {
+            sourceHandle = best.sourceHandle;
+            targetHandle = best.targetHandle;
+          }
+        }
+        if (!source || !target) return null;
 
         const isConnectedToHovered = hoveredEdgeId ? r.id === hoveredEdgeId : isRelationConnectedToHovered(r);
         const edgeStroke = hasHoveredRelations ? (isConnectedToHovered ? "#0f766e" : "#cbd5e1") : "#0f766e";
@@ -1850,6 +1446,71 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [isMobile, selectedSticky, selectedProcess, selectedSystem, selectedProcessComponent, selectedPerson, selectedGrouping, selectedNode]);
   const shouldShowDesktopStructurePanel =
     !isMobile && !!selectedNodeId && desktopNodeAction === "structure" && !!outlineNodeId && outlineNodeId === selectedNodeId;
+  const searchCatalog = useMemo(() => {
+    const nodeEntries = nodes.map((node) => {
+      const t = typesById.get(node.type_id);
+      const isLandscape = isLandscapeTypeName(t?.name || "");
+      const size = getNormalizedDocumentSize(isLandscape, node.width, node.height);
+      return {
+        id: node.id,
+        label: node.title,
+        documentNumber: node.document_number ?? null,
+        kind: "Document",
+        x: node.pos_x,
+        y: node.pos_y,
+        width: size.width,
+        height: size.height,
+      };
+    });
+    const elementEntries = elements.map((el) => ({
+      id: `process:${el.id}`,
+      label: el.heading || getElementRelationshipTypeLabel(el.element_type),
+      documentNumber: null,
+      kind: getElementRelationshipTypeLabel(el.element_type),
+      x: el.pos_x,
+      y: el.pos_y,
+      width: el.width,
+      height: el.height,
+    }));
+    return [...nodeEntries, ...elementEntries];
+  }, [nodes, elements, typesById]);
+  const searchResults = useMemo(() => {
+    const term = searchQuery.trim().toLowerCase();
+    if (!term) return [];
+    return searchCatalog
+      .filter((item) =>
+        item.label.toLowerCase().includes(term) ||
+        (item.documentNumber ?? "").toLowerCase().includes(term) ||
+        item.kind.toLowerCase().includes(term)
+      )
+      .slice(0, 100)
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        documentNumber: item.documentNumber,
+        kind: item.kind,
+      }));
+  }, [searchCatalog, searchQuery]);
+  const handleSelectSearchResult = useCallback((id: string) => {
+    if (!rf) return;
+    const match = searchCatalog.find((entry) => entry.id === id);
+    if (!match) return;
+    const centerX = match.x + match.width / 2;
+    const centerY = match.y + match.height / 2;
+    const viewportWidth = canvasRef.current?.clientWidth ?? window.innerWidth;
+    const viewportHeight = canvasRef.current?.clientHeight ?? window.innerHeight;
+    const zoom = 1.6;
+    rf.setViewport(
+      {
+        x: viewportWidth / 2 - centerX * zoom,
+        y: viewportHeight / 2 - centerY * zoom,
+        zoom,
+      },
+      { duration: 320 }
+    );
+    setShowSearchMenu(false);
+    setSearchQuery("");
+  }, [rf, searchCatalog]);
 
   useEffect(() => {
     if (!activePrimaryLeftAsideKey) {
@@ -1904,7 +1565,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           supabaseBrowser
             .schema("ms")
             .from("node_relations")
-            .select("id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
+            .select("*")
             .eq("map_id", mapId),
           supabaseBrowser.schema("ms").from("map_view_state").select("pan_x,pan_y,zoom").eq("map_id", mapId).eq("user_id", user.id).maybeSingle(),
         ]);
@@ -2085,6 +1746,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       const target = event.target as globalThis.Node | null;
       if (addMenuRef.current && target && addMenuRef.current.contains(target)) return;
       setShowAddMenu(false);
+      if (searchMenuRef.current && target && searchMenuRef.current.contains(target)) return;
+      setShowSearchMenu(false);
       if (disciplineMenuRef.current && target && disciplineMenuRef.current.contains(target)) return;
       setShowDisciplineMenu(false);
     };
@@ -2200,21 +1863,136 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   ]);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Delete") return;
+    const onKeyDown = async (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       const isEditable =
         !!target &&
         (target.isContentEditable || tag === "input" || tag === "textarea" || tag === "select");
       if (isEditable) return;
+
+      const isCopy = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c";
+      const isPaste = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v";
+
+      if (isCopy) {
+        if (!selectedFlowIds.size) return;
+        event.preventDefault();
+        setCopiedFlowIds([...selectedFlowIds]);
+        clipboardPasteCountRef.current = 1;
+        return;
+      }
+
+      if (isPaste) {
+        if (!copiedFlowIds.length) return;
+        if (!canWriteMap) {
+          setError("You have view access only for this map.");
+          return;
+        }
+        event.preventDefault();
+        const step = clipboardPasteCountRef.current;
+        const offset = minorGridSize * 2 * step;
+
+        const sourceNodeIds = copiedFlowIds.filter((id) => !id.startsWith("process:"));
+        const sourceElementIds = copiedFlowIds
+          .filter((id) => id.startsWith("process:"))
+          .map((id) => parseProcessFlowId(id));
+
+        const sourceNodes = nodes.filter((n) => sourceNodeIds.includes(n.id));
+        const sourceElements = elements.filter((el) => sourceElementIds.includes(el.id));
+
+        const nodePayload = sourceNodes.map((n) => ({
+          map_id: mapId,
+          type_id: n.type_id,
+          title: n.title,
+          document_number: n.document_number,
+          discipline: n.discipline,
+          owner_user_id: n.owner_user_id,
+          owner_name: n.owner_name,
+          user_group: n.user_group,
+          pos_x: snapToMinorGrid(n.pos_x + offset),
+          pos_y: snapToMinorGrid(n.pos_y + offset),
+          width: n.width,
+          height: n.height,
+          is_archived: false,
+        }));
+
+        const elementPayload = sourceElements.map((el) => ({
+          map_id: mapId,
+          element_type: el.element_type,
+          heading: el.heading,
+          color_hex: el.color_hex,
+          created_by_user_id: userId ?? el.created_by_user_id,
+          pos_x: snapToMinorGrid(el.pos_x + offset),
+          pos_y: snapToMinorGrid(el.pos_y + offset),
+          width: el.width,
+          height: el.height,
+        }));
+
+        let insertedNodes: DocumentNodeRow[] = [];
+        let insertedElements: CanvasElementRow[] = [];
+
+        if (nodePayload.length) {
+          const { data, error: e } = await supabaseBrowser
+            .schema("ms")
+            .from("document_nodes")
+            .insert(nodePayload)
+            .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived");
+          if (e) {
+            setError(e.message || "Unable to paste document nodes.");
+            return;
+          }
+          insertedNodes = (data ?? []) as DocumentNodeRow[];
+        }
+
+        if (elementPayload.length) {
+          const { data, error: e } = await supabaseBrowser
+            .schema("ms")
+            .from("canvas_elements")
+            .insert(elementPayload)
+            .select(canvasElementSelectColumns);
+          if (e) {
+            setError(e.message || "Unable to paste canvas elements.");
+            return;
+          }
+          insertedElements = (data ?? []) as CanvasElementRow[];
+        }
+
+        if (insertedNodes.length) {
+          insertedNodes.forEach((n) => {
+            savedPos.current[n.id] = { x: n.pos_x, y: n.pos_y };
+          });
+          setNodes((prev) => [...prev, ...insertedNodes]);
+        }
+        if (insertedElements.length) {
+          setElements((prev) => [...prev, ...insertedElements]);
+        }
+        if (insertedNodes.length || insertedElements.length) {
+          const nextSelected = new Set<string>();
+          insertedNodes.forEach((n) => nextSelected.add(n.id));
+          insertedElements.forEach((el) => nextSelected.add(`process:${el.id}`));
+          setSelectedFlowIds(nextSelected);
+          clipboardPasteCountRef.current += 1;
+        }
+        return;
+      }
+
+      if (event.key !== "Delete") return;
       if (!selectedFlowIds.size) return;
       event.preventDefault();
       setShowDeleteSelectionConfirm(true);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedFlowIds]);
+  }, [
+    selectedFlowIds,
+    copiedFlowIds,
+    canWriteMap,
+    mapId,
+    nodes,
+    elements,
+    snapToMinorGrid,
+    userId,
+  ]);
 
   const onMoveEnd = useCallback((_event: unknown, viewport: Viewport) => {
     if (!userId) return;
@@ -2228,794 +2006,200 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }, 500);
   }, [mapId, userId]);
 
-  const handleSaveMapTitle = useCallback(async () => {
-    if (!canManageMapMetadata) {
-      setError("Only the map owner can rename this map.");
-      return;
-    }
-    const nextTitle = mapTitleDraft.trim();
-    if (!map || !nextTitle) return;
-    setSavingMapTitle(true);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("system_maps")
-      .update({ title: nextTitle })
-      .eq("id", map.id)
-      .select("id,title,description,owner_id,map_code,updated_at,created_at")
-      .maybeSingle();
-    setSavingMapTitle(false);
-    if (e || !data) {
-      setError(e?.message || "Unable to save map title.");
-      return;
-    }
-    setMap(data as SystemMap);
-    setIsEditingMapTitle(false);
-    setMapTitleSavedFlash(true);
-    setTimeout(() => setMapTitleSavedFlash(false), 1200);
-  }, [canManageMapMetadata, map, mapTitleDraft]);
-  const handleCloseMapInfoAside = useCallback(() => {
-    setShowMapInfoAside(false);
-    setIsEditingMapInfo(false);
-    if (map) {
-      setMapInfoNameDraft(map.title);
-      setMapInfoDescriptionDraft(map.description ?? "");
-      setMapCodeDraft(map.map_code ?? "");
-    }
-  }, [map]);
-  const handleSaveMapInfo = useCallback(async () => {
-    if (!canManageMapMetadata) {
-      setError("Only the map owner can edit map details.");
-      return;
-    }
-    if (!map) return;
-    const nextTitle = mapInfoNameDraft.trim();
-    const nextMapCode = mapCodeDraft.trim().toUpperCase();
-    if (!nextTitle) return;
-    if (!nextMapCode) {
-      setError("Map code cannot be blank.");
-      return;
-    }
-    setSavingMapInfo(true);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("system_maps")
-      .update({ title: nextTitle, description: mapInfoDescriptionDraft.trim() || null, map_code: nextMapCode })
-      .eq("id", map.id)
-      .select("id,title,description,owner_id,map_code,updated_at,created_at")
-      .maybeSingle();
-    if (e || !data) {
-      setSavingMapInfo(false);
-      setError(e?.message || "Unable to save map information.");
-      return;
-    }
-    const mapCodeChanged = (map.map_code ?? "").trim().toUpperCase() !== nextMapCode;
-    if (mapCodeChanged) {
-      const { error: revokeError } = await supabaseBrowser
-        .schema("ms")
-        .from("map_members")
-        .delete()
-        .eq("map_id", map.id)
-        .neq("user_id", map.owner_id);
-      if (revokeError) {
-        setSavingMapInfo(false);
-        setError(revokeError.message || "Map saved, but member access could not be reset.");
-        return;
-      }
-      const { error: ownerUpsertError } = await supabaseBrowser
-        .schema("ms")
-        .from("map_members")
-        .upsert(
-          { map_id: map.id, user_id: map.owner_id, role: "full_write" },
-          { onConflict: "map_id,user_id" }
-        );
-      if (ownerUpsertError) {
-        setSavingMapInfo(false);
-        setError(ownerUpsertError.message || "Map saved, but owner access could not be confirmed.");
-        return;
-      }
-    }
-    setSavingMapInfo(false);
-    setMap(data as SystemMap);
-    setMapTitleDraft((data as SystemMap).title);
-    setMapTitleSavedFlash(true);
-    setTimeout(() => setMapTitleSavedFlash(false), 1200);
-    setIsEditingMapInfo(false);
-    await loadMapMembers((data as SystemMap).owner_id);
-  }, [canManageMapMetadata, map, mapInfoNameDraft, mapInfoDescriptionDraft, mapCodeDraft, loadMapMembers]);
+  const { handleSaveMapTitle, handleCloseMapInfoAside, handleSaveMapInfo, handleUpdateMapMemberRole } =
+    useCanvasMapInfoActions({
+      canManageMapMetadata,
+      map,
+      mapTitleDraft,
+      mapInfoNameDraft,
+      mapInfoDescriptionDraft,
+      mapCodeDraft,
+      loadMapMembers,
+      setError,
+      setSavingMapTitle,
+      setSavingMapInfo,
+      setSavingMemberRoleUserId,
+      setMap,
+      setMapTitleDraft,
+      setIsEditingMapTitle,
+      setMapTitleSavedFlash,
+      setShowMapInfoAside,
+      setIsEditingMapInfo,
+      setMapInfoNameDraft,
+      setMapInfoDescriptionDraft,
+      setMapCodeDraft,
+    });
 
-  const handleUpdateMapMemberRole = useCallback(
-    async (targetUserId: string, nextRole: "read" | "partial_write" | "full_write") => {
-      if (!canManageMapMetadata || !map) {
-        setError("Only the map owner can change access.");
-        return;
-      }
-      if (targetUserId === map.owner_id) return;
-      setSavingMemberRoleUserId(targetUserId);
-      const { error: e } = await supabaseBrowser
-        .schema("ms")
-        .from("map_members")
-        .update({ role: nextRole })
-        .eq("map_id", map.id)
-        .eq("user_id", targetUserId);
-      setSavingMemberRoleUserId(null);
-      if (e) {
-        setError(e.message || "Unable to update member access.");
-        return;
-      }
-      await loadMapMembers(map.owner_id);
-    },
-    [canManageMapMetadata, map, loadMapMembers]
-  );
-
-  const onNodeDragStop = useCallback(async (_event: unknown, node: Node<FlowData>) => {
-    if (selectedFlowIds.size > 1 && selectedFlowIds.has(node.id)) {
-      if (!canWriteMap) {
-        setError("You have view access only for this map.");
-        return;
-      }
-      const selectedIds = [...selectedFlowIds];
-      const flowById = new Map(flowNodes.map((n) => [n.id, n]));
-      const elementUpdates: Array<{ id: string; x: number; y: number }> = [];
-      const documentUpdates: Array<{ id: string; x: number; y: number }> = [];
-      selectedIds.forEach((flowId) => {
-        const flowNode = flowById.get(flowId);
-        if (!flowNode) return;
-        const snappedX = snapToMinorGrid(flowNode.position.x);
-        const snappedY = snapToMinorGrid(flowNode.position.y);
-        if (flowId.startsWith("process:")) {
-          elementUpdates.push({ id: parseProcessFlowId(flowId), x: snappedX, y: snappedY });
-        } else {
-          documentUpdates.push({ id: flowId, x: snappedX, y: snappedY });
-        }
-      });
-
-      if (documentUpdates.length) {
-        const nextDocMap = new Map(documentUpdates.map((u) => [u.id, u]));
-        setNodes((prev) => prev.map((n) => {
-          const next = nextDocMap.get(n.id);
-          return next ? { ...n, pos_x: next.x, pos_y: next.y } : n;
-        }));
-      }
-      if (elementUpdates.length) {
-        const nextElementMap = new Map(elementUpdates.map((u) => [u.id, u]));
-        setElements((prev) => prev.map((el) => {
-          const next = nextElementMap.get(el.id);
-          return next ? { ...el, pos_x: next.x, pos_y: next.y } : el;
-        }));
-      }
-
-      const persistCalls: Promise<{ error: { message?: string } | null }>[] = [];
-      documentUpdates.forEach((u) => {
-        persistCalls.push(
-          (async () =>
-            await supabaseBrowser
-              .schema("ms")
-              .from("document_nodes")
-              .update({ pos_x: u.x, pos_y: u.y })
-              .eq("id", u.id)
-              .eq("map_id", mapId))()
-        );
-        savedPos.current[u.id] = { x: u.x, y: u.y };
-      });
-      elementUpdates.forEach((u) => {
-        persistCalls.push(
-          (async () =>
-            await supabaseBrowser
-              .schema("ms")
-              .from("canvas_elements")
-              .update({ pos_x: u.x, pos_y: u.y })
-              .eq("id", u.id)
-              .eq("map_id", mapId))()
-        );
-      });
-      const results = await Promise.all(persistCalls);
-      const failed = results.find((r) => {
-        const maybe = r as { error?: { message?: string } | null };
-        return !!maybe.error;
-      }) as { error?: { message?: string } | null } | undefined;
-      if (failed?.error?.message) setError(failed.error.message || "Unable to save group position.");
-      return;
-    }
-
-    if (
-      node.data.entityKind === "category" ||
-      node.data.entityKind === "system_circle" ||
-      node.data.entityKind === "grouping_container" ||
-      node.data.entityKind === "process_component" ||
-      node.data.entityKind === "person" ||
-      node.data.entityKind === "sticky_note"
-    ) {
-      const elementId = parseProcessFlowId(node.id);
-      const sourceElement = elements.find((el) => el.id === elementId);
-      if (!sourceElement) return;
-      if (!canEditElement(sourceElement)) {
-        setError("You can only edit sticky notes you created.");
-        return;
-      }
-      const finalX = snapToMinorGrid(node.position.x);
-      const finalY = snapToMinorGrid(node.position.y);
-      setElements((prev) => prev.map((el) => (el.id === elementId ? { ...el, pos_x: finalX, pos_y: finalY } : el)));
-      const { error: e } = await supabaseBrowser
-        .schema("ms")
-        .from("canvas_elements")
-        .update({ pos_x: finalX, pos_y: finalY })
-        .eq("id", elementId)
-        .eq("map_id", mapId);
-      if (e) {
-        setError(e.message || "Unable to save element position.");
-        setElements((prev) => prev.map((el) => (el.id === elementId ? sourceElement : el)));
-      }
-      return;
-    }
-    const source = nodes.find((n) => n.id === node.id);
-    if (!source) return;
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    const x = snapToMinorGrid(node.position.x);
-    const y = snapToMinorGrid(node.position.y);
-    const old = savedPos.current[node.id] ?? { x: source.pos_x, y: source.pos_y };
-    const freePosition = findNearestFreePosition(node.id, x, y) ?? old;
-    const finalX = freePosition.x;
-    const finalY = freePosition.y;
-    setFlowNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, position: { x: finalX, y: finalY } } : n)));
-    setNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, pos_x: finalX, pos_y: finalY } : n)));
-
-    const { error: e } = await supabaseBrowser.schema("ms").from("document_nodes").update({ pos_x: finalX, pos_y: finalY }).eq("id", node.id).eq("map_id", mapId);
-    if (e) {
-      setError(e.message || "Unable to save position. Reverting.");
-      setNodes((prev) => prev.map((n) => (n.id === node.id ? { ...n, pos_x: old.x, pos_y: old.y } : n)));
-      return;
-    }
-    savedPos.current[node.id] = { x: finalX, y: finalY };
-  }, [canWriteMap, nodes, elements, mapId, snapToMinorGrid, findNearestFreePosition, selectedFlowIds, flowNodes, canEditElement]);
-
-  const handleAddBlankDocument = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!rf || !canvasRef.current) return;
-    const t = addDocumentTypes[0];
-    if (!t) return;
-    const box = canvasRef.current.getBoundingClientRect();
-    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    const x = snapToMinorGrid(center.x);
-    const y = snapToMinorGrid(center.y);
-
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("document_nodes")
-      .insert({
-        map_id: mapId,
-        type_id: t.id,
-        title: unconfiguredDocumentTitle,
-        document_number: null,
-        pos_x: x,
-        pos_y: y,
-        width: isLandscapeTypeName(t.name) ? landscapeDefaultWidth : defaultWidth,
-        height: isLandscapeTypeName(t.name) ? landscapeDefaultHeight : defaultHeight,
-      })
-      .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to create document.");
-      return;
-    }
-    const inserted = data as DocumentNodeRow;
-    setNodes((prev) => [...prev, inserted]);
-    savedPos.current[inserted.id] = { x: inserted.pos_x, y: inserted.pos_y };
-    setShowAddMenu(false);
-  };
-  const handleAddProcessHeading = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!rf || !canvasRef.current) return;
-    const box = canvasRef.current.getBoundingClientRect();
-    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    const x = snapToMinorGrid(center.x);
-    const y = snapToMinorGrid(center.y);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .insert({
-        map_id: mapId,
-        element_type: "category",
-        heading: "New Category",
-        color_hex: null,
-        created_by_user_id: userId,
-        pos_x: x,
-        pos_y: y,
-        width: processHeadingWidth,
-        height: processHeadingHeight,
-      })
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to create process heading.");
-      return;
-    }
-    setElements((prev) => [...prev, data as CanvasElementRow]);
-    setShowAddMenu(false);
-  };
-  const handleAddSystemCircle = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!rf || !canvasRef.current) return;
-    const box = canvasRef.current.getBoundingClientRect();
-    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    const x = snapToMinorGrid(center.x);
-    const y = snapToMinorGrid(center.y);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .insert({
-        map_id: mapId,
-        element_type: "system_circle",
-        heading: "System Name",
-        color_hex: null,
-        created_by_user_id: userId,
-        pos_x: x,
-        pos_y: y,
-        width: systemCircleDiameter,
-        height: systemCircleElementHeight,
-      })
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to create system element.");
-      return;
-    }
-    setElements((prev) => [...prev, data as CanvasElementRow]);
-    setShowAddMenu(false);
-  };
-  const handleAddProcessComponent = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!rf || !canvasRef.current) return;
-    const box = canvasRef.current.getBoundingClientRect();
-    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    const x = snapToMinorGrid(center.x);
-    const y = snapToMinorGrid(center.y);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .insert({
-        map_id: mapId,
-        element_type: "process_component",
-        heading: "Process",
-        color_hex: null,
-        created_by_user_id: userId,
-        pos_x: x,
-        pos_y: y,
-        width: processComponentWidth,
-        height: processComponentElementHeight,
-      })
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to create process component.");
-      return;
-    }
-    setElements((prev) => [...prev, data as CanvasElementRow]);
-    setShowAddMenu(false);
-  };
-  const handleAddPerson = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!rf || !canvasRef.current) return;
-    const box = canvasRef.current.getBoundingClientRect();
-    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    const x = snapToMinorGrid(center.x);
-    const y = snapToMinorGrid(center.y);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .insert({
-        map_id: mapId,
-        element_type: "person",
-        heading: buildPersonHeading("Role Name", "Department"),
-        color_hex: null,
-        created_by_user_id: userId,
-        pos_x: x,
-        pos_y: y,
-        width: personElementWidth,
-        height: personElementHeight,
-      })
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to create person component.");
-      return;
-    }
-    setElements((prev) => [...prev, data as CanvasElementRow]);
-    setShowAddMenu(false);
-  };
-  const handleAddGroupingContainer = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!rf || !canvasRef.current) return;
-    const box = canvasRef.current.getBoundingClientRect();
-    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    const x = snapToMinorGrid(center.x);
-    const y = snapToMinorGrid(center.y);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .insert({
-        map_id: mapId,
-        element_type: "grouping_container",
-        heading: "Group label",
-        color_hex: null,
-        created_by_user_id: userId,
-        pos_x: x,
-        pos_y: y,
-        width: groupingDefaultWidth,
-        height: groupingDefaultHeight,
-      })
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to create grouping container.");
-      return;
-    }
-    setElements((prev) => [...prev, data as CanvasElementRow]);
-    setShowAddMenu(false);
-  };
-  const handleAddStickyNote = async () => {
-    if (!canCreateSticky || !rf || !canvasRef.current || !userId) return;
-    const box = canvasRef.current.getBoundingClientRect();
-    const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-    const x = snapToMinorGrid(center.x);
-    const y = snapToMinorGrid(center.y);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .insert({
-        map_id: mapId,
-        element_type: "sticky_note",
-        heading: "Enter Text",
-        color_hex: "#fef08a",
-        created_by_user_id: userId,
-        pos_x: x,
-        pos_y: y,
-        width: stickyDefaultSize,
-        height: stickyDefaultSize,
-      })
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to create sticky note.");
-      return;
-    }
-    setElements((prev) => [...prev, data as CanvasElementRow]);
-    setShowAddMenu(false);
-  };
-  const handleSaveProcessHeading = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!selectedProcessId) return;
-    const heading = processHeadingDraft.trim() || "New Category";
-    const widthSquares = Number(processWidthDraft.trim());
-    const heightSquares = Number(processHeightDraft.trim());
-    if (!Number.isInteger(widthSquares) || !Number.isInteger(heightSquares)) {
-      setError(`Category size must be whole numbers. Minimum width is ${processMinWidthSquares} and minimum height is ${processMinHeightSquares} small squares.`);
-      return;
-    }
-    if (widthSquares < processMinWidthSquares || heightSquares < processMinHeightSquares) {
-      setError(`Category size is below limit. Minimum width is ${processMinWidthSquares} and minimum height is ${processMinHeightSquares} small squares.`);
-      return;
-    }
-    const width = Math.max(processMinWidth, snapToMinorGrid(widthSquares * minorGridSize));
-    const height = Math.max(processMinHeight, snapToMinorGrid(heightSquares * minorGridSize));
-    const colorHex = processColorDraft ?? null;
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .update({ heading, width, height, color_hex: colorHex })
-      .eq("id", selectedProcessId)
-      .eq("map_id", mapId)
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to save process heading.");
-      return;
-    }
-    const updated = data as CanvasElementRow;
-    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedProcessId(null);
-  };
-  const handleSaveSystemName = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!selectedSystemId) return;
-    const heading = systemNameDraft.trim() || "System Name";
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .update({ heading })
-      .eq("id", selectedSystemId)
-      .eq("map_id", mapId)
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to save system name.");
-      return;
-    }
-    const updated = data as CanvasElementRow;
-    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedSystemId(null);
-  };
-  const handleSaveProcessComponent = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!selectedProcessComponentId) return;
-    const heading = processComponentLabelDraft.trim() || "Process";
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .update({ heading })
-      .eq("id", selectedProcessComponentId)
-      .eq("map_id", mapId)
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to save process.");
-      return;
-    }
-    const updated = data as CanvasElementRow;
-    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedProcessComponentId(null);
-  };
-  const handleSavePerson = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!selectedPersonId) return;
-    const heading = buildPersonHeading(personRoleDraft, personDepartmentDraft);
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .update({ heading, width: personElementWidth, height: personElementHeight })
-      .eq("id", selectedPersonId)
-      .eq("map_id", mapId)
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to save person.");
-      return;
-    }
-    const updated = data as CanvasElementRow;
-    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedPersonId(null);
-  };
-  const handleSaveGroupingContainer = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!selectedGroupingId) return;
-    const heading = groupingLabelDraft.trim() || "Group label";
-    const widthSquares = Number(groupingWidthDraft.trim());
-    const heightSquares = Number(groupingHeightDraft.trim());
-    if (!Number.isInteger(widthSquares) || !Number.isInteger(heightSquares)) {
-      setError(`Grouping size must be whole numbers. Minimum width is ${groupingMinWidthSquares} and minimum height is ${groupingMinHeightSquares} small squares.`);
-      return;
-    }
-    if (widthSquares < groupingMinWidthSquares || heightSquares < groupingMinHeightSquares) {
-      setError(`Grouping size is below limit. Minimum width is ${groupingMinWidthSquares} and minimum height is ${groupingMinHeightSquares} small squares.`);
-      return;
-    }
-    const width = Math.max(groupingMinWidth, snapToMinorGrid(widthSquares * minorGridSize));
-    const height = Math.max(groupingMinHeight, snapToMinorGrid(heightSquares * minorGridSize));
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .update({ heading, width, height })
-      .eq("id", selectedGroupingId)
-      .eq("map_id", mapId)
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to save grouping container.");
-      return;
-    }
-    const updated = data as CanvasElementRow;
-    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedGroupingId(null);
-  };
-  const handleSaveStickyNote = async () => {
-    if (!selectedStickyId) return;
-    const current = elements.find((el) => el.id === selectedStickyId && el.element_type === "sticky_note");
-    if (!current || !canEditElement(current)) {
-      setError("You can only edit sticky notes you created.");
-      return;
-    }
-    const heading = stickyTextDraft.trim() || "Enter Text";
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("canvas_elements")
-      .update({ heading })
-      .eq("id", selectedStickyId)
-      .eq("map_id", mapId)
-      .select(canvasElementSelectColumns)
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to save sticky note.");
-      return;
-    }
-    setElements((prev) => prev.map((el) => (el.id === (data as CanvasElementRow).id ? (data as CanvasElementRow) : el)));
-    setSelectedStickyId(null);
-  };
-
-  const handleSaveNode = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!selectedNodeId) return;
-    const current = nodes.find((n) => n.id === selectedNodeId);
-    if (!current) return;
-    const nextTypeId = selectedTypeId || current.type_id;
-    const nextTypeName = typesById.get(nextTypeId)?.name ?? "";
-    const nextIsLandscape = isLandscapeTypeName(nextTypeName);
-    const currentSize = getNodeSize(current);
-    const nextSize = getNormalizedDocumentSize(nextIsLandscape, currentSize.width, currentSize.height);
-    const payload = {
-      type_id: nextTypeId,
-      title: title.trim() || "Untitled Document",
-      document_number: documentNumber.trim() || null,
-      discipline: serializeDisciplines(disciplineSelection),
-      user_group: userGroup.trim() || null,
-      owner_name: ownerName.trim() || null,
-      owner_user_id: null,
-      width: nextSize.width,
-      height: nextSize.height,
-    };
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("document_nodes")
-      .update(payload)
-      .eq("id", selectedNodeId)
-      .eq("map_id", mapId)
-      .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to save node properties.");
-      return;
-    }
-    const updated = data as DocumentNodeRow;
-    setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-    setSelectedNodeId(null);
-  };
-
-  const relatedRows = useMemo(() => {
-    if (!selectedNodeId) return [];
-    return relations.filter((r) => r.from_node_id === selectedNodeId || r.to_node_id === selectedNodeId);
-  }, [relations, selectedNodeId]);
-  const relatedGroupingRows = useMemo(() => {
-    if (!selectedGroupingId) return [];
-    return relations.filter(
-      (r) => r.source_grouping_element_id === selectedGroupingId || r.target_grouping_element_id === selectedGroupingId
+  const { onNodeDragStop } = useCanvasNodeDragStop({
+    canWriteMap,
+    canEditElement,
+    nodes,
+    elements,
+    mapId,
+    snapToMinorGrid,
+    findNearestFreePosition,
+    selectedFlowIds,
+    flowNodes,
+    setError,
+    setElements,
+    setNodes,
+    setFlowNodes,
+    savedPos,
+  });
+  const {
+    handleAddBlankDocument,
+    handleAddProcessHeading,
+    handleAddSystemCircle,
+    handleAddProcessComponent,
+    handleAddPerson,
+    handleAddGroupingContainer,
+    handleAddStickyNote,
+    handleSaveProcessHeading,
+    handleSaveSystemName,
+    handleSaveProcessComponent,
+    handleSavePerson,
+    handleSaveGroupingContainer,
+    handleSaveStickyNote,
+  } = useCanvasElementActions({
+    canWriteMap,
+    canCreateSticky,
+    canEditElement,
+    mapId,
+    userId,
+    rf,
+    canvasRef,
+    snapToMinorGrid,
+    setError,
+    setShowAddMenu,
+    setNodes,
+    setElements,
+    savedPos,
+    addDocumentTypes,
+    isLandscapeTypeName,
+    unconfiguredDocumentTitle,
+    landscapeDefaultWidth,
+    defaultWidth,
+    landscapeDefaultHeight,
+    defaultHeight,
+    canvasElementSelectColumns,
+    processHeadingWidth,
+    processHeadingHeight,
+    systemCircleDiameter,
+    systemCircleElementHeight,
+    processComponentWidth,
+    processComponentElementHeight,
+    buildPersonHeading,
+    personElementWidth,
+    personElementHeight,
+    groupingDefaultWidth,
+    groupingDefaultHeight,
+    stickyDefaultSize,
+    selectedProcessId,
+    processHeadingDraft,
+    processWidthDraft,
+    processHeightDraft,
+    processMinWidthSquares,
+    processMinHeightSquares,
+    processMinWidth,
+    processMinHeight,
+    minorGridSize,
+    processColorDraft,
+    setSelectedProcessId,
+    selectedSystemId,
+    systemNameDraft,
+    setSelectedSystemId,
+    selectedProcessComponentId,
+    processComponentLabelDraft,
+    setSelectedProcessComponentId,
+    selectedPersonId,
+    personRoleDraft,
+    personDepartmentDraft,
+    setSelectedPersonId,
+    selectedGroupingId,
+    groupingLabelDraft,
+    groupingWidthDraft,
+    groupingHeightDraft,
+    groupingMinWidthSquares,
+    groupingMinHeightSquares,
+    groupingMinWidth,
+    groupingMinHeight,
+    setSelectedGroupingId,
+    selectedStickyId,
+    stickyTextDraft,
+    elements,
+    setSelectedStickyId,
+  });
+  const {
+    relatedRows,
+    relatedGroupingRows,
+    relatedSystemRows,
+    relatedProcessComponentRows,
+    relatedPersonRows,
+    resolvePersonRelationLabels,
+    resolveGroupingRelationLabels,
+    resolveDocumentRelationLabels,
+    mobileRelatedItems,
+    relationshipSourceNode,
+    relationshipSourceSystem,
+    relationshipSourceGrouping,
+    relationshipModeGrouping,
+    documentRelationCandidates,
+    documentRelationCandidateLabelById,
+    documentRelationCandidateIdByLabel,
+    systemRelationCandidates,
+    systemRelationCandidateLabelById,
+    systemRelationCandidateIdByLabel,
+    groupingRelationCandidates,
+    groupingRelationCandidateLabelById,
+    groupingRelationCandidateIdByLabel,
+    alreadyRelatedDocumentTargetIds,
+    alreadyRelatedSystemTargetIds,
+    alreadyRelatedGroupingTargetIds,
+  } = useCanvasRelationshipDerived({
+    relations,
+    selectedNodeId,
+    selectedGroupingId,
+    selectedSystemId,
+    selectedProcessComponentId,
+    selectedPersonId,
+    relationshipSourceNodeId,
+    relationshipSourceSystemId,
+    relationshipSourceGroupingId,
+    relationshipDocumentQuery,
+    relationshipSystemQuery,
+    relationshipGroupingQuery,
+    nodes,
+    elements,
+  });
+  const startEditRelation = useCallback((r: NodeRelationRow) => {
+    setEditingRelationId(r.id);
+    setEditingRelationDescription(r.relationship_description ?? "");
+    const nextCategory = (r.relationship_category || "information").toLowerCase();
+    setEditingRelationCategory(
+      nextCategory === "information" || nextCategory === "systems" || nextCategory === "process" || nextCategory === "data" || nextCategory === "other"
+        ? (nextCategory as RelationshipCategory)
+        : "information"
     );
-  }, [relations, selectedGroupingId]);
-  const relatedPersonRows = useMemo(() => {
-    if (!selectedPersonId) return [];
-    return relations.filter((r) => r.target_system_element_id === selectedPersonId);
-  }, [relations, selectedPersonId]);
-
-  const relationshipSourceNode = useMemo(
-    () => (relationshipSourceNodeId ? nodes.find((n) => n.id === relationshipSourceNodeId) ?? null : null),
-    [nodes, relationshipSourceNodeId]
-  );
-  const relationshipSourceGrouping = useMemo(
-    () =>
-      relationshipSourceGroupingId
-        ? elements.find((el) => el.id === relationshipSourceGroupingId && el.element_type === "grouping_container") ?? null
-        : null,
-    [elements, relationshipSourceGroupingId]
-  );
-  const relationshipModeGrouping = !!relationshipSourceGroupingId;
-
-  const documentRelationCandidates = useMemo(() => {
-    if (!relationshipSourceNodeId) return [];
-    const term = relationshipDocumentQuery.trim().toLowerCase();
-    return nodes
-      .filter((n) => n.id !== relationshipSourceNodeId)
-      .filter((n) => n.title.toLowerCase().includes(term));
-  }, [nodes, relationshipSourceNodeId, relationshipDocumentQuery]);
-
-  const documentRelationCandidateLabelById = useMemo(() => {
-    const m = new Map<string, string>();
-    documentRelationCandidates.forEach((n) => m.set(n.id, `${n.title} (${disciplineSummary(n.discipline)})`));
-    return m;
-  }, [documentRelationCandidates]);
-
-  const documentRelationCandidateIdByLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    documentRelationCandidates.forEach((n) => m.set(`${n.title} (${disciplineSummary(n.discipline)})`, n.id));
-    return m;
-  }, [documentRelationCandidates]);
-  const systemRelationCandidates = useMemo(() => {
-    const term = relationshipSystemQuery.trim().toLowerCase();
-    return elements
-      .filter((el) => el.element_type === "system_circle" || el.element_type === "process_component" || el.element_type === "person")
-      .filter((el) => (el.heading || "").toLowerCase().includes(term));
-  }, [elements, relationshipSystemQuery]);
-  const systemRelationCandidateLabelById = useMemo(() => {
-    const m = new Map<string, string>();
-    systemRelationCandidates.forEach((el) => m.set(el.id, getElementRelationshipDisplayLabel(el)));
-    return m;
-  }, [systemRelationCandidates]);
-  const systemRelationCandidateIdByLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    systemRelationCandidates.forEach((el) => m.set(getElementRelationshipDisplayLabel(el), el.id));
-    return m;
-  }, [systemRelationCandidates]);
-  const groupingRelationCandidates = useMemo(() => {
-    if (!relationshipSourceGroupingId) return [];
-    const term = relationshipGroupingQuery.trim().toLowerCase();
-    return elements
-      .filter((el) => el.element_type === "grouping_container" && el.id !== relationshipSourceGroupingId)
-      .filter((el) => (el.heading || "").toLowerCase().includes(term));
-  }, [elements, relationshipSourceGroupingId, relationshipGroupingQuery]);
-  const groupingRelationCandidateLabelById = useMemo(() => {
-    const m = new Map<string, string>();
-    groupingRelationCandidates.forEach((el) => m.set(el.id, el.heading || "Group label"));
-    return m;
-  }, [groupingRelationCandidates]);
-  const groupingRelationCandidateIdByLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    groupingRelationCandidates.forEach((el) => m.set(el.heading || "Group label", el.id));
-    return m;
-  }, [groupingRelationCandidates]);
-  const alreadyRelatedDocumentTargetIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (!relationshipSourceNodeId) return ids;
-    relations.forEach((r) => {
-      if (r.from_node_id === relationshipSourceNodeId && r.to_node_id) ids.add(r.to_node_id);
-      if (r.to_node_id === relationshipSourceNodeId && r.from_node_id) ids.add(r.from_node_id);
-    });
-    return ids;
-  }, [relations, relationshipSourceNodeId]);
-  const alreadyRelatedSystemTargetIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (!relationshipSourceNodeId) return ids;
-    relations.forEach((r) => {
-      if (r.from_node_id === relationshipSourceNodeId && r.target_system_element_id) ids.add(r.target_system_element_id);
-    });
-    return ids;
-  }, [relations, relationshipSourceNodeId]);
-  const alreadyRelatedGroupingTargetIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (!relationshipSourceGroupingId) return ids;
-    relations.forEach((r) => {
-      if (r.source_grouping_element_id === relationshipSourceGroupingId && r.target_grouping_element_id) ids.add(r.target_grouping_element_id);
-      if (r.target_grouping_element_id === relationshipSourceGroupingId && r.source_grouping_element_id) ids.add(r.source_grouping_element_id);
-    });
-    return ids;
-  }, [relations, relationshipSourceGroupingId]);
+    setEditingRelationCustomType(r.relationship_custom_type ?? "");
+    setEditingRelationDisciplines(
+      (r.relationship_disciplines ?? []).filter(
+        (key): key is DisciplineKey => disciplineKeySet.has(key as DisciplineKey)
+      )
+    );
+    setShowEditingRelationDisciplineMenu(false);
+  }, []);
+  const cancelEditRelation = useCallback(() => {
+    setEditingRelationId(null);
+    setEditingRelationDescription("");
+    setEditingRelationCategory("information");
+    setEditingRelationCustomType("");
+    setEditingRelationDisciplines([]);
+    setShowEditingRelationDisciplineMenu(false);
+  }, []);
   const closeAddRelationshipModal = useCallback(() => {
     setShowAddRelationship(false);
     setRelationshipSourceNodeId(null);
+    setRelationshipSourceSystemId(null);
     setRelationshipSourceGroupingId(null);
     setRelationshipTargetDocumentId("");
     setRelationshipTargetSystemId("");
@@ -3062,437 +2246,166 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setMobileNodeMenuId(null);
   }, [closeDesktopDrilldownPanels]);
 
-  const handleAddRelation = async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    const hasNodeSource = !!relationshipSourceNodeId;
-    const hasGroupingSource = !!relationshipSourceGroupingId;
-    if (!hasNodeSource && !hasGroupingSource) return;
-    const hasGroupingTarget = !!relationshipTargetGroupingId;
-    const hasDocumentTarget = !!relationshipTargetDocumentId;
-    const hasSystemTarget = !!relationshipTargetSystemId;
-    if (hasGroupingSource) {
-      if (!hasGroupingTarget) return;
-    } else if (!hasDocumentTarget && !hasSystemTarget) {
-      return;
-    }
-    const exists = hasGroupingSource
-      ? relations.some(
-          (r) =>
-            (r.source_grouping_element_id === relationshipSourceGroupingId && r.target_grouping_element_id === relationshipTargetGroupingId) ||
-            (r.source_grouping_element_id === relationshipTargetGroupingId && r.target_grouping_element_id === relationshipSourceGroupingId)
-        )
-      : hasDocumentTarget
-        ? relations.some(
-            (r) =>
-              (r.from_node_id === relationshipSourceNodeId && r.to_node_id === relationshipTargetDocumentId) ||
-              (r.from_node_id === relationshipTargetDocumentId && r.to_node_id === relationshipSourceNodeId)
-          )
-        : relations.some(
-            (r) =>
-              r.from_node_id === relationshipSourceNodeId &&
-              r.target_system_element_id === relationshipTargetSystemId
-          );
-    if (exists) {
-      setError("Relationship already exists for this target.");
-      return;
-    }
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("node_relations")
-      .insert({
-        map_id: mapId,
-        from_node_id: hasNodeSource ? relationshipSourceNodeId : null,
-        to_node_id: hasNodeSource && hasDocumentTarget ? relationshipTargetDocumentId : null,
-        source_grouping_element_id: hasGroupingSource ? relationshipSourceGroupingId : null,
-        target_grouping_element_id: hasGroupingSource && hasGroupingTarget ? relationshipTargetGroupingId : null,
-        target_system_element_id: hasNodeSource && hasSystemTarget ? relationshipTargetSystemId : null,
-        relation_type: "related",
-        relationship_description: relationshipDescription.trim() || null,
-        relationship_disciplines: relationshipDisciplineSelection.length ? relationshipDisciplineSelection : null,
-        relationship_category: relationshipCategory,
-        relationship_custom_type: relationshipCategory === "other" ? relationshipCustomType.trim() || null : null,
-      })
-      .select("id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to add relation.");
-      return;
-    }
-    setRelations((prev) => [...prev, data as NodeRelationRow]);
-    closeAddRelationshipModal();
-  };
+  const openAddRelationshipFromSource = useCallback(
+    (source: { nodeId?: string | null; systemId?: string | null; groupingId?: string | null }) => {
+      setRelationshipSourceNodeId(source.nodeId ?? null);
+      setRelationshipSourceSystemId(source.systemId ?? null);
+      setRelationshipSourceGroupingId(source.groupingId ?? null);
+      setRelationshipDocumentQuery("");
+      setRelationshipSystemQuery("");
+      setRelationshipGroupingQuery("");
+      setRelationshipTargetDocumentId("");
+      setRelationshipTargetSystemId("");
+      setRelationshipTargetGroupingId("");
+      setShowRelationshipDocumentOptions(false);
+      setShowRelationshipSystemOptions(false);
+      setShowRelationshipGroupingOptions(false);
+      setRelationshipDescription("");
+      setRelationshipDisciplineSelection([]);
+      setShowRelationshipDisciplineMenu(false);
+      setRelationshipCategory("information");
+      setRelationshipCustomType("");
+      setShowAddRelationship(true);
+      setDesktopNodeAction("relationship");
+    },
+    []
+  );
 
-  const handleDeleteRelation = async (id: string) => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    const { error: e } = await supabaseBrowser.schema("ms").from("node_relations").delete().eq("id", id).eq("map_id", mapId);
-    if (e) {
-      setError(e.message || "Unable to delete relation.");
-      return;
-    }
-    setRelations((prev) => prev.filter((r) => r.id !== id));
-  };
-  const handleUpdateRelation = async (id: string) => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (editingRelationCategory === "other" && !editingRelationCustomType.trim()) {
-      setError("Please enter a custom relationship type.");
-      return;
-    }
-    const { data, error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("node_relations")
-      .update({
-        relationship_description: editingRelationDescription.trim() || null,
-        relationship_category: editingRelationCategory,
-        relationship_custom_type: editingRelationCategory === "other" ? editingRelationCustomType.trim() || null : null,
-        relationship_disciplines: editingRelationDisciplines.length ? editingRelationDisciplines : null,
-      })
-      .eq("id", id)
-      .eq("map_id", mapId)
-      .select("id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,relation_type,relationship_description,target_system_element_id,relationship_disciplines,relationship_category,relationship_custom_type")
-      .single();
-    if (e || !data) {
-      setError(e?.message || "Unable to update relationship definition.");
-      return;
-    }
-    setRelations((prev) => prev.map((r) => (r.id === id ? (data as NodeRelationRow) : r)));
-    setEditingRelationId(null);
-    setEditingRelationDescription("");
-    setEditingRelationCategory("information");
-    setEditingRelationCustomType("");
-    setEditingRelationDisciplines([]);
-    setShowEditingRelationDisciplineMenu(false);
-  };
-
-  const handleDeleteNode = async (id: string) => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    const { error: e } = await supabaseBrowser.schema("ms").from("document_nodes").delete().eq("id", id).eq("map_id", mapId);
-    if (e) {
-      setError(e.message || "Unable to delete document.");
-      return;
-    }
-    setNodes((prev) => prev.filter((n) => n.id !== id));
-    setRelations((prev) => prev.filter((r) => r.from_node_id !== id && r.to_node_id !== id));
-    setSelectedFlowIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
+  const { handleAddRelation, handleDeleteRelation, handleUpdateRelation, handleDeleteNode, handleSaveNode } =
+    useCanvasRelationNodeActions({
+      canWriteMap,
+      mapId,
+      setError,
+      relations,
+      relationshipSourceNodeId,
+      relationshipSourceSystemId,
+      relationshipSourceGroupingId,
+      relationshipTargetGroupingId,
+      relationshipTargetDocumentId,
+      relationshipTargetSystemId,
+      relationshipDescription,
+      relationshipDisciplineSelection,
+      relationshipCategory,
+      relationshipCustomType,
+      closeAddRelationshipModal,
+      setRelations,
+      editingRelationCategory,
+      editingRelationCustomType,
+      editingRelationDescription,
+      editingRelationDisciplines,
+      setEditingRelationId,
+      setEditingRelationDescription,
+      setEditingRelationCategory,
+      setEditingRelationCustomType,
+      setEditingRelationDisciplines,
+      setShowEditingRelationDisciplineMenu,
+      selectedNodeId,
+      nodes,
+      selectedTypeId,
+      typesById,
+      title,
+      documentNumber,
+      disciplineSelection,
+      userGroup,
+      ownerName,
+      isLandscapeTypeName,
+      getNodeSize,
+      getNormalizedDocumentSize,
+      serializeDisciplines,
+      setNodes,
+      setSelectedNodeId,
+      setSelectedFlowIds,
+      outlineNodeId,
+      setOutlineNodeId,
+      setOutlineItems,
     });
-    if (selectedNodeId === id) setSelectedNodeId(null);
-    if (outlineNodeId === id) {
-      setOutlineNodeId(null);
-      setOutlineItems([]);
-    }
-  };
-  const handleDeleteProcessElement = async (id: string) => {
-    const target = elements.find((el) => el.id === id);
-    if (!target || !canEditElement(target)) {
-      setError("You do not have permission to delete this component.");
-      return;
-    }
-    await supabaseBrowser
-      .schema("ms")
-      .from("node_relations")
-      .delete()
-      .eq("map_id", mapId)
-      .or(`target_system_element_id.eq.${id},source_grouping_element_id.eq.${id},target_grouping_element_id.eq.${id}`);
-    const { error: e } = await supabaseBrowser.schema("ms").from("canvas_elements").delete().eq("id", id).eq("map_id", mapId);
-    if (e) {
-      setError(e.message || "Unable to delete canvas element.");
-      return;
-    }
-    setElements((prev) => prev.filter((el) => el.id !== id));
-    setRelations((prev) => prev.filter((r) => r.target_system_element_id !== id && r.source_grouping_element_id !== id && r.target_grouping_element_id !== id));
-    setSelectedFlowIds((prev) => {
-      const next = new Set(prev);
-      next.delete(processFlowId(id));
-      return next;
-    });
-    if (selectedProcessId === id) setSelectedProcessId(null);
-    if (selectedSystemId === id) setSelectedSystemId(null);
-    if (selectedProcessComponentId === id) setSelectedProcessComponentId(null);
-    if (selectedPersonId === id) setSelectedPersonId(null);
-    if (selectedGroupingId === id) setSelectedGroupingId(null);
-    if (selectedStickyId === id) setSelectedStickyId(null);
-  };
-  const handleDeleteSelectedComponents = useCallback(async () => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    if (!selectedFlowIds.size) return;
-    const selectedIds = [...selectedFlowIds];
-    const docIds = selectedIds.filter((id) => !id.startsWith("process:"));
-    const elementIds = selectedIds.filter((id) => id.startsWith("process:")).map(parseProcessFlowId);
+  const { handleDeleteProcessElement, handleDeleteSelectedComponents } = useCanvasDeleteSelectionActions({
+    canWriteMap,
+    canEditElement,
+    mapId,
+    elements,
+    setError,
+    setElements,
+    setRelations,
+    setSelectedFlowIds,
+    processFlowId,
+    parseProcessFlowId,
+    selectedProcessId,
+    setSelectedProcessId,
+    selectedSystemId,
+    setSelectedSystemId,
+    selectedProcessComponentId,
+    setSelectedProcessComponentId,
+    selectedPersonId,
+    setSelectedPersonId,
+    selectedGroupingId,
+    setSelectedGroupingId,
+    selectedStickyId,
+    setSelectedStickyId,
+    selectedFlowIds,
+    handleDeleteNode,
+    setShowDeleteSelectionConfirm,
+  });
 
-    for (const docId of docIds) {
-      // Reuse existing delete path so relationships and local panel states stay in sync.
-      await handleDeleteNode(docId);
-    }
-    for (const elementId of elementIds) {
-      await handleDeleteProcessElement(elementId);
-    }
-
-    setSelectedFlowIds(new Set());
-    setShowDeleteSelectionConfirm(false);
-  }, [canWriteMap, selectedFlowIds, handleDeleteNode, handleDeleteProcessElement]);
-
-  const handleCreateHeading = async () => {
-    if (!outlineNodeId) return;
-    const titleInput = newHeadingTitle.trim();
-    if (!titleInput) return;
-    const levelInput = newHeadingLevel;
-    let parentHeadingId: string | null = null;
-    if (levelInput === 2) {
-      if (!newHeadingParentId) return;
-      parentHeadingId = newHeadingParentId;
-    }
-    if (levelInput === 3) {
-      if (!newHeadingParentId) return;
-      parentHeadingId = newHeadingParentId;
-    }
-
-    const maxSort = outlineItems.reduce((m, i) => Math.max(m, i.sort_order), 0);
-    const { error: e } = await supabaseBrowser.schema("ms").from("document_outline_items").insert({
-      map_id: mapId,
-      node_id: outlineNodeId,
-      kind: "heading",
-      heading_level: levelInput,
-      parent_heading_id: parentHeadingId,
-      title: titleInput,
-      sort_order: maxSort + 10,
-    });
-    if (e) {
-      setError(e.message || "Unable to add heading.");
-      return;
-    }
-    setOutlineCreateMode(null);
-    setNewHeadingTitle("");
-    setNewHeadingLevel(1);
-    setNewHeadingParentId("");
-    await loadOutline(outlineNodeId);
-  };
-
-  const handleCreateContent = async () => {
-    if (!outlineNodeId) return;
-    if (!headingItems.length) return;
-    const headingId = newContentHeadingId;
-    if (!headingId) return;
-    const text = newContentText.trim();
-    if (!text) return;
-
-    const ordered = [...outlineItems].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
-    const headingIndex = ordered.findIndex((i) => i.id === headingId);
-    const insertIndex = headingIndex < 0 ? ordered.length : headingIndex + 1;
-
-    let cursor = 10;
-    for (let i = 0; i <= ordered.length; i += 1) {
-      if (i === insertIndex) {
-        cursor += 10;
-        continue;
-      }
-      const item = ordered[i > insertIndex ? i - 1 : i];
-      if (!item) continue;
-      if (item.sort_order !== cursor) {
-        await supabaseBrowser.schema("ms").from("document_outline_items").update({ sort_order: cursor }).eq("id", item.id);
-      }
-      cursor += 10;
-    }
-
-    const insertSort = (insertIndex + 1) * 10;
-    const { error: e } = await supabaseBrowser.schema("ms").from("document_outline_items").insert({
-      map_id: mapId,
-      node_id: outlineNodeId,
-      kind: "content",
-      content_text: text,
-      heading_id: headingId,
-      sort_order: insertSort,
-    });
-    if (e) {
-      setError(e.message || "Unable to add content.");
-      return;
-    }
-    setOutlineCreateMode(null);
-    setNewContentHeadingId("");
-    setNewContentText("");
-    await loadOutline(outlineNodeId);
-  };
-
-  const openOutlineEditor = useCallback((item: OutlineItemRow) => {
-    setOutlineCreateMode(null);
-    setOutlineEditItemId(item.id);
-    if (item.kind === "heading") {
-      setEditHeadingTitle(item.title ?? "");
-      const level = item.heading_level ?? 1;
-      setEditHeadingLevel(level);
-      setEditHeadingParentId(item.parent_heading_id ?? "");
-    } else {
-      setEditContentHeadingId(item.heading_id ?? "");
-      setEditContentText(item.content_text ?? "");
-    }
-  }, []);
-
-  const closeOutlineEditor = useCallback(() => {
-    setOutlineEditItemId(null);
-    setEditHeadingTitle("");
-    setEditHeadingLevel(1);
-    setEditHeadingParentId("");
-    setEditContentHeadingId("");
-    setEditContentText("");
-  }, []);
-
-  const handleSaveOutlineEdit = useCallback(async () => {
-    if (!outlineNodeId || !outlineEditItem) return;
-    if (outlineEditItem.kind === "heading") {
-      const title = editHeadingTitle.trim();
-      if (!title) return;
-      const parentId = editHeadingLevel === 1 ? null : editHeadingParentId || null;
-      if (editHeadingLevel !== 1 && !parentId) return;
-      const { error: e } = await supabaseBrowser
-        .schema("ms")
-        .from("document_outline_items")
-        .update({ title, heading_level: editHeadingLevel, parent_heading_id: parentId })
-        .eq("id", outlineEditItem.id);
-      if (e) {
-        setError(e.message || "Unable to update heading.");
-        return;
-      }
-    } else {
-      const text = editContentText.trim();
-      if (!text || !editContentHeadingId) return;
-      const { error: e } = await supabaseBrowser
-        .schema("ms")
-        .from("document_outline_items")
-        .update({ content_text: text, heading_id: editContentHeadingId })
-        .eq("id", outlineEditItem.id);
-      if (e) {
-        setError(e.message || "Unable to update content.");
-        return;
-      }
-    }
-    closeOutlineEditor();
-    await loadOutline(outlineNodeId);
-  }, [
+  const {
+    handleCreateHeading,
+    handleCreateContent,
+    openOutlineEditor,
+    closeOutlineEditor,
+    handleSaveOutlineEdit,
+    handleDeleteOutlineItem,
+  } = useCanvasOutlineActions({
+    mapId,
     outlineNodeId,
+    outlineItems,
+    headingItems,
+    newHeadingTitle,
+    newHeadingLevel,
+    newHeadingParentId,
+    newContentHeadingId,
+    newContentText,
     outlineEditItem,
     editHeadingTitle,
     editHeadingLevel,
     editHeadingParentId,
-    editContentText,
     editContentHeadingId,
-    closeOutlineEditor,
+    editContentText,
+    confirmDeleteOutlineItemId,
+    outlineEditItemId,
+    setError,
+    setOutlineCreateMode,
+    setNewHeadingTitle,
+    setNewHeadingLevel,
+    setNewHeadingParentId,
+    setNewContentHeadingId,
+    setNewContentText,
+    setOutlineEditItemId,
+    setEditHeadingTitle,
+    setEditHeadingLevel,
+    setEditHeadingParentId,
+    setEditContentHeadingId,
+    setEditContentText,
+    setCollapsedHeadingIds,
+    setConfirmDeleteOutlineItemId,
     loadOutline,
-  ]);
-
-  const handleDeleteOutlineItem = useCallback(async () => {
-    if (!outlineNodeId || !confirmDeleteOutlineItemId) return;
-    const { error: e } = await supabaseBrowser
-      .schema("ms")
-      .from("document_outline_items")
-      .delete()
-      .eq("id", confirmDeleteOutlineItemId);
-    if (e) {
-      setError(e.message || "Unable to delete outline item.");
-      return;
-    }
-    setCollapsedHeadingIds((prev) => {
-      const next = new Set(prev);
-      next.delete(confirmDeleteOutlineItemId);
-      return next;
-    });
-    setConfirmDeleteOutlineItemId(null);
-    if (outlineEditItemId === confirmDeleteOutlineItemId) {
-      closeOutlineEditor();
-    }
-    await loadOutline(outlineNodeId);
-  }, [outlineNodeId, confirmDeleteOutlineItemId, outlineEditItemId, closeOutlineEditor, loadOutline]);
+  });
   useEffect(() => {
     if (isMobile) return;
     if (selectedNodeId) return;
     closeDesktopDrilldownPanels();
   }, [selectedNodeId, isMobile, closeDesktopDrilldownPanels]);
 
-  const handlePaneClickClearSelection = useCallback(() => {
-    setSelectedFlowIds(new Set());
-    setHoveredEdgeId(null);
-  }, []);
-
-  const handlePaneMouseDown = useCallback((event: { button: number; clientX: number; clientY: number; preventDefault: () => void; stopPropagation: () => void; target?: EventTarget | null }) => {
-    if (event.button !== 2 || !rf || !canUseContextMenu || !canWriteMap) return;
-    const target = event.target as HTMLElement | null;
-    if (target?.closest?.(".react-flow__node")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const startX = event.clientX;
-    const startY = event.clientY;
-    setSelectionMarquee({
-      active: true,
-      startClientX: startX,
-      startClientY: startY,
-      currentClientX: startX,
-      currentClientY: startY,
-    });
-
-    const onMove = (moveEvent: MouseEvent) => {
-      setSelectionMarquee((prev) => ({
-        ...prev,
-        active: true,
-        currentClientX: moveEvent.clientX,
-        currentClientY: moveEvent.clientY,
-      }));
-    };
-
-    const onUp = (upEvent: MouseEvent) => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      const endX = upEvent.clientX;
-      const endY = upEvent.clientY;
-      setSelectionMarquee({
-        active: false,
-        startClientX: 0,
-        startClientY: 0,
-        currentClientX: 0,
-        currentClientY: 0,
-      });
-
-      const movedEnough = Math.abs(endX - startX) > 4 || Math.abs(endY - startY) > 4;
-      if (!movedEnough) return;
-
-      const p1 = rf.screenToFlowPosition({ x: startX, y: startY });
-      const p2 = rf.screenToFlowPosition({ x: endX, y: endY });
-      const minX = Math.min(p1.x, p2.x);
-      const maxX = Math.max(p1.x, p2.x);
-      const minY = Math.min(p1.y, p2.y);
-      const maxY = Math.max(p1.y, p2.y);
-
-      const selected = new Set<string>();
-      flowNodes.forEach((flowNode) => {
-        const bounds = getFlowNodeBounds(flowNode.id);
-        if (!bounds) return;
-        const fullyInside =
-          bounds.x >= minX &&
-          bounds.y >= minY &&
-          bounds.x + bounds.width <= maxX &&
-          bounds.y + bounds.height <= maxY;
-        if (fullyInside) selected.add(flowNode.id);
-      });
-      setSelectedFlowIds(selected);
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [rf, flowNodes, getFlowNodeBounds, canUseContextMenu, canWriteMap]);
+  const { handlePaneClickClearSelection, handlePaneMouseDown } = useCanvasPaneSelectionActions({
+    rf,
+    flowNodes,
+    getFlowNodeBounds,
+    canUseContextMenu,
+    canWriteMap,
+    setSelectionMarquee,
+    setSelectedFlowIds,
+    setHoveredEdgeId,
+    onPaneBlankClick: closeAllLeftAsides,
+  });
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center">Loading map...</div>;
@@ -3504,310 +2417,74 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
   return (
     <div className="flex h-svh min-h-svh flex-col bg-stone-50 md:min-h-screen md:h-dvh">
-      <header className="site-header fixed inset-x-0 top-0 z-[90] md:sticky" style={{ backgroundColor: "#000000", borderBottomColor: "#0f172a" }}>
-        <div className="header-inner" style={{ paddingLeft: "12px", paddingRight: "20px", backgroundColor: "#000000" }}>
-          <div className="header-left flex items-center gap-8">
-            <a href="/"><img src="/images/logo-white.png" alt="HSES" className="header-logo" /></a>
-            <span className="text-xl font-semibold uppercase tracking-[0.14em]" style={{ color: "#05c3dd" }}>System Map</span>
-          </div>
-          <div className="header-actions flex items-center">
-            <div className="flex items-center gap-2">
-              <span
-                className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]"
-                style={{
-                  backgroundColor: mapRole === "full_write" ? "#166534" : mapRole === "partial_write" ? "#92400e" : "#1e3a8a",
-                  color: "#ffffff",
-                }}
-              >
-                {mapRole === "full_write" ? "Full Write" : mapRole === "partial_write" ? "Partial Write" : "Read"}
-              </span>
-              <span className="text-xs font-semibold uppercase tracking-[0.08em] text-white">Document Name:</span>
-              {isEditingMapTitle ? (
-                <input
-                  autoFocus
-                  className="min-w-[240px] rounded-md border border-[#a78bfa] bg-transparent px-3 py-1.5 text-sm font-semibold text-white outline-none ring-1 ring-[#a78bfa]/70"
-                  value={mapTitleDraft}
-                  onChange={(e) => setMapTitleDraft(e.target.value)}
-                  onBlur={() => {
-                    if (!mapTitleDraft.trim()) {
-                      setMapTitleDraft(map.title);
-                      setIsEditingMapTitle(false);
-                      return;
-                    }
-                    void handleSaveMapTitle();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      (e.currentTarget as HTMLInputElement).blur();
-                    }
-                    if (e.key === "Escape") {
-                      setMapTitleDraft(map.title);
-                      setIsEditingMapTitle(false);
-                    }
-                  }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className="rounded-md border border-transparent px-2 py-1 text-sm font-semibold text-white hover:border-slate-600/60 hover:bg-slate-900/40"
-                  onClick={() => {
-                    if (!canManageMapMetadata) {
-                      setError("Only the map owner can rename this map.");
-                      return;
-                    }
-                    setIsEditingMapTitle(true);
-                  }}
-                >
-                  {map.title}
-                </button>
-              )}
-              {savingMapTitle ? <span className="text-xs font-medium text-[#05c3dd]">Saving...</span> : null}
-              {!savingMapTitle && mapTitleSavedFlash ? <span className="text-xs font-medium text-emerald-400">Saved</span> : null}
-              <button
-                ref={mapInfoButtonRef}
-                type="button"
-                aria-label="Open map information"
-                title="Map information"
-                className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600/60 bg-transparent text-white hover:bg-slate-900/50"
-                onClick={() => {
-                  closeAllLeftAsides();
-                  setShowMapInfoAside((prev) => {
-                    const next = !prev;
-                    if (next) setIsEditingMapInfo(false);
-                    return next;
-                  });
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  className="h-4 w-4 bg-current"
-                  style={{ WebkitMaskImage: "url('/icons/info.svg')", maskImage: "url('/icons/info.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <MapCanvasHeader
+        map={map}
+        mapRole={mapRole}
+        canManageMapMetadata={canManageMapMetadata}
+        isEditingMapTitle={isEditingMapTitle}
+        mapTitleDraft={mapTitleDraft}
+        setMapTitleDraft={setMapTitleDraft}
+        setIsEditingMapTitle={setIsEditingMapTitle}
+        handleSaveMapTitle={handleSaveMapTitle}
+        savingMapTitle={savingMapTitle}
+        mapTitleSavedFlash={mapTitleSavedFlash}
+        mapInfoButtonRef={mapInfoButtonRef}
+        closeAllLeftAsides={closeAllLeftAsides}
+        setShowMapInfoAside={setShowMapInfoAside}
+        setIsEditingMapInfo={setIsEditingMapInfo}
+        setError={setError}
+      />
 
-      <div
-        className="fixed top-[82px] z-[88] transition-[right] duration-300 ease-out"
-        style={{ right: showMapInfoAside ? "315px" : "20px" }}
-      >
-        <div className="relative flex items-center gap-3">
-          <a
-            href="/system-maps"
-            aria-label="Back to all system maps"
-            title="All system maps"
-            className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
-          >
-            <span
-              aria-hidden="true"
-              className="h-7 w-7 bg-current"
-              style={{ WebkitMaskImage: "url('/icons/back.svg')", maskImage: "url('/icons/back.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
-            />
-          </a>
-          <button
-            type="button"
-            aria-label="Zoom to fit"
-            title="Zoom to fit"
-            onClick={() => rf?.fitView({ duration: 300, padding: 0.2 })}
-            className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
-          >
-            <span
-              aria-hidden="true"
-              className="h-7 w-7 bg-current"
-              style={{ WebkitMaskImage: "url('/icons/zoomfit.svg')", maskImage: "url('/icons/zoomfit.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
-            />
-          </button>
-          <button
-            type="button"
-            aria-label="Reset zoom"
-            title="Reset zoom"
-            onClick={() => rf?.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 300 })}
-            className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
-          >
-            <span
-              aria-hidden="true"
-              className="h-7 w-7 bg-current"
-              style={{ WebkitMaskImage: "url('/icons/resetzoom.svg')", maskImage: "url('/icons/resetzoom.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
-            />
-          </button>
-          <button
-            type="button"
-            aria-label="Add component"
-            title="Add component"
-            onClick={() => setShowAddMenu((prev) => !prev)}
-            disabled={!canWriteMap && !canCreateSticky}
-            className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:bg-white disabled:hover:text-black disabled:hover:shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
-          >
-            <span
-              aria-hidden="true"
-              className="h-7 w-7 bg-current"
-              style={{ WebkitMaskImage: "url('/icons/addcomponent.svg')", maskImage: "url('/icons/addcomponent.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
-            />
-          </button>
-          {showAddMenu && (canWriteMap || canCreateSticky) && (
-            <div ref={addMenuRef} className="absolute right-0 top-full z-[70] mt-2 min-w-[180px] rounded-none border border-slate-300 bg-white p-1 text-sm shadow-xl">
-              {canWriteMap ? (
-                <>
-                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBlankDocument}>Document</button>
-                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddSystemCircle}>System</button>
-                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessComponent}>Process</button>
-                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddPerson}>Person</button>
-                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessHeading}>Category</button>
-                  <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddGroupingContainer}>Grouping Container</button>
-                </>
-              ) : null}
-              {canCreateSticky ? (
-                <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddStickyNote}>Sticky Note</button>
-              ) : null}
-            </div>
-          )}
-        </div>
-      </div>
+      <CanvasActionButtons
+        showMapInfoAside={showMapInfoAside}
+        rf={rf}
+        setShowAddMenu={setShowAddMenu}
+        showAddMenu={showAddMenu}
+        addMenuRef={addMenuRef}
+        showSearchMenu={showSearchMenu}
+        setShowSearchMenu={setShowSearchMenu}
+        searchMenuRef={searchMenuRef}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        searchResults={searchResults}
+        onSelectSearchResult={handleSelectSearchResult}
+        canWriteMap={canWriteMap}
+        canCreateSticky={canCreateSticky}
+        handleAddBlankDocument={handleAddBlankDocument}
+        handleAddSystemCircle={handleAddSystemCircle}
+        handleAddProcessComponent={handleAddProcessComponent}
+        handleAddPerson={handleAddPerson}
+        handleAddProcessHeading={handleAddProcessHeading}
+        handleAddGroupingContainer={handleAddGroupingContainer}
+        handleAddStickyNote={handleAddStickyNote}
+        allowedNodeKinds={allowedNodeKinds}
+      />
 
-      {showMapInfoAside && (
-        <aside
-          ref={mapInfoAsideRef}
-          className="fixed bottom-0 right-0 top-[70px] z-[79] w-full max-w-[294px] border-l border-slate-300 bg-white shadow-[-16px_0_30px_rgba(15,23,42,0.26),0_8px_22px_rgba(15,23,42,0.14)]"
-        >
-          <div className="flex h-full flex-col overflow-auto p-4">
-            <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-              <h2 className="text-base font-semibold text-slate-900">Map Information</h2>
-              <button
-                className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
-                onClick={handleCloseMapInfoAside}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <label className="text-sm text-slate-700">System Map Name
-                {isEditingMapInfo ? (
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={mapInfoNameDraft}
-                    onChange={(e) => setMapInfoNameDraft(e.target.value)}
-                  />
-                ) : (
-                  <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">{map.title}</div>
-                )}
-              </label>
-              {canManageMapMetadata ? (
-                <label className="text-sm text-slate-700">Map Code
-                  {isEditingMapInfo ? (
-                    <input
-                      className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-semibold uppercase tracking-[0.08em] text-black"
-                      value={mapCodeDraft}
-                      onChange={(e) => setMapCodeDraft(e.target.value.toUpperCase())}
-                      placeholder="Enter map code"
-                    />
-                  ) : (
-                    <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold uppercase tracking-[0.08em] text-slate-900">
-                      {map.map_code || "-"}
-                    </div>
-                  )}
-                </label>
-              ) : null}
-
-              <label className="text-sm text-slate-700">Description
-                {isEditingMapInfo ? (
-                  <textarea
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    rows={6}
-                    value={mapInfoDescriptionDraft}
-                    onChange={(e) => setMapInfoDescriptionDraft(e.target.value)}
-                  />
-                ) : (
-                  <div className="mt-1 min-h-[132px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">
-                    {map.description?.trim() || "No description"}
-                  </div>
-                )}
-              </label>
-            </div>
-
-            <div className="mt-4 flex justify-end gap-2">
-              {isEditingMapInfo ? (
-                <>
-                  <button
-                    className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100"
-                    onClick={() => void handleSaveMapInfo()}
-                    disabled={savingMapInfo}
-                  >
-                    {savingMapInfo ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                    onClick={() => {
-                      setIsEditingMapInfo(false);
-                      setMapInfoNameDraft(map.title);
-                      setMapInfoDescriptionDraft(map.description ?? "");
-                      setMapCodeDraft(map.map_code ?? "");
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                canManageMapMetadata ? (
-                  <button
-                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                    onClick={() => setIsEditingMapInfo(true)}
-                  >
-                    Edit
-                  </button>
-                ) : null
-              )}
-            </div>
-
-            <div className="mt-5 border-t border-slate-300 pt-4">
-              <h3 className="text-sm font-semibold text-slate-900">Map Access</h3>
-              <div className="mt-2 space-y-2">
-                {mapMembers.length ? (
-                  mapMembers.map((member) => {
-                    const canEditMemberRole = canManageMapMetadata && member.user_id !== map.owner_id;
-                    const displayName = member.full_name?.trim() || (member.user_id === map.owner_id ? "Map Owner" : "User");
-                    const displayEmail = member.email?.trim() || (member.user_id === userId ? userEmail : "");
-                    return (
-                      <div key={member.user_id} className="rounded border border-slate-200 bg-slate-50 px-3 py-2">
-                        <div className="text-sm font-semibold text-slate-900">{displayName}</div>
-                        <div className="text-xs text-slate-600">{displayEmail || member.user_id}</div>
-                        <div className="mt-2">
-                          {canEditMemberRole ? (
-                            <select
-                              className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
-                              value={member.role}
-                              disabled={savingMemberRoleUserId === member.user_id}
-                              onChange={(e) =>
-                                void handleUpdateMapMemberRole(
-                                  member.user_id,
-                                  e.target.value as "read" | "partial_write" | "full_write"
-                                )
-                              }
-                            >
-                              <option value="read">Read</option>
-                              <option value="partial_write">Partial write</option>
-                              <option value="full_write">Full write</option>
-                            </select>
-                          ) : (
-                            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-700">
-                              {member.user_id === map.owner_id ? "Owner (Full write)" : mapRoleLabel(member.role)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">No linked users</div>
-                )}
-              </div>
-            </div>
-          </div>
-        </aside>
-      )}
+      <MapInfoAside
+        showMapInfoAside={showMapInfoAside}
+        mapInfoAsideRef={mapInfoAsideRef}
+        handleCloseMapInfoAside={handleCloseMapInfoAside}
+        canManageMapMetadata={canManageMapMetadata}
+        isEditingMapInfo={isEditingMapInfo}
+        mapInfoNameDraft={mapInfoNameDraft}
+        setMapInfoNameDraft={setMapInfoNameDraft}
+        mapCodeDraft={mapCodeDraft}
+        setMapCodeDraft={setMapCodeDraft}
+        mapInfoDescriptionDraft={mapInfoDescriptionDraft}
+        setMapInfoDescriptionDraft={setMapInfoDescriptionDraft}
+        map={map}
+        savingMapInfo={savingMapInfo}
+        handleSaveMapInfo={handleSaveMapInfo}
+        setIsEditingMapInfo={setIsEditingMapInfo}
+        setMapInfoDescriptionDraftFromMap={() => setMapInfoDescriptionDraft(map.description ?? "")}
+        setMapCodeDraftFromMap={() => setMapCodeDraft(map.map_code ?? "")}
+        mapMembers={mapMembers}
+        userId={userId}
+        userEmail={userEmail}
+        savingMemberRoleUserId={savingMemberRoleUserId}
+        handleUpdateMapMemberRole={handleUpdateMapMemberRole}
+        mapRoleLabel={mapRoleLabel}
+      />
 
       <main className="relative min-h-0 flex-1 overflow-hidden">
         <div
@@ -3828,6 +2505,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             onInit={(instance) => setRf({ fitView: instance.fitView, screenToFlowPosition: instance.screenToFlowPosition, setViewport: instance.setViewport })}
             onNodesChange={handleFlowNodesChange}
             onNodeClick={(event, n) => {
+              setSelectedFlowIds(new Set());
               if (mapRole === "read") {
                 if (n.data.entityKind === "sticky_note") {
                   const stickyId = parseProcessFlowId(n.id);
@@ -4046,6 +2724,9 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               const rel = relations.find((r) => r.id === edge.id);
               if (!rel) return;
               const fromNode = rel.from_node_id ? nodes.find((n) => n.id === rel.from_node_id) : null;
+              const fromSystem = rel.source_system_element_id
+                ? elements.find((el) => el.id === rel.source_system_element_id && el.element_type !== "grouping_container")
+                : null;
               const fromGrouping = rel.source_grouping_element_id
                 ? elements.find((el) => el.id === rel.source_grouping_element_id && el.element_type === "grouping_container")
                 : null;
@@ -4056,7 +2737,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               const toGrouping = rel.target_grouping_element_id
                 ? elements.find((el) => el.id === rel.target_grouping_element_id && el.element_type === "grouping_container")
                 : null;
-              const fromLabel = fromNode?.title || fromGrouping?.heading || "Unknown source";
+              const fromLabel =
+                fromNode?.title ||
+                (fromSystem ? getElementDisplayName(fromSystem) : null) ||
+                fromGrouping?.heading ||
+                "Unknown source";
               const toLabel = toNode?.title || (toSystem ? getElementDisplayName(toSystem) : null) || toGrouping?.heading || "Unknown destination";
               const relationLabel = getDisplayRelationType(rel.relation_type);
               const relationshipType = getRelationshipCategoryLabel(rel.relationship_category, rel.relationship_custom_type);
@@ -4141,12 +2826,17 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 }}>Edit Properties</button>
                 <button className="btn btn-outline justify-start" onClick={() => {
                   setRelationshipSourceNodeId(mobileNodeMenuId);
+                  setRelationshipSourceSystemId(null);
+                  setRelationshipSourceGroupingId(null);
                   setRelationshipDocumentQuery("");
                   setRelationshipSystemQuery("");
+                  setRelationshipGroupingQuery("");
                   setRelationshipTargetDocumentId("");
                   setRelationshipTargetSystemId("");
+                  setRelationshipTargetGroupingId("");
                   setShowRelationshipDocumentOptions(false);
                   setShowRelationshipSystemOptions(false);
+                  setShowRelationshipGroupingOptions(false);
                   setRelationshipDescription("");
                   setRelationshipDisciplineSelection([]);
                   setShowRelationshipDisciplineMenu(false);
@@ -4231,7 +2921,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                         className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
                         onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
                       >
-                        {showRelationshipGroupingOptions ? "▲" : "▼"}
+                        {showRelationshipGroupingOptions ? "â–²" : "â–¼"}
                       </button>
                     </div>
                     {showRelationshipGroupingOptions && (
@@ -4291,7 +2981,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                         setShowRelationshipSystemOptions(false);
                       }}
                     >
-                      {showRelationshipDocumentOptions ? "▲" : "▼"}
+                      {showRelationshipDocumentOptions ? "â–²" : "â–¼"}
                     </button>
                   </div>
                   {showRelationshipDocumentOptions && (
@@ -4350,7 +3040,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                         setShowRelationshipDocumentOptions(false);
                       }}
                     >
-                      {showRelationshipSystemOptions ? "▲" : "▼"}
+                      {showRelationshipSystemOptions ? "â–²" : "â–¼"}
                     </button>
                   </div>
                   {showRelationshipSystemOptions && (
@@ -4402,7 +3092,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                           ? relationshipDisciplineSelection.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
                           : "Select disciplines"}
                       </span>
-                      <span className="text-xs text-slate-500">{showRelationshipDisciplineMenu ? "▲" : "▼"}</span>
+                      <span className="text-xs text-slate-500">{showRelationshipDisciplineMenu ? "â–²" : "â–¼"}</span>
                     </button>
                     {showRelationshipDisciplineMenu && (
                       <div className="absolute z-20 mt-1 w-full rounded border border-slate-300 bg-white p-2 shadow-lg">
@@ -4442,7 +3132,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                       <option value="data">Data</option>
                       <option value="other">Other</option>
                     </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">▼</span>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">?</span>
                   </div>
                 </label>
                 {relationshipCategory === "other" && (
@@ -4481,1657 +3171,445 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           </div>
         )}
 
-        {confirmDeleteNodeId && isMobile && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-            <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70">
-              <h2 className="text-lg font-semibold">Delete document?</h2>
-              <p className="mt-2 text-sm text-slate-600">This will permanently remove the document from the map.</p>
-              <div className="mt-5 flex justify-end gap-2">
-                <button className="btn btn-outline" onClick={() => setConfirmDeleteNodeId(null)}>Cancel</button>
-                <button className="btn btn-primary bg-rose-700 hover:bg-rose-800" onClick={async () => {
-                  const id = confirmDeleteNodeId;
-                  setConfirmDeleteNodeId(null);
-                  if (!id) return;
-                  await handleDeleteNode(id);
-                }}>Delete</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {confirmDeleteOutlineItemId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-            <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70">
-              <h2 className="text-lg font-semibold">Delete outline item?</h2>
-              <p className="mt-2 text-sm text-slate-600">This removes the selected heading/content and any dependent children defined by your data rules.</p>
-              <div className="mt-5 flex justify-end gap-2">
-                <button className="btn btn-outline" onClick={() => setConfirmDeleteOutlineItemId(null)}>Cancel</button>
-                <button className="btn btn-primary bg-rose-700 hover:bg-rose-800" onClick={handleDeleteOutlineItem}>Delete</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {selectedProcess && (
-          <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
-              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
-            }`}
-            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
-                <h2 className="text-lg font-semibold text-white">Category Properties</h2>
-                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedProcessId(null)}>Close</button>
-              </div>
-              <div className="mt-4 space-y-3">
-                <label className="text-sm text-white">Category Label
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={processHeadingDraft}
-                    onChange={(e) => setProcessHeadingDraft(e.target.value)}
-                    placeholder="Enter category label"
-                  />
-                </label>
-                <label className="text-sm text-white">Width (small squares, min {processMinWidthSquares})
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={processWidthDraft}
-                    onChange={(e) => setProcessWidthDraft(e.target.value)}
-                  />
-                </label>
-                <label className="text-sm text-white">Height (small squares, min {processMinHeightSquares})
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={processHeightDraft}
-                    onChange={(e) => setProcessHeightDraft(e.target.value)}
-                  />
-                </label>
-                <div className="text-sm text-white">
-                  <div>Category Colour</div>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {categoryColorOptions.map((option) => {
-                      const selected = (processColorDraft ?? "").toLowerCase() === option.value.toLowerCase();
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          title={option.name}
-                          aria-label={option.name}
-                          className={`h-8 rounded-none border ${selected ? "border-white ring-2 ring-white/80" : "border-slate-300"} shadow-sm`}
-                          style={{ backgroundColor: option.value }}
-                          onClick={() =>
-                            setProcessColorDraft((prev) =>
-                              (prev ?? "").toLowerCase() === option.value.toLowerCase() ? null : option.value
-                            )
-                          }
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
-                  onClick={async () => {
-                    await handleDeleteProcessElement(selectedProcess.id);
-                  }}
-                >
-                  Delete category
-                </button>
-                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveProcessHeading}>Save category</button>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedSystem && (
-          <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
-              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
-            }`}
-            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
-                <h2 className="text-lg font-semibold text-white">System Properties</h2>
-                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedSystemId(null)}>Close</button>
-              </div>
-              <div className="mt-4 space-y-3">
-                <label className="text-sm text-white">System Name
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={systemNameDraft}
-                    onChange={(e) => setSystemNameDraft(e.target.value)}
-                    placeholder="Enter system name"
-                  />
-                </label>
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
-                  onClick={async () => {
-                    await handleDeleteProcessElement(selectedSystem.id);
-                  }}
-                >
-                  Delete system
-                </button>
-                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveSystemName}>Save name</button>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedProcessComponent && (
-          <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
-              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
-            }`}
-            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
-                <h2 className="text-lg font-semibold text-white">Process Properties</h2>
-                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedProcessComponentId(null)}>Close</button>
-              </div>
-              <div className="mt-4 space-y-3">
-                <label className="text-sm text-white">Process Label
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={processComponentLabelDraft}
-                    onChange={(e) => setProcessComponentLabelDraft(e.target.value)}
-                    placeholder="Enter process label"
-                  />
-                </label>
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
-                  onClick={async () => {
-                    await handleDeleteProcessElement(selectedProcessComponent.id);
-                  }}
-                >
-                  Delete process
-                </button>
-                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveProcessComponent}>Save label</button>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedPerson && (
-          <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
-              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
-            }`}
-            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
-                <h2 className="text-lg font-semibold text-white">Person Properties</h2>
-                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedPersonId(null)}>Close</button>
-              </div>
-              <div className="mt-4 space-y-3">
-                <label className="text-sm text-white">Role Name
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal text-black"
-                    value={personRoleDraft}
-                    onChange={(e) => setPersonRoleDraft(e.target.value)}
-                    placeholder="Enter role name"
-                  />
-                </label>
-                <label className="text-sm text-white">Department
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 font-normal text-black"
-                    value={personDepartmentDraft}
-                    onChange={(e) => setPersonDepartmentDraft(e.target.value)}
-                    placeholder="Enter department"
-                  />
-                </label>
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
-                  onClick={async () => {
-                    await handleDeleteProcessElement(selectedPerson.id);
-                  }}
-                >
-                  Delete person
-                </button>
-                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSavePerson}>Save person</button>
-              </div>
-              <div className="mt-6 border-t border-[#5f7894]/70 pt-4">
-                <h3 className="font-semibold text-white">Relationships</h3>
-                <div className="mt-3 space-y-2">
-                  {relatedPersonRows.map((r) => {
-                    const fromNode = nodes.find((n) => n.id === r.from_node_id) ?? null;
-                    const toNode = r.to_node_id ? nodes.find((n) => n.id === r.to_node_id) ?? null : null;
-                    const toSystem = r.target_system_element_id
-                      ? elements.find((el) => el.id === r.target_system_element_id && el.element_type !== "grouping_container") ?? null
-                      : null;
-                    const fromLabel = fromNode?.title || "Unknown source";
-                    const toLabel = toNode?.title || (toSystem ? getElementDisplayName(toSystem) : null) || "Unknown destination";
-                    const toType = toNode ? "Document" : toSystem ? getElementRelationshipTypeLabel(toSystem.element_type) : "Component";
-                    const isEditing = editingRelationId === r.id;
-                    return (
-                      <div key={r.id} className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-800">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="text-sm font-medium">
-                            {fromLabel} {"->"} {toLabel} <span className="font-normal text-slate-500">({toType})</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              title="Edit relationship definition"
-                              aria-label="Edit relationship definition"
-                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
-                              onClick={() => {
-                                setEditingRelationId(r.id);
-                                setEditingRelationDescription(r.relationship_description ?? "");
-                                const nextCategory = (r.relationship_category || "information").toLowerCase();
-                                setEditingRelationCategory(
-                                  nextCategory === "information" || nextCategory === "systems" || nextCategory === "process" || nextCategory === "data" || nextCategory === "other"
-                                    ? (nextCategory as RelationshipCategory)
-                                    : "information"
-                                );
-                                setEditingRelationCustomType(r.relationship_custom_type ?? "");
-                                setEditingRelationDisciplines(
-                                  (r.relationship_disciplines ?? []).filter(
-                                    (key): key is DisciplineKey => disciplineKeySet.has(key as DisciplineKey)
-                                  )
-                                );
-                                setShowEditingRelationDisciplineMenu(false);
-                              }}
-                            >
-                              <img src="/icons/edit.svg" alt="" className="h-4 w-4" />
-                            </button>
-                            <button
-                              title="Delete relationship"
-                              aria-label="Delete relationship"
-                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
-                              onClick={() => handleDeleteRelation(r.id)}
-                            >
-                              <img src="/icons/delete.svg" alt="" className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        {isEditing ? (
-                          <div className="mt-2 space-y-2">
-                            <div className="text-[11px]">
-                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Type</div>
-                              <div className="relative mt-1">
-                                <select
-                                  className="w-full appearance-none rounded-none border border-slate-300 bg-white px-2 py-1 text-xs text-black"
-                                  value={editingRelationCategory}
-                                  onChange={(e) => setEditingRelationCategory(e.target.value as RelationshipCategory)}
-                                >
-                                  <option value="information">Information</option>
-                                  <option value="systems">Systems</option>
-                                  <option value="process">Process</option>
-                                  <option value="data">Data</option>
-                                  <option value="other">Other</option>
-                                </select>
-                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-black">▼</span>
-                              </div>
-                            </div>
-                            {editingRelationCategory === "other" && (
-                              <div className="text-[11px]">
-                                <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Custom Type</div>
-                                <input
-                                  className="mt-1 w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
-                                  value={editingRelationCustomType}
-                                  onChange={(e) => setEditingRelationCustomType(e.target.value)}
-                                  placeholder="Enter custom relationship type"
-                                />
-                              </div>
-                            )}
-                            <div className="text-[11px]">
-                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Disciplines</div>
-                              <div className="relative mt-1">
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center justify-between rounded-none border border-slate-300 bg-white px-2 py-1 text-left text-xs text-black"
-                                  onClick={() => setShowEditingRelationDisciplineMenu((prev) => !prev)}
-                                >
-                                  <span className="truncate">
-                                    {editingRelationDisciplines.length
-                                      ? editingRelationDisciplines.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
-                                      : "Select disciplines"}
-                                  </span>
-                                  <span className="text-[10px] text-black">{showEditingRelationDisciplineMenu ? "▲" : "▼"}</span>
-                                </button>
-                                {showEditingRelationDisciplineMenu && (
-                                  <div className="absolute z-30 mt-1 w-full rounded-none border border-slate-300 bg-white p-2 shadow-lg">
-                                    {disciplineOptions.map((option) => {
-                                      const checked = editingRelationDisciplines.includes(option.key);
-                                      return (
-                                        <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-black hover:bg-slate-50">
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() =>
-                                              setEditingRelationDisciplines((prev) =>
-                                                prev.includes(option.key)
-                                                  ? prev.filter((key) => key !== option.key)
-                                                  : [...prev, option.key]
-                                              )
-                                            }
-                                          />
-                                          <span>{option.label}</span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
-                            <textarea
-                              className="w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
-                              rows={3}
-                              value={editingRelationDescription}
-                              onChange={(e) => setEditingRelationDescription(e.target.value)}
-                            />
-                            <div className="flex justify-end gap-2">
-                              <button
-                                className="rounded-none border border-black bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-slate-100"
-                                onClick={() => void handleUpdateRelation(r.id)}
-                              >
-                                Save
-                              </button>
-                              <button
-                                className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
-                                onClick={() => {
-                                  setEditingRelationId(null);
-                                  setEditingRelationDescription("");
-                                  setEditingRelationCategory("information");
-                                  setEditingRelationCustomType("");
-                                  setEditingRelationDisciplines([]);
-                                  setShowEditingRelationDisciplineMenu(false);
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
-                            <div className="mt-1 text-xs text-slate-600">{r.relationship_description?.trim() || "No relationship context added by user"}</div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedGrouping && (
-          <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
-              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
-            }`}
-            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
-                <h2 className="text-lg font-semibold text-white">Grouping Container</h2>
-                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedGroupingId(null)}>Close</button>
-              </div>
-              <div className="mt-3">
-                <button
-                  title="Add Relationship"
-                  aria-label="Add Relationship"
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
-                  onClick={() => {
-                    setRelationshipSourceGroupingId(selectedGrouping.id);
-                    setRelationshipSourceNodeId(null);
-                    setRelationshipGroupingQuery("");
-                    setRelationshipTargetGroupingId("");
-                    setShowRelationshipGroupingOptions(false);
-                    setRelationshipDescription("");
-                    setRelationshipDisciplineSelection([]);
-                    setShowRelationshipDisciplineMenu(false);
-                    setRelationshipCategory("information");
-                    setRelationshipCustomType("");
-                    setShowAddRelationship(true);
-                    setDesktopNodeAction("relationship");
-                  }}
-                >
-                  <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
-                  <span className="truncate">Relationship</span>
-                </button>
-              </div>
-              <div className="mt-4 space-y-3">
-                <label className="text-sm text-white">Group Label
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={groupingLabelDraft}
-                    onChange={(e) => setGroupingLabelDraft(e.target.value)}
-                    placeholder="Enter group label"
-                  />
-                </label>
-                <label className="text-sm text-white">Width (small squares)
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={groupingWidthDraft}
-                    onChange={(e) => setGroupingWidthDraft(e.target.value)}
-                  />
-                </label>
-                <label className="text-sm text-white">Height (small squares)
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    value={groupingHeightDraft}
-                    onChange={(e) => setGroupingHeightDraft(e.target.value)}
-                  />
-                </label>
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
-                  onClick={async () => {
-                    await handleDeleteProcessElement(selectedGrouping.id);
-                  }}
-                >
-                  Delete container
-                </button>
-                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveGroupingContainer}>Save container</button>
-              </div>
-              <div className="mt-6 border-t border-[#5f7894]/70 pt-4">
-                <h3 className="font-semibold text-white">Relationships</h3>
-                <div className="mt-3 space-y-2">
-                  {relatedGroupingRows.map((r) => {
-                    const sourceGrouping = r.source_grouping_element_id
-                      ? elements.find((el) => el.id === r.source_grouping_element_id && el.element_type === "grouping_container")
-                      : null;
-                    const targetGrouping = r.target_grouping_element_id
-                      ? elements.find((el) => el.id === r.target_grouping_element_id && el.element_type === "grouping_container")
-                      : null;
-                    const sourceLabel = sourceGrouping?.heading || "Unknown grouping container";
-                    const targetLabel = targetGrouping?.heading || "Unknown grouping container";
-                    const isEditing = editingRelationId === r.id;
-                    return (
-                      <div key={r.id} className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-800">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="text-sm font-medium">
-                            {sourceLabel} {"->"} {targetLabel} <span className="font-normal text-slate-500">(Grouping Container)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              title="Edit relationship definition"
-                              aria-label="Edit relationship definition"
-                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
-                              onClick={() => {
-                                setEditingRelationId(r.id);
-                                setEditingRelationDescription(r.relationship_description ?? "");
-                                const nextCategory = (r.relationship_category || "information").toLowerCase();
-                                setEditingRelationCategory(
-                                  nextCategory === "information" || nextCategory === "systems" || nextCategory === "process" || nextCategory === "data" || nextCategory === "other"
-                                    ? (nextCategory as RelationshipCategory)
-                                    : "information"
-                                );
-                                setEditingRelationCustomType(r.relationship_custom_type ?? "");
-                                setEditingRelationDisciplines(
-                                  (r.relationship_disciplines ?? []).filter(
-                                    (key): key is DisciplineKey => disciplineKeySet.has(key as DisciplineKey)
-                                  )
-                                );
-                                setShowEditingRelationDisciplineMenu(false);
-                              }}
-                            >
-                              <img src="/icons/edit.svg" alt="" className="h-4 w-4" />
-                            </button>
-                            <button
-                              title="Delete relationship"
-                              aria-label="Delete relationship"
-                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
-                              onClick={() => handleDeleteRelation(r.id)}
-                            >
-                              <img src="/icons/delete.svg" alt="" className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        {isEditing ? (
-                          <div className="mt-2 space-y-2">
-                            <div className="text-[11px]">
-                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Type</div>
-                              <div className="relative mt-1">
-                                <select
-                                  className="w-full appearance-none rounded-none border border-slate-300 bg-white px-2 py-1 text-xs text-black"
-                                  value={editingRelationCategory}
-                                  onChange={(e) => setEditingRelationCategory(e.target.value as RelationshipCategory)}
-                                >
-                                  <option value="information">Information</option>
-                                  <option value="systems">Systems</option>
-                                  <option value="process">Process</option>
-                                  <option value="data">Data</option>
-                                  <option value="other">Other</option>
-                                </select>
-                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-black">▼</span>
-                              </div>
-                            </div>
-                            {editingRelationCategory === "other" && (
-                              <div className="text-[11px]">
-                                <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Custom Type</div>
-                                <input
-                                  className="mt-1 w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
-                                  value={editingRelationCustomType}
-                                  onChange={(e) => setEditingRelationCustomType(e.target.value)}
-                                  placeholder="Enter custom relationship type"
-                                />
-                              </div>
-                            )}
-                            <div className="text-[11px]">
-                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Disciplines</div>
-                              <div className="relative mt-1">
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center justify-between rounded-none border border-slate-300 bg-white px-2 py-1 text-left text-xs text-black"
-                                  onClick={() => setShowEditingRelationDisciplineMenu((prev) => !prev)}
-                                >
-                                  <span className="truncate">
-                                    {editingRelationDisciplines.length
-                                      ? editingRelationDisciplines.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
-                                      : "Select disciplines"}
-                                  </span>
-                                  <span className="text-[10px] text-black">{showEditingRelationDisciplineMenu ? "▲" : "▼"}</span>
-                                </button>
-                                {showEditingRelationDisciplineMenu && (
-                                  <div className="absolute z-30 mt-1 w-full rounded-none border border-slate-300 bg-white p-2 shadow-lg">
-                                    {disciplineOptions.map((option) => {
-                                      const checked = editingRelationDisciplines.includes(option.key);
-                                      return (
-                                        <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-black hover:bg-slate-50">
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() =>
-                                              setEditingRelationDisciplines((prev) =>
-                                                prev.includes(option.key)
-                                                  ? prev.filter((key) => key !== option.key)
-                                                  : [...prev, option.key]
-                                              )
-                                            }
-                                          />
-                                          <span>{option.label}</span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
-                            <textarea
-                              className="w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
-                              rows={3}
-                              value={editingRelationDescription}
-                              onChange={(e) => setEditingRelationDescription(e.target.value)}
-                            />
-                            <div className="flex justify-end gap-2">
-                              <button
-                                className="rounded-none border border-black bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-slate-100"
-                                onClick={() => void handleUpdateRelation(r.id)}
-                              >
-                                Save
-                              </button>
-                              <button
-                                className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
-                                onClick={() => {
-                                  setEditingRelationId(null);
-                                  setEditingRelationDescription("");
-                                  setEditingRelationCategory("information");
-                                  setEditingRelationCustomType("");
-                                  setEditingRelationDisciplines([]);
-                                  setShowEditingRelationDisciplineMenu(false);
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
-                            <div className="mt-1 text-xs text-slate-600">{r.relationship_description?.trim() || "No relationship context added by user"}</div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedSticky && (
-          <aside
-            className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
-              isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
-            }`}
-            style={{ transform: isMobile ? "translateX(0)" : (leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)") }}
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
-                <h2 className="text-lg font-semibold text-white">Sticky Note</h2>
-                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => setSelectedStickyId(null)}>Close</button>
-              </div>
-              <div className="mt-4 space-y-3">
-                <label className="text-sm text-white">Note Text
-                  <textarea
-                    className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                    rows={8}
-                    value={stickyTextDraft}
-                    onChange={(e) => setStickyTextDraft(e.target.value)}
-                    placeholder="Enter sticky note text"
-                  />
-                </label>
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100"
-                  onClick={async () => {
-                    await handleDeleteProcessElement(selectedSticky.id);
-                  }}
-                >
-                  Delete note
-                </button>
-                <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveStickyNote}>Save note</button>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedNode && !isMobile && (
-          <aside
-            className="fixed bottom-0 left-0 top-[70px] z-[75] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300"
-            style={{ transform: leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)" }}
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-[#5f7894]/70 pb-3">
-                <h2 className="text-lg font-semibold text-white">Document Properties</h2>
-                <button className="w-full max-w-[110px] rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={handleCloseDocumentPropertiesPanel}>Close</button>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <button
-                  title="Add Relationship"
-                  aria-label="Add Relationship"
-                  className="flex h-11 items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
-                  onClick={() => {
-                    setRelationshipSourceNodeId(selectedNode.id);
-                    setRelationshipSourceGroupingId(null);
-                    setRelationshipDocumentQuery("");
-                    setRelationshipSystemQuery("");
-                    setRelationshipGroupingQuery("");
-                    setRelationshipTargetDocumentId("");
-                    setRelationshipTargetSystemId("");
-                    setRelationshipTargetGroupingId("");
-                    setShowRelationshipDocumentOptions(false);
-                    setShowRelationshipSystemOptions(false);
-                    setShowRelationshipGroupingOptions(false);
-                    setRelationshipDescription("");
-                    setRelationshipDisciplineSelection([]);
-                    setShowRelationshipDisciplineMenu(false);
-                    setRelationshipCategory("information");
-                    setRelationshipCustomType("");
-                    setShowAddRelationship(true);
-                    setDesktopNodeAction("relationship");
-                  }}
-                >
-                  <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
-                  <span className="truncate">Relationship</span>
-                </button>
-                <button
-                  title="Document Structure"
-                  aria-label="Document Structure"
-                  className="flex h-11 items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
-                  onClick={async () => {
-                    setOutlineCreateMode(null);
-                    closeOutlineEditor();
-                    setConfirmDeleteOutlineItemId(null);
-                    setCollapsedHeadingIds(new Set());
-                    setOutlineNodeId(selectedNode.id);
-                    await loadOutline(selectedNode.id);
-                    setDesktopNodeAction("structure");
-                  }}
-                >
-                  <img src="/icons/structure.svg" alt="" className="h-4 w-4" />
-                  <span className="truncate">Structure</span>
-                </button>
-                <button
-                  title="Delete Document"
-                  aria-label="Delete Document"
-                  className="flex h-11 items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
-                  onClick={() => {
-                    setConfirmDeleteNodeId(selectedNode.id);
-                    setDesktopNodeAction("delete");
-                  }}
-                >
-                  <img src="/icons/deletecomponent.svg" alt="" className="h-4 w-4" />
-                  <span className="truncate">Delete</span>
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                <label className="text-sm text-white">Document Type
-                  <div className="relative mt-1">
-                    <select
-                      className="w-full appearance-none rounded border border-slate-300 bg-white px-3 py-2 pr-9 text-black"
-                      value={selectedTypeId}
-                      onChange={(e) => {
-                        setSelectedTypeId(e.target.value);
-                        setShowTypeSelectArrowUp(false);
-                      }}
-                      onFocus={() => setShowTypeSelectArrowUp(true)}
-                      onBlur={() => setShowTypeSelectArrowUp(false)}
-                      onMouseDown={() => setShowTypeSelectArrowUp(true)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape" || e.key === "Tab") setShowTypeSelectArrowUp(false);
-                      }}
-                    >
-                      {addDocumentTypes.map((t) => <option key={t.id} value={t.id}>{getDisplayTypeName(t.name)}</option>)}
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">
-                      {showTypeSelectArrowUp ? "▲" : "▼"}
-                    </span>
-                  </div>
-                </label>
-                <label className="text-sm text-white">Name<input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-                <label className="text-sm text-white">Document Number<input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="Enter document number" /></label>
-                <div className="text-sm text-white">
-                  <div className="text-white">Discipline</div>
-                  <div ref={disciplineMenuRef} className="relative mt-1">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-left text-black"
-                      onClick={() => setShowDisciplineMenu((prev) => !prev)}
-                    >
-                      <span className="truncate text-sm text-black">
-                        {disciplineSelection.length
-                          ? disciplineSelection.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
-                          : "Select disciplines"}
-                      </span>
-                      <span className="text-xs text-black">{showDisciplineMenu ? "▲" : "▼"}</span>
-                    </button>
-                    {showDisciplineMenu && (
-                      <div className="absolute z-30 mt-1 w-full rounded border border-slate-300 bg-white p-2 shadow-lg">
-                        {disciplineOptions.map((option) => {
-                          const checked = disciplineSelection.includes(option.key);
-                          return (
-                            <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm text-black hover:bg-slate-50">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  setDisciplineSelection((prev) =>
-                                    prev.includes(option.key)
-                                      ? prev.filter((key) => key !== option.key)
-                                      : [...prev, option.key]
-                                  )
-                                }
-                              />
-                              <span className="text-black">{option.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <label className="text-sm text-white">User Group
-                  <div className="relative mt-1">
-                    <select
-                      className="w-full appearance-none rounded border border-slate-300 bg-white px-3 py-2 pr-9 text-black"
-                      value={userGroup}
-                      onChange={(e) => {
-                        setUserGroup(e.target.value);
-                        setShowUserGroupSelectArrowUp(false);
-                      }}
-                      onFocus={() => setShowUserGroupSelectArrowUp(true)}
-                      onBlur={() => setShowUserGroupSelectArrowUp(false)}
-                      onMouseDown={() => setShowUserGroupSelectArrowUp(true)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape" || e.key === "Tab") setShowUserGroupSelectArrowUp(false);
-                      }}
-                    >
-                      <option value="">Select user group</option>
-                      {userGroup && !userGroupOptions.includes(userGroup as (typeof userGroupOptions)[number]) ? (
-                        <option value={userGroup}>{userGroup}</option>
-                      ) : null}
-                      {userGroupOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">
-                      {showUserGroupSelectArrowUp ? "▲" : "▼"}
-                    </span>
-                  </div>
-                </label>
-                <label className="text-sm text-white">Owner<input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Enter owner name" /></label>
-              </div>
-
-              <div className="mt-4">
-                <button className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveNode}>Save properties</button>
-              </div>
-
-              <div className="mt-6 border-t border-[#5f7894]/70 pt-4">
-                <h3 className="font-semibold text-white">Relationships</h3>
-                <div className="mt-3 space-y-2">
-                  {relatedRows.map((r) => {
-                    const fromNode = nodes.find((n) => n.id === r.from_node_id) ?? null;
-                    const toNode = r.to_node_id ? nodes.find((n) => n.id === r.to_node_id) ?? null : null;
-                    const toSystem = r.target_system_element_id
-                      ? elements.find((el) => el.id === r.target_system_element_id && el.element_type !== "grouping_container") ?? null
-                      : null;
-                    const fromLabel = fromNode?.title || "Unknown document";
-                    const toLabel = toNode?.title || (toSystem ? getElementDisplayName(toSystem) : null) || "Unknown destination";
-                    const toType = toNode ? "Document" : toSystem ? getElementRelationshipTypeLabel(toSystem.element_type) : "Component";
-                    const isEditing = editingRelationId === r.id;
-                    return (
-                      <div key={r.id} className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-800">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="text-sm font-medium">
-                            {fromLabel} {"->"} {toLabel} <span className="font-normal text-slate-500">({toType})</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              title="Edit relationship definition"
-                              aria-label="Edit relationship definition"
-                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
-                              onClick={() => {
-                                setEditingRelationId(r.id);
-                                setEditingRelationDescription(r.relationship_description ?? "");
-                                const nextCategory = (r.relationship_category || "information").toLowerCase();
-                                setEditingRelationCategory(
-                                  nextCategory === "information" || nextCategory === "systems" || nextCategory === "process" || nextCategory === "data" || nextCategory === "other"
-                                    ? (nextCategory as RelationshipCategory)
-                                    : "information"
-                                );
-                                setEditingRelationCustomType(r.relationship_custom_type ?? "");
-                                setEditingRelationDisciplines(
-                                  (r.relationship_disciplines ?? []).filter(
-                                    (key): key is DisciplineKey => disciplineKeySet.has(key as DisciplineKey)
-                                  )
-                                );
-                                setShowEditingRelationDisciplineMenu(false);
-                              }}
-                            >
-                              <img src="/icons/edit.svg" alt="" className="h-4 w-4" />
-                            </button>
-                            <button
-                              title="Delete relationship"
-                              aria-label="Delete relationship"
-                              className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
-                              onClick={() => handleDeleteRelation(r.id)}
-                            >
-                              <img src="/icons/delete.svg" alt="" className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        {isEditing ? (
-                          <div className="mt-2 space-y-2">
-                            <div className="text-[11px]">
-                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Type</div>
-                              <div className="relative mt-1">
-                                <select
-                                  className="w-full appearance-none rounded-none border border-slate-300 bg-white px-2 py-1 text-xs text-black"
-                                  value={editingRelationCategory}
-                                  onChange={(e) => setEditingRelationCategory(e.target.value as RelationshipCategory)}
-                                >
-                                  <option value="information">Information</option>
-                                  <option value="systems">Systems</option>
-                                  <option value="process">Process</option>
-                                  <option value="data">Data</option>
-                                  <option value="other">Other</option>
-                                </select>
-                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-black">▼</span>
-                              </div>
-                            </div>
-                            {editingRelationCategory === "other" && (
-                              <div className="text-[11px]">
-                                <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Custom Type</div>
-                                <input
-                                  className="mt-1 w-full rounded-none border border-slate-300 px-2 py-1 text-xs text-black"
-                                  value={editingRelationCustomType}
-                                  onChange={(e) => setEditingRelationCustomType(e.target.value)}
-                                  placeholder="Enter custom relationship type"
-                                />
-                              </div>
-                            )}
-                            <div className="text-[11px]">
-                              <div className="font-semibold uppercase tracking-[0.05em] text-slate-500">Disciplines</div>
-                              <div className="relative mt-1">
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center justify-between rounded-none border border-slate-300 bg-white px-2 py-1 text-left text-xs text-black"
-                                  onClick={() => setShowEditingRelationDisciplineMenu((prev) => !prev)}
-                                >
-                                  <span className="truncate">
-                                    {editingRelationDisciplines.length
-                                      ? editingRelationDisciplines.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
-                                      : "Select disciplines"}
-                                  </span>
-                                  <span className="text-[10px] text-black">{showEditingRelationDisciplineMenu ? "▲" : "▼"}</span>
-                                </button>
-                                {showEditingRelationDisciplineMenu && (
-                                  <div className="absolute z-30 mt-1 w-full rounded-none border border-slate-300 bg-white p-2 shadow-lg">
-                                    {disciplineOptions.map((option) => {
-                                      const checked = editingRelationDisciplines.includes(option.key);
-                                      return (
-                                        <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-black hover:bg-slate-50">
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() =>
-                                              setEditingRelationDisciplines((prev) =>
-                                                prev.includes(option.key)
-                                                  ? prev.filter((key) => key !== option.key)
-                                                  : [...prev, option.key]
-                                              )
-                                            }
-                                          />
-                                          <span>{option.label}</span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
-                            <textarea
-                              className="w-full rounded-none border border-slate-300 px-2 py-1 text-xs"
-                              rows={3}
-                              value={editingRelationDescription}
-                              onChange={(e) => setEditingRelationDescription(e.target.value)}
-                            />
-                            <div className="flex justify-end gap-2">
-                              <button
-                                className="rounded-none border border-black bg-white px-2 py-1 text-xs font-semibold text-black hover:bg-slate-100"
-                                onClick={() => void handleUpdateRelation(r.id)}
-                              >
-                                Save
-                              </button>
-                              <button
-                                className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
-                                onClick={() => {
-                                  setEditingRelationId(null);
-                                  setEditingRelationDescription("");
-                                  setEditingRelationCategory("information");
-                                  setEditingRelationCustomType("");
-                                  setEditingRelationDisciplines([]);
-                                  setShowEditingRelationDisciplineMenu(false);
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
-                            <div className="mt-1 text-xs text-slate-600">{r.relationship_description?.trim() || "No relationship context added by user"}</div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </aside>
-        )}
-        {(selectedNode || selectedGrouping) && !isMobile && desktopNodeAction === "relationship" && showAddRelationship && (
-          <aside
-            className="fixed bottom-0 left-[420px] top-[70px] z-[74] w-full max-w-[420px] border-l border-r border-slate-300 bg-white shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform"
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-                <h2 className="text-base font-semibold">Add Relationship</h2>
-                <button className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => { closeAddRelationshipModal(); setDesktopNodeAction(null); }}>Close</button>
-              </div>
-              <p className="mt-3 text-sm text-slate-600">From: {relationshipSourceNode?.title || relationshipSourceGrouping?.heading || "Unknown source"}</p>
-              <div className="mt-3 grid gap-3">
-                {relationshipModeGrouping ? (
-                  <div className="relative">
-                    <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Grouping Containers</div>
-                    <div className="relative flex">
-                      <input
-                        className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                        placeholder="Search grouping containers..."
-                        value={relationshipGroupingQuery}
-                        onChange={(e) => {
-                          const query = e.target.value;
-                          setRelationshipGroupingQuery(query);
-                          const candidateId = groupingRelationCandidateIdByLabel.get(query) ?? "";
-                          setRelationshipTargetGroupingId(candidateId && !alreadyRelatedGroupingTargetIds.has(candidateId) ? candidateId : "");
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                        onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
-                      >
-                        {showRelationshipGroupingOptions ? "▲" : "▼"}
-                      </button>
-                    </div>
-                    {showRelationshipGroupingOptions && (
-                      <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
-                        {groupingRelationCandidates.length > 0 ? groupingRelationCandidates.map((el) => {
-                          const optionLabel = groupingRelationCandidateLabelById.get(el.id) ?? (el.heading || "Group label");
-                          const isDisabled = alreadyRelatedGroupingTargetIds.has(el.id);
-                          return (
-                            <button
-                              key={el.id}
-                              type="button"
-                              className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
-                                isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
-                              }`}
-                              disabled={isDisabled}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                if (isDisabled) return;
-                                setRelationshipTargetGroupingId(el.id);
-                                setRelationshipGroupingQuery(optionLabel);
-                                setShowRelationshipGroupingOptions(false);
-                              }}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span>{optionLabel}</span>
-                                {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
-                              </div>
-                            </button>
-                          );
-                        }) : (
-                          <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                <div className="relative">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
-                  <div className="relative flex">
-                    <input
-                      className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                      placeholder="Search documents..."
-                      value={relationshipDocumentQuery}
-                      onChange={(e) => {
-                        const query = e.target.value;
-                        setRelationshipDocumentQuery(query);
-                        const candidateId = documentRelationCandidateIdByLabel.get(query) ?? "";
-                        setRelationshipTargetDocumentId(candidateId && !alreadyRelatedDocumentTargetIds.has(candidateId) ? candidateId : "");
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                      onClick={() => {
-                        setShowRelationshipDocumentOptions((prev) => !prev);
-                        setShowRelationshipSystemOptions(false);
-                      }}
-                    >
-                      {showRelationshipDocumentOptions ? "▲" : "▼"}
-                    </button>
-                  </div>
-                  {showRelationshipDocumentOptions && (
-                    <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
-                      {documentRelationCandidates.length > 0 ? documentRelationCandidates.map((n) => {
-                        const optionLabel = documentRelationCandidateLabelById.get(n.id) ?? n.title;
-                        const isDisabled = alreadyRelatedDocumentTargetIds.has(n.id);
-                        return (
-                          <button
-                            key={n.id}
-                            type="button"
-                            className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
-                              isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
-                            }`}
-                            disabled={isDisabled}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              if (isDisabled) return;
-                              setRelationshipTargetDocumentId(n.id);
-                              setRelationshipTargetSystemId("");
-                              setRelationshipDocumentQuery(optionLabel);
-                              setShowRelationshipDocumentOptions(false);
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{optionLabel}</span>
-                              {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
-                            </div>
-                          </button>
-                        );
-                      }) : (
-                        <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="relative">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Components (Systems, Processes, People)</div>
-                  <div className="relative flex">
-                    <input
-                      className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                      placeholder="Search components..."
-                      value={relationshipSystemQuery}
-                      onChange={(e) => {
-                        const query = e.target.value;
-                        setRelationshipSystemQuery(query);
-                        const candidateId = systemRelationCandidateIdByLabel.get(query) ?? "";
-                        setRelationshipTargetSystemId(candidateId && !alreadyRelatedSystemTargetIds.has(candidateId) ? candidateId : "");
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                      onClick={() => {
-                        setShowRelationshipSystemOptions((prev) => !prev);
-                        setShowRelationshipDocumentOptions(false);
-                      }}
-                    >
-                      {showRelationshipSystemOptions ? "▲" : "▼"}
-                    </button>
-                  </div>
-                  {showRelationshipSystemOptions && (
-                    <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
-                      {systemRelationCandidates.length > 0 ? systemRelationCandidates.map((el) => {
-                        const optionLabel = systemRelationCandidateLabelById.get(el.id) ?? getElementRelationshipDisplayLabel(el);
-                        const isDisabled = alreadyRelatedSystemTargetIds.has(el.id);
-                        return (
-                          <button
-                            key={el.id}
-                            type="button"
-                            className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
-                              isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
-                            }`}
-                            disabled={isDisabled}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              if (isDisabled) return;
-                              setRelationshipTargetSystemId(el.id);
-                              setRelationshipTargetDocumentId("");
-                              setRelationshipSystemQuery(optionLabel);
-                              setShowRelationshipSystemOptions(false);
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{optionLabel}</span>
-                              {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
-                            </div>
-                          </button>
-                        );
-                      }) : (
-                        <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                  </>
-                )}
-                <div>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Disciplines</div>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-left text-slate-700"
-                      onClick={() => setShowRelationshipDisciplineMenu((prev) => !prev)}
-                    >
-                      <span className="truncate text-sm">
-                        {relationshipDisciplineSelection.length
-                          ? relationshipDisciplineSelection.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
-                          : "Select disciplines"}
-                      </span>
-                      <span className="text-xs text-slate-500">{showRelationshipDisciplineMenu ? "▲" : "▼"}</span>
-                    </button>
-                    {showRelationshipDisciplineMenu && (
-                      <div className="absolute z-20 mt-1 w-full rounded border border-slate-300 bg-white p-2 shadow-lg">
-                        {disciplineOptions.map((option) => {
-                          const checked = relationshipDisciplineSelection.includes(option.key);
-                          return (
-                            <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm text-black hover:bg-slate-50">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  setRelationshipDisciplineSelection((prev) =>
-                                    prev.includes(option.key)
-                                      ? prev.filter((key) => key !== option.key)
-                                      : [...prev, option.key]
-                                  )
-                                }
-                              />
-                              <span className="text-black">{option.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <label className="text-sm">Relationship Type
-                  <div className="relative mt-1">
-                    <select
-                      className="w-full appearance-none rounded border border-slate-300 bg-white px-3 py-2 pr-9 text-black"
-                      value={relationshipCategory}
-                      onChange={(e) => setRelationshipCategory(e.target.value as RelationshipCategory)}
-                    >
-                      <option value="information">Information</option>
-                      <option value="systems">Systems</option>
-                      <option value="process">Process</option>
-                      <option value="data">Data</option>
-                      <option value="other">Other</option>
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">▼</span>
-                  </div>
-                </label>
-                {relationshipCategory === "other" && (
-                  <label className="text-sm">Custom Relationship Type
-                    <input
-                      className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                      placeholder="Enter relationship type for this link only"
-                      value={relationshipCustomType}
-                      onChange={(e) => setRelationshipCustomType(e.target.value)}
-                    />
-                  </label>
-                )}
-                <textarea
-                  className="rounded border border-slate-300 px-3 py-2"
-                  rows={3}
-                  placeholder="Relationship description (optional)"
-                  value={relationshipDescription}
-                  onChange={(e) => setRelationshipDescription(e.target.value)}
-                />
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={
-                    (!relationshipModeGrouping && !relationshipTargetDocumentId && !relationshipTargetSystemId) ||
-                    (relationshipModeGrouping && !relationshipTargetGroupingId) ||
-                    (relationshipCategory === "other" && !relationshipCustomType.trim())
-                  }
-                  onClick={async () => { await handleAddRelation(); setDesktopNodeAction(null); }}
-                >
-                  Add relationship
-                </button>
-                <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => { closeAddRelationshipModal(); setDesktopNodeAction(null); }}>Cancel</button>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedNode && !isMobile && desktopNodeAction === "delete" && confirmDeleteNodeId && (
-          <aside
-            className="fixed bottom-0 left-[420px] top-[70px] z-[74] w-full max-w-[420px] border-l border-r border-slate-300 bg-white shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform"
-          >
-            <div className="flex h-full flex-col overflow-auto p-4">
-              <div className="flex items-center justify-between border-b border-slate-300 pb-3">
-                <h2 className="text-base font-semibold">Delete Document</h2>
-                <button className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => { setConfirmDeleteNodeId(null); setDesktopNodeAction(null); }}>Close</button>
-              </div>
-              <p className="mt-3 text-sm text-slate-700">This will permanently remove the document from the map.</p>
-              <div className="mt-5 flex justify-end gap-2">
-                <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100" onClick={async () => {
-                  const id = confirmDeleteNodeId;
-                  setConfirmDeleteNodeId(null);
-                  setDesktopNodeAction(null);
-                  if (!id) return;
-                  await handleDeleteNode(id);
-                }}>Delete</button>
-                <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => { setConfirmDeleteNodeId(null); setDesktopNodeAction(null); }}>Cancel</button>
-              </div>
-            </div>
-          </aside>
-        )}
-        {selectedNode && isMobile && (
-          <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/45 p-4 pt-16 md:items-center md:pt-4">
-            <div className="max-h-[calc(100svh-2rem)] w-full max-w-2xl overflow-auto rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70 md:max-h-[90vh]">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Document Properties</h2>
-                <button className="text-sm text-slate-500" onClick={() => setSelectedNodeId(null)}>Close</button>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <label className="text-sm">Document Type
-                  <select className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={selectedTypeId} onChange={(e) => setSelectedTypeId(e.target.value)}>
-                    {addDocumentTypes.map((t) => <option key={t.id} value={t.id}>{getDisplayTypeName(t.name)}</option>)}
-                  </select>
-                </label>
-                <label className="text-sm">Name<input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-                <label className="text-sm">Document Number<input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="Enter document number" /></label>
-                <div className="text-sm">
-                  <div>Discipline</div>
-                  <div ref={disciplineMenuRef} className="relative mt-1">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-left"
-                      onClick={() => setShowDisciplineMenu((prev) => !prev)}
-                    >
-                      <span className="truncate text-sm text-slate-700">
-                        {disciplineSelection.length
-                          ? disciplineSelection.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
-                          : "Select disciplines"}
-                      </span>
-                      <span className="text-xs text-slate-500">{showDisciplineMenu ? "▲" : "▼"}</span>
-                    </button>
-                    {showDisciplineMenu && (
-                      <div className="absolute z-30 mt-1 w-full rounded border border-slate-300 bg-white p-2 shadow-lg">
-                        {disciplineOptions.map((option) => {
-                          const checked = disciplineSelection.includes(option.key);
-                          return (
-                            <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  setDisciplineSelection((prev) =>
-                                    prev.includes(option.key)
-                                      ? prev.filter((key) => key !== option.key)
-                                      : [...prev, option.key]
-                                  )
-                                }
-                              />
-                              <span>{option.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <label className="text-sm">User Group
-                  <select className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={userGroup} onChange={(e) => setUserGroup(e.target.value)}>
-                    <option value="">Select user group</option>
-                    {userGroup && !userGroupOptions.includes(userGroup as (typeof userGroupOptions)[number]) ? (
-                      <option value={userGroup}>{userGroup}</option>
-                    ) : null}
-                    {userGroupOptions.map((option) => <option key={option} value={option}>{option}</option>)}
-                  </select>
-                </label>
-                <label className="text-sm">Owner<input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="Enter owner name" /></label>
-              </div>
-
-              <div className="mt-4 flex justify-end"><button className="btn btn-primary" onClick={handleSaveNode}>Save properties</button></div>
-
-              <div className="mt-6 border-t border-slate-200 pt-4">
-                <h3 className="font-semibold">Relationships</h3>
-                <div className="mt-3 space-y-2">
-                  {relatedRows.map((r) => {
-                    const otherId = r.from_node_id === selectedNode.id ? r.to_node_id : r.from_node_id;
-                    const otherNode = otherId ? nodes.find((n) => n.id === otherId) : null;
-                    const otherElement =
-                      r.from_node_id === selectedNode.id && r.target_system_element_id
-                        ? elements.find((el) => el.id === r.target_system_element_id)
-                        : otherId
-                          ? elements.find((el) => el.id === otherId)
-                          : null;
-                    const otherLabel = otherNode?.title || (otherElement ? getElementDisplayName(otherElement) : null) || otherId || "Linked Item";
-                    const otherType = otherNode ? "Document" : otherElement ? getElementRelationshipTypeLabel(otherElement.element_type) : "Component";
-                    return <div key={r.id} className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm"><span>{otherLabel} ({otherType})</span><button className="text-rose-700" onClick={() => handleDeleteRelation(r.id)}>Remove</button></div>;
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {(isMobile || shouldShowDesktopStructurePanel) && (
-        <aside
-          className={`fixed z-[74] border-l border-r border-slate-300 shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform ${
-            isMobile
-              ? "inset-0 w-full max-w-full bg-white md:inset-y-0 md:left-0 md:max-w-[420px]"
-              : "bottom-0 left-[420px] top-[70px] w-full max-w-[420px] bg-white"
-          }`}
-          style={{
-            transform: isMobile ? (outlineNodeId ? "translateX(0)" : "translateX(-100%)") : (shouldShowDesktopStructurePanel ? "translateX(0)" : "translateX(-100%)"),
+        <ConfirmDialog
+          open={!!confirmDeleteNodeId && isMobile}
+          title="Delete document?"
+          message="This will permanently remove the document from the map."
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDeleteNodeId(null)}
+          onConfirm={() => {
+            const id = confirmDeleteNodeId;
+            setConfirmDeleteNodeId(null);
+            if (!id) return;
+            void handleDeleteNode(id);
           }}
-        >
-          <div className="flex h-full flex-col">
-            <div className="border-b border-slate-200 px-4 py-3">
-              <div className="flex items-center justify-between"><h2 className="text-base font-semibold">Open Document Structure</h2><button className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={() => { setOutlineNodeId(null); setOutlineCreateMode(null); closeOutlineEditor(); setConfirmDeleteOutlineItemId(null); setDesktopNodeAction(null); }}>Close</button></div>
-            </div>
-            <div className="space-y-3 overflow-auto px-4 py-4">
-              <div className="mt-2 rounded border border-slate-200 p-3">
-                <div className="text-sm font-semibold">Actions</div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => {
-                    closeOutlineEditor();
-                    setOutlineCreateMode("heading");
-                    setNewHeadingTitle("");
-                    setNewHeadingLevel(1);
-                    setNewHeadingParentId("");
-                  }}>Add Heading</button>
-                  <button className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => {
-                    closeOutlineEditor();
-                    setOutlineCreateMode("content");
-                    setNewContentText("");
-                    setNewContentHeadingId(headingItems[0]?.id ?? "");
-                  }}>Add Content</button>
-                </div>
-              </div>
+        />
 
-              {outlineCreateMode === "heading" && (
-                <div className="rounded border border-slate-200 p-3">
-                  <div className="text-sm font-semibold">New Heading</div>
-                  <label className="mt-2 block text-xs text-slate-600">Title</label>
-                  <input
-                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    value={newHeadingTitle}
-                    onChange={(e) => setNewHeadingTitle(e.target.value)}
-                    placeholder="Enter heading title"
-                  />
-                  <label className="mt-2 block text-xs text-slate-600">Level</label>
-                  <select
-                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    value={newHeadingLevel}
-                    onChange={(e) => {
-                      const next = Number(e.target.value) as 1 | 2 | 3;
-                      setNewHeadingLevel(next);
-                      setNewHeadingParentId("");
-                    }}
-                  >
-                    <option value={1}>Level 1</option>
-                    <option value={2}>Level 2</option>
-                    <option value={3}>Level 3</option>
-                  </select>
-                  {newHeadingLevel === 2 && (
-                    <>
-                      <label className="mt-2 block text-xs text-slate-600">Parent L1 Heading</label>
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        value={newHeadingParentId}
-                        onChange={(e) => setNewHeadingParentId(e.target.value)}
-                      >
-                        <option value="">Select parent...</option>
-                        {level1Headings.map((h) => <option key={h.id} value={h.id}>{h.title || "(Untitled)"}</option>)}
-                      </select>
-                    </>
-                  )}
-                  {newHeadingLevel === 3 && (
-                    <>
-                      <label className="mt-2 block text-xs text-slate-600">Parent L2 Heading</label>
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        value={newHeadingParentId}
-                        onChange={(e) => setNewHeadingParentId(e.target.value)}
-                      >
-                        <option value="">Select parent...</option>
-                        {level2Headings.map((h) => <option key={h.id} value={h.id}>{h.title || "(Untitled)"}</option>)}
-                      </select>
-                    </>
-                  )}
-                  <div className="mt-3 flex justify-end gap-2">
-                    <button className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleCreateHeading}>Add Heading</button>
-                    <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => setOutlineCreateMode(null)}>Cancel</button>
-                  </div>
-                </div>
-              )}
+        <ConfirmDialog
+          open={!!confirmDeleteOutlineItemId}
+          title="Delete outline item?"
+          message="This removes the selected heading/content and any dependent children defined by your data rules."
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDeleteOutlineItemId(null)}
+          onConfirm={() => void handleDeleteOutlineItem()}
+        />
 
-              {outlineCreateMode === "content" && (
-                <div className="rounded border border-slate-200 p-3">
-                  <div className="text-sm font-semibold">New Content</div>
-                  <label className="mt-2 block text-xs text-slate-600">Heading</label>
-                  <select
-                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    value={newContentHeadingId}
-                    onChange={(e) => setNewContentHeadingId(e.target.value)}
-                  >
-                    <option value="">Select heading...</option>
-                    {headingItems.map((h) => <option key={h.id} value={h.id}>{h.title || "(Untitled)"}</option>)}
-                  </select>
-                  <label className="mt-2 block text-xs text-slate-600">Content</label>
-                  <textarea
-                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                    rows={4}
-                    value={newContentText}
-                    onChange={(e) => setNewContentText(e.target.value)}
-                    placeholder="Enter content text"
-                  />
-                  <div className="mt-3 flex justify-end gap-2">
-                    <button className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50" disabled={!headingItems.length} onClick={handleCreateContent}>Add Content</button>
-                    <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={() => setOutlineCreateMode(null)}>Cancel</button>
-                  </div>
-                </div>
-              )}
+        <CategoryPropertiesAside
+          open={!!selectedProcess}
+          isMobile={isMobile}
+          leftAsideSlideIn={leftAsideSlideIn}
+          processMinWidthSquares={processMinWidthSquares}
+          processMinHeightSquares={processMinHeightSquares}
+          processHeadingDraft={processHeadingDraft}
+          setProcessHeadingDraft={setProcessHeadingDraft}
+          processWidthDraft={processWidthDraft}
+          setProcessWidthDraft={setProcessWidthDraft}
+          processHeightDraft={processHeightDraft}
+          setProcessHeightDraft={setProcessHeightDraft}
+          categoryColorOptions={categoryColorOptions}
+          processColorDraft={processColorDraft}
+          setProcessColorDraft={setProcessColorDraft}
+          onDelete={async () => {
+            if (!selectedProcess) return;
+            await handleDeleteProcessElement(selectedProcess.id);
+          }}
+          onSave={handleSaveProcessHeading}
+          onClose={() => setSelectedProcessId(null)}
+        />
+        <SystemPropertiesAside
+          open={!!selectedSystem}
+          isMobile={isMobile}
+          leftAsideSlideIn={leftAsideSlideIn}
+          systemNameDraft={systemNameDraft}
+          setSystemNameDraft={setSystemNameDraft}
+          onDelete={async () => {
+            if (!selectedSystem) return;
+            await handleDeleteProcessElement(selectedSystem.id);
+          }}
+          onSave={handleSaveSystemName}
+          onClose={() => setSelectedSystemId(null)}
+          onAddRelationship={() => {
+            if (!selectedSystem) return;
+            openAddRelationshipFromSource({ systemId: selectedSystem.id });
+          }}
+          relatedRows={relatedSystemRows}
+          resolveLabels={resolveDocumentRelationLabels}
+          relationshipSectionProps={{
+            editingRelationId,
+            editingRelationDescription,
+            setEditingRelationDescription,
+            editingRelationCategory,
+            setEditingRelationCategory,
+            editingRelationCustomType,
+            setEditingRelationCustomType,
+            editingRelationDisciplines,
+            setEditingRelationDisciplines,
+            showEditingRelationDisciplineMenu,
+            setShowEditingRelationDisciplineMenu,
+            disciplineOptions,
+            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
+            onStartEdit: startEditRelation,
+            onDelete: handleDeleteRelation,
+            onSave: (id) => void handleUpdateRelation(id),
+            onCancelEdit: cancelEditRelation,
+          }}
+        />
+        <ProcessPropertiesAside
+          open={!!selectedProcessComponent}
+          isMobile={isMobile}
+          leftAsideSlideIn={leftAsideSlideIn}
+          processComponentLabelDraft={processComponentLabelDraft}
+          setProcessComponentLabelDraft={setProcessComponentLabelDraft}
+          onDelete={async () => {
+            if (!selectedProcessComponent) return;
+            await handleDeleteProcessElement(selectedProcessComponent.id);
+          }}
+          onSave={handleSaveProcessComponent}
+          onClose={() => setSelectedProcessComponentId(null)}
+          onAddRelationship={() => {
+            if (!selectedProcessComponent) return;
+            openAddRelationshipFromSource({ systemId: selectedProcessComponent.id });
+          }}
+          relatedRows={relatedProcessComponentRows}
+          resolveLabels={resolveDocumentRelationLabels}
+          relationshipSectionProps={{
+            editingRelationId,
+            editingRelationDescription,
+            setEditingRelationDescription,
+            editingRelationCategory,
+            setEditingRelationCategory,
+            editingRelationCustomType,
+            setEditingRelationCustomType,
+            editingRelationDisciplines,
+            setEditingRelationDisciplines,
+            showEditingRelationDisciplineMenu,
+            setShowEditingRelationDisciplineMenu,
+            disciplineOptions,
+            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
+            onStartEdit: startEditRelation,
+            onDelete: handleDeleteRelation,
+            onSave: (id) => void handleUpdateRelation(id),
+            onCancelEdit: cancelEditRelation,
+          }}
+        />
+        <PersonPropertiesAside
+          open={!!selectedPerson}
+          isMobile={isMobile}
+          leftAsideSlideIn={leftAsideSlideIn}
+          personRoleDraft={personRoleDraft}
+          setPersonRoleDraft={setPersonRoleDraft}
+          personDepartmentDraft={personDepartmentDraft}
+          setPersonDepartmentDraft={setPersonDepartmentDraft}
+          onDelete={async () => {
+            if (!selectedPerson) return;
+            await handleDeleteProcessElement(selectedPerson.id);
+          }}
+          onSave={handleSavePerson}
+          onClose={() => setSelectedPersonId(null)}
+          onAddRelationship={() => {
+            if (!selectedPerson) return;
+            openAddRelationshipFromSource({ systemId: selectedPerson.id });
+          }}
+          relatedRows={relatedPersonRows}
+          resolveLabels={resolvePersonRelationLabels}
+          relationshipSectionProps={{
+            editingRelationId,
+            editingRelationDescription,
+            setEditingRelationDescription,
+            editingRelationCategory,
+            setEditingRelationCategory,
+            editingRelationCustomType,
+            setEditingRelationCustomType,
+            editingRelationDisciplines,
+            setEditingRelationDisciplines,
+            showEditingRelationDisciplineMenu,
+            setShowEditingRelationDisciplineMenu,
+            disciplineOptions,
+            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
+            onStartEdit: startEditRelation,
+            onDelete: handleDeleteRelation,
+            onSave: (id) => void handleUpdateRelation(id),
+            onCancelEdit: cancelEditRelation,
+          }}
+        />
+        <GroupingContainerAside
+          open={!!selectedGrouping}
+          isMobile={isMobile}
+          leftAsideSlideIn={leftAsideSlideIn}
+          groupingLabelDraft={groupingLabelDraft}
+          setGroupingLabelDraft={setGroupingLabelDraft}
+          groupingWidthDraft={groupingWidthDraft}
+          setGroupingWidthDraft={setGroupingWidthDraft}
+          groupingHeightDraft={groupingHeightDraft}
+          setGroupingHeightDraft={setGroupingHeightDraft}
+          onDelete={async () => {
+            if (!selectedGrouping) return;
+            await handleDeleteProcessElement(selectedGrouping.id);
+          }}
+          onSave={handleSaveGroupingContainer}
+          onClose={() => setSelectedGroupingId(null)}
+          onAddRelationship={() => {
+            if (!selectedGrouping) return;
+            openAddRelationshipFromSource({ groupingId: selectedGrouping.id });
+          }}
+          relatedRows={relatedGroupingRows}
+          resolveLabels={resolveGroupingRelationLabels}
+          relationshipSectionProps={{
+            editingRelationId,
+            editingRelationDescription,
+            setEditingRelationDescription,
+            editingRelationCategory,
+            setEditingRelationCategory,
+            editingRelationCustomType,
+            setEditingRelationCustomType,
+            editingRelationDisciplines,
+            setEditingRelationDisciplines,
+            showEditingRelationDisciplineMenu,
+            setShowEditingRelationDisciplineMenu,
+            disciplineOptions,
+            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
+            onStartEdit: startEditRelation,
+            onDelete: handleDeleteRelation,
+            onSave: (id) => void handleUpdateRelation(id),
+            onCancelEdit: cancelEditRelation,
+          }}
+        />
+        <StickyNoteAside
+          open={!!selectedSticky}
+          isMobile={isMobile}
+          leftAsideSlideIn={leftAsideSlideIn}
+          stickyTextDraft={stickyTextDraft}
+          setStickyTextDraft={setStickyTextDraft}
+          onDelete={async () => {
+            if (!selectedSticky) return;
+            await handleDeleteProcessElement(selectedSticky.id);
+          }}
+          onSave={handleSaveStickyNote}
+          onClose={() => setSelectedStickyId(null)}
+        />
+        <DocumentPropertiesAside
+          open={!!selectedNode && !isMobile}
+          leftAsideSlideIn={leftAsideSlideIn}
+          onClose={handleCloseDocumentPropertiesPanel}
+          onOpenRelationship={() => {
+            if (!selectedNode) return;
+            openAddRelationshipFromSource({ nodeId: selectedNode.id });
+          }}
+          onOpenStructure={async () => {
+            if (!selectedNode) return;
+            setOutlineCreateMode(null);
+            closeOutlineEditor();
+            setConfirmDeleteOutlineItemId(null);
+            setCollapsedHeadingIds(new Set());
+            setOutlineNodeId(selectedNode.id);
+            await loadOutline(selectedNode.id);
+            setDesktopNodeAction("structure");
+          }}
+          onOpenDelete={() => {
+            if (!selectedNode) return;
+            setConfirmDeleteNodeId(selectedNode.id);
+            setDesktopNodeAction("delete");
+          }}
+          selectedTypeId={selectedTypeId}
+          setSelectedTypeId={setSelectedTypeId}
+          showTypeSelectArrowUp={showTypeSelectArrowUp}
+          setShowTypeSelectArrowUp={setShowTypeSelectArrowUp}
+          addDocumentTypes={addDocumentTypes}
+          getDisplayTypeName={getDisplayTypeName}
+          title={title}
+          setTitle={setTitle}
+          documentNumber={documentNumber}
+          setDocumentNumber={setDocumentNumber}
+          disciplineMenuRef={disciplineMenuRef}
+          showDisciplineMenu={showDisciplineMenu}
+          setShowDisciplineMenu={setShowDisciplineMenu}
+          disciplineSelection={disciplineSelection}
+          setDisciplineSelection={setDisciplineSelection}
+          disciplineOptions={disciplineOptions}
+          getDisciplineLabel={(key) => disciplineLabelByKey.get(key)}
+          userGroup={userGroup}
+          setUserGroup={setUserGroup}
+          showUserGroupSelectArrowUp={showUserGroupSelectArrowUp}
+          setShowUserGroupSelectArrowUp={setShowUserGroupSelectArrowUp}
+          userGroupOptions={userGroupOptions}
+          ownerName={ownerName}
+          setOwnerName={setOwnerName}
+          onSaveNode={handleSaveNode}
+          relatedRows={relatedRows}
+          resolveLabels={resolveDocumentRelationLabels}
+          relationshipSectionProps={{
+            editingRelationId,
+            editingRelationDescription,
+            setEditingRelationDescription,
+            editingRelationCategory,
+            setEditingRelationCategory,
+            editingRelationCustomType,
+            setEditingRelationCustomType,
+            editingRelationDisciplines,
+            setEditingRelationDisciplines,
+            showEditingRelationDisciplineMenu,
+            setShowEditingRelationDisciplineMenu,
+            disciplineOptions,
+            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
+            onStartEdit: startEditRelation,
+            onDelete: handleDeleteRelation,
+            onSave: (id) => void handleUpdateRelation(id),
+            onCancelEdit: cancelEditRelation,
+          }}
+        />        <AddRelationshipAside
+          open={Boolean(!isMobile && desktopNodeAction === "relationship" && showAddRelationship)}
+          relationshipModeGrouping={relationshipModeGrouping}
+          relationshipSourceLabel={
+            relationshipSourceNode?.title ||
+            (relationshipSourceSystem ? getElementDisplayName(relationshipSourceSystem) : "") ||
+            relationshipSourceGrouping?.heading ||
+            ""
+          }
+          relationshipSourceNodeTitle={relationshipSourceNode?.title || ""}
+          relationshipSourceGroupingHeading={relationshipSourceGrouping?.heading || ""}
+          relationshipGroupingQuery={relationshipGroupingQuery}
+          setRelationshipGroupingQuery={setRelationshipGroupingQuery}
+          groupingRelationCandidateIdByLabel={groupingRelationCandidateIdByLabel}
+          setRelationshipTargetGroupingId={setRelationshipTargetGroupingId}
+          alreadyRelatedGroupingTargetIds={alreadyRelatedGroupingTargetIds}
+          showRelationshipGroupingOptions={showRelationshipGroupingOptions}
+          setShowRelationshipGroupingOptions={setShowRelationshipGroupingOptions}
+          groupingRelationCandidates={groupingRelationCandidates}
+          groupingRelationCandidateLabelById={groupingRelationCandidateLabelById}
+          relationshipDocumentQuery={relationshipDocumentQuery}
+          setRelationshipDocumentQuery={setRelationshipDocumentQuery}
+          documentRelationCandidateIdByLabel={documentRelationCandidateIdByLabel}
+          setRelationshipTargetDocumentId={setRelationshipTargetDocumentId}
+          alreadyRelatedDocumentTargetIds={alreadyRelatedDocumentTargetIds}
+          showRelationshipDocumentOptions={showRelationshipDocumentOptions}
+          setShowRelationshipDocumentOptions={setShowRelationshipDocumentOptions}
+          documentRelationCandidates={documentRelationCandidates}
+          documentRelationCandidateLabelById={documentRelationCandidateLabelById}
+          relationshipSystemQuery={relationshipSystemQuery}
+          setRelationshipSystemQuery={setRelationshipSystemQuery}
+          systemRelationCandidateIdByLabel={systemRelationCandidateIdByLabel}
+          setRelationshipTargetSystemId={setRelationshipTargetSystemId}
+          alreadyRelatedSystemTargetIds={alreadyRelatedSystemTargetIds}
+          showRelationshipSystemOptions={showRelationshipSystemOptions}
+          setShowRelationshipSystemOptions={setShowRelationshipSystemOptions}
+          systemRelationCandidates={systemRelationCandidates}
+          systemRelationCandidateLabelById={systemRelationCandidateLabelById}
+          getElementRelationshipDisplayLabel={getElementRelationshipDisplayLabel}
+          relationshipDisciplineSelection={relationshipDisciplineSelection}
+          disciplineLabelByKey={disciplineLabelByKey}
+          showRelationshipDisciplineMenu={showRelationshipDisciplineMenu}
+          setShowRelationshipDisciplineMenu={setShowRelationshipDisciplineMenu}
+          disciplineOptions={disciplineOptions}
+          setRelationshipDisciplineSelection={setRelationshipDisciplineSelection}
+          relationshipCategory={relationshipCategory}
+          setRelationshipCategory={setRelationshipCategory}
+          relationshipCustomType={relationshipCustomType}
+          setRelationshipCustomType={setRelationshipCustomType}
+          relationshipDescription={relationshipDescription}
+          setRelationshipDescription={setRelationshipDescription}
+          relationshipTargetDocumentId={relationshipTargetDocumentId}
+          relationshipTargetSystemId={relationshipTargetSystemId}
+          relationshipTargetGroupingId={relationshipTargetGroupingId}
+          onAdd={async () => {
+            await handleAddRelation();
+            setDesktopNodeAction(null);
+          }}
+          onCancel={() => {
+            closeAddRelationshipModal();
+            setDesktopNodeAction(null);
+          }}
+        />
+        <DeleteDocumentAside
+          open={Boolean(selectedNode && !isMobile && desktopNodeAction === "delete" && !!confirmDeleteNodeId)}
+          onDelete={async () => {
+            const id = confirmDeleteNodeId;
+            setConfirmDeleteNodeId(null);
+            setDesktopNodeAction(null);
+            if (!id) return;
+            await handleDeleteNode(id);
+          }}
+          onCancel={() => {
+            setConfirmDeleteNodeId(null);
+            setDesktopNodeAction(null);
+          }}
+        />
+        <MobileDocumentPropertiesModal
+          open={Boolean(selectedNode && isMobile)}
+          onClose={() => setSelectedNodeId(null)}
+          selectedTypeId={selectedTypeId}
+          setSelectedTypeId={setSelectedTypeId}
+          addDocumentTypes={addDocumentTypes}
+          getDisplayTypeName={getDisplayTypeName}
+          title={title}
+          setTitle={setTitle}
+          documentNumber={documentNumber}
+          setDocumentNumber={setDocumentNumber}
+          showDisciplineMenu={showDisciplineMenu}
+          setShowDisciplineMenu={setShowDisciplineMenu}
+          disciplineMenuRef={disciplineMenuRef}
+          disciplineSelection={disciplineSelection}
+          setDisciplineSelection={setDisciplineSelection}
+          disciplineOptions={disciplineOptions}
+          getDisciplineLabel={(key) => disciplineLabelByKey.get(key)}
+          userGroup={userGroup}
+          setUserGroup={setUserGroup}
+          userGroupOptions={userGroupOptions}
+          ownerName={ownerName}
+          setOwnerName={setOwnerName}
+          onSaveNode={handleSaveNode}
+          relatedItems={mobileRelatedItems}
+          onDeleteRelation={handleDeleteRelation}
+        />
+        <DocumentStructureAside
+          open={Boolean(isMobile || shouldShowDesktopStructurePanel)}
+          isMobile={isMobile}
+          outlineNodeId={outlineNodeId}
+          shouldShowDesktopStructurePanel={shouldShowDesktopStructurePanel}
+          onClose={() => {
+            setOutlineNodeId(null);
+            setOutlineCreateMode(null);
+            closeOutlineEditor();
+            setConfirmDeleteOutlineItemId(null);
+            setDesktopNodeAction(null);
+          }}
+          setOutlineCreateMode={setOutlineCreateMode}
+          closeOutlineEditor={closeOutlineEditor}
+          setNewHeadingTitle={setNewHeadingTitle}
+          setNewHeadingLevel={setNewHeadingLevel}
+          setNewHeadingParentId={setNewHeadingParentId}
+          setNewContentText={setNewContentText}
+          setNewContentHeadingId={setNewContentHeadingId}
+          headingItems={headingItems}
+          outlineCreateMode={outlineCreateMode}
+          newHeadingTitle={newHeadingTitle}
+          newHeadingLevel={newHeadingLevel}
+          newHeadingParentId={newHeadingParentId}
+          level1Headings={level1Headings}
+          level2Headings={level2Headings}
+          handleCreateHeading={handleCreateHeading}
+          newContentHeadingId={newContentHeadingId}
+          newContentText={newContentText}
+          handleCreateContent={handleCreateContent}
+          outlineEditItem={outlineEditItem}
+          editHeadingTitle={editHeadingTitle}
+          setEditHeadingTitle={setEditHeadingTitle}
+          editHeadingLevel={editHeadingLevel}
+          setEditHeadingLevel={setEditHeadingLevel}
+          editHeadingParentId={editHeadingParentId}
+          setEditHeadingParentId={setEditHeadingParentId}
+          editContentHeadingId={editContentHeadingId}
+          setEditContentHeadingId={setEditContentHeadingId}
+          editContentText={editContentText}
+          setEditContentText={setEditContentText}
+          handleSaveOutlineEdit={handleSaveOutlineEdit}
+          visibleOutlineItems={visibleOutlineItems}
+          outlineItems={outlineItems}
+          collapsedHeadingIds={collapsedHeadingIds}
+          setCollapsedHeadingIds={setCollapsedHeadingIds}
+          openOutlineEditor={openOutlineEditor}
+          setConfirmDeleteOutlineItemId={setConfirmDeleteOutlineItemId}
+        />
 
-              {outlineCreateMode === "content" && !headingItems.length && (
-                <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                  Add a heading first before adding content.
-                </div>
-              )}
-
-              {outlineEditItem && (
-                <div className="rounded border border-slate-200 p-3">
-                  <div className="text-sm font-semibold">Edit {outlineEditItem.kind === "heading" ? "Heading" : "Content"}</div>
-                  {outlineEditItem.kind === "heading" ? (
-                    <>
-                      <label className="mt-2 block text-xs text-slate-600">Title</label>
-                      <input
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        value={editHeadingTitle}
-                        onChange={(e) => setEditHeadingTitle(e.target.value)}
-                        placeholder="Heading title"
-                      />
-                      <label className="mt-2 block text-xs text-slate-600">Level</label>
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        value={editHeadingLevel}
-                        onChange={(e) => {
-                          const next = Number(e.target.value) as 1 | 2 | 3;
-                          setEditHeadingLevel(next);
-                          setEditHeadingParentId("");
-                        }}
-                      >
-                        <option value={1}>Level 1</option>
-                        <option value={2}>Level 2</option>
-                        <option value={3}>Level 3</option>
-                      </select>
-                      {editHeadingLevel === 2 && (
-                        <>
-                          <label className="mt-2 block text-xs text-slate-600">Parent L1 Heading</label>
-                          <select
-                            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                            value={editHeadingParentId}
-                            onChange={(e) => setEditHeadingParentId(e.target.value)}
-                          >
-                            <option value="">Select parent...</option>
-                            {level1Headings.filter((h) => h.id !== outlineEditItem.id).map((h) => <option key={h.id} value={h.id}>{h.title || "(Untitled)"}</option>)}
-                          </select>
-                        </>
-                      )}
-                      {editHeadingLevel === 3 && (
-                        <>
-                          <label className="mt-2 block text-xs text-slate-600">Parent L2 Heading</label>
-                          <select
-                            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                            value={editHeadingParentId}
-                            onChange={(e) => setEditHeadingParentId(e.target.value)}
-                          >
-                            <option value="">Select parent...</option>
-                            {level2Headings.filter((h) => h.id !== outlineEditItem.id).map((h) => <option key={h.id} value={h.id}>{h.title || "(Untitled)"}</option>)}
-                          </select>
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <label className="mt-2 block text-xs text-slate-600">Heading</label>
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        value={editContentHeadingId}
-                        onChange={(e) => setEditContentHeadingId(e.target.value)}
-                      >
-                        <option value="">Select heading...</option>
-                        {headingItems.map((h) => <option key={h.id} value={h.id}>{h.title || "(Untitled)"}</option>)}
-                      </select>
-                      <label className="mt-2 block text-xs text-slate-600">Content</label>
-                      <textarea
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-                        rows={4}
-                        value={editContentText}
-                        onChange={(e) => setEditContentText(e.target.value)}
-                        placeholder="Content text"
-                      />
-                    </>
-                  )}
-                  <div className="mt-3 flex justify-end gap-2">
-                    <button className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={handleSaveOutlineEdit}>Save</button>
-                    <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={closeOutlineEditor}>Cancel</button>
-                  </div>
-                </div>
-              )}
-
-              <div className="rounded border border-slate-200 p-3">
-                <div className="text-sm font-semibold">Outline</div>
-                <div className="mt-2 space-y-2">
-                  {visibleOutlineItems.map((item) => {
-                    const indent = item.kind === "heading" ? item.heading_level === 2 ? 16 : item.heading_level === 3 ? 32 : 0 : (() => {
-                      const heading = outlineItems.find((h) => h.id === item.heading_id);
-                      return heading?.heading_level === 2 ? 16 : heading?.heading_level === 3 ? 32 : 0;
-                    })();
-                    const isHeading = item.kind === "heading";
-                    const isCollapsed = isHeading && collapsedHeadingIds.has(item.id);
-                    return (
-                      <div key={item.id} className="rounded border border-slate-200 px-3 py-2" style={{ marginLeft: indent }}>
-                        <div className="flex items-start justify-between gap-2 text-sm">
-                          <div className="flex items-start gap-2">
-                            {isHeading ? (
-                              <button
-                                className="mt-[1px] h-4 w-4 rounded border border-slate-300 text-[10px] leading-none text-slate-600"
-                                onClick={() => {
-                                  setCollapsedHeadingIds((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(item.id)) next.delete(item.id);
-                                    else next.add(item.id);
-                                    return next;
-                                  });
-                                }}
-                                aria-label={isCollapsed ? "Expand heading" : "Collapse heading"}
-                              >
-                                {isCollapsed ? "+" : "-"}
-                              </button>
-                            ) : <span className="inline-block h-4 w-4" />}
-                            <div>{isHeading ? <strong>H{item.heading_level}: {item.title || "(Untitled heading)"}</strong> : <span>{item.content_text || "(Empty content)"}</span>}</div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button className="text-xs" onClick={() => openOutlineEditor(item)}>Edit</button>
-                            <button className="text-xs text-rose-700" onClick={() => setConfirmDeleteOutlineItemId(item.id)}>Delete</button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </aside>
-        )}
       </main>
     </div>
   );
@@ -6144,3 +3622,11 @@ export default function SystemMapCanvasClient({ mapId }: { mapId: string }) {
     </ReactFlowProvider>
   );
 }
+
+
+
+
+
+
+
+
