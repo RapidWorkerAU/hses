@@ -29,6 +29,26 @@ type CanvasActionButtonsProps = {
   handleAddProcessHeading: () => void;
   handleAddGroupingContainer: () => void;
   handleAddStickyNote: () => void;
+  handleStartAddImageAsset: () => void;
+  handleAddTextBox: () => void;
+  handleAddBowtieHazard: () => void;
+  handleAddBowtieTopEvent: () => void;
+  handleAddBowtieThreat: () => void;
+  handleAddBowtieConsequence: () => void;
+  handleAddBowtieControl: () => void;
+  handleAddBowtieEscalationFactor: () => void;
+  handleAddBowtieRecoveryMeasure: () => void;
+  handleAddBowtieDegradationIndicator: () => void;
+  handleAddBowtieRiskRating: () => void;
+  handleAddIncidentSequenceStep: () => void;
+  handleAddIncidentOutcome: () => void;
+  handleAddIncidentTaskCondition: () => void;
+  handleAddIncidentFactor: () => void;
+  handleAddIncidentSystemFactor: () => void;
+  handleAddIncidentControlBarrier: () => void;
+  handleAddIncidentEvidence: () => void;
+  handleAddIncidentFinding: () => void;
+  handleAddIncidentRecommendation: () => void;
   allowedNodeKinds: NodePaletteKind[];
 };
 
@@ -54,6 +74,26 @@ export function CanvasActionButtons({
   handleAddProcessHeading,
   handleAddGroupingContainer,
   handleAddStickyNote,
+  handleStartAddImageAsset,
+  handleAddTextBox,
+  handleAddBowtieHazard,
+  handleAddBowtieTopEvent,
+  handleAddBowtieThreat,
+  handleAddBowtieConsequence,
+  handleAddBowtieControl,
+  handleAddBowtieEscalationFactor,
+  handleAddBowtieRecoveryMeasure,
+  handleAddBowtieDegradationIndicator,
+  handleAddBowtieRiskRating,
+  handleAddIncidentSequenceStep,
+  handleAddIncidentOutcome,
+  handleAddIncidentTaskCondition,
+  handleAddIncidentFactor,
+  handleAddIncidentSystemFactor,
+  handleAddIncidentControlBarrier,
+  handleAddIncidentEvidence,
+  handleAddIncidentFinding,
+  handleAddIncidentRecommendation,
   allowedNodeKinds,
 }: CanvasActionButtonsProps) {
   const allowed = new Set<NodePaletteKind>(allowedNodeKinds);
@@ -138,6 +178,26 @@ export function CanvasActionButtons({
                 {allowed.has("person") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddPerson}>Person</button> : null}
                 {allowed.has("category") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddProcessHeading}>Category</button> : null}
                 {allowed.has("grouping_container") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddGroupingContainer}>Grouping Container</button> : null}
+                {allowed.has("bowtie_hazard") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieHazard}>Hazard</button> : null}
+                {allowed.has("bowtie_top_event") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieTopEvent}>Top Event</button> : null}
+                {allowed.has("bowtie_threat") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieThreat}>Threat</button> : null}
+                {allowed.has("bowtie_consequence") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieConsequence}>Consequence</button> : null}
+                {allowed.has("bowtie_control") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieControl}>Control</button> : null}
+                {allowed.has("bowtie_escalation_factor") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieEscalationFactor}>Escalation Factor</button> : null}
+                {allowed.has("bowtie_recovery_measure") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieRecoveryMeasure}>Recovery Measure</button> : null}
+                {allowed.has("bowtie_degradation_indicator") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieDegradationIndicator}>Degradation Indicator</button> : null}
+                {allowed.has("bowtie_risk_rating") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddBowtieRiskRating}>Risk Rating</button> : null}
+                {allowed.has("incident_sequence_step") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentSequenceStep}>Sequence Step</button> : null}
+                {allowed.has("incident_outcome") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentOutcome}>Outcome</button> : null}
+                {allowed.has("incident_task_condition") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentTaskCondition}>Task / Condition</button> : null}
+                {allowed.has("incident_factor") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentFactor}>Factor</button> : null}
+                {allowed.has("incident_system_factor") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentSystemFactor}>System Factor</button> : null}
+                {allowed.has("incident_control_barrier") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentControlBarrier}>Control / Barrier</button> : null}
+                {allowed.has("incident_evidence") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentEvidence}>Evidence</button> : null}
+                {allowed.has("incident_finding") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentFinding}>Finding</button> : null}
+                {allowed.has("incident_recommendation") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentRecommendation}>Recommendation</button> : null}
+                {allowed.has("image_asset") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleStartAddImageAsset}>Image</button> : null}
+                {allowed.has("text_box") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddTextBox}>Text Box</button> : null}
               </>
             ) : null}
             {canCreateSticky && allowed.has("sticky_note") ? (

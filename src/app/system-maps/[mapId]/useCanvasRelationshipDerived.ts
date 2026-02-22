@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { CanvasElementRow, DisciplineKey, DocumentNodeRow, NodeRelationRow } from "./canvasShared";
+import type { MapCategoryId } from "./mapCategories";
 import {
   disciplineSummary,
   getElementDisplayName,
@@ -22,6 +23,7 @@ type Params = {
   relationshipGroupingQuery: string;
   nodes: DocumentNodeRow[];
   elements: CanvasElementRow[];
+  mapCategoryId: MapCategoryId;
 };
 
 export function useCanvasRelationshipDerived({
@@ -39,7 +41,45 @@ export function useCanvasRelationshipDerived({
   relationshipGroupingQuery,
   nodes,
   elements,
+  mapCategoryId,
 }: Params) {
+  const relationshipSourceKind = useMemo(() => {
+    if (relationshipSourceNodeId) return "document";
+    if (relationshipSourceGroupingId) return "grouping_container";
+    if (relationshipSourceSystemId) {
+      return elements.find((el) => el.id === relationshipSourceSystemId)?.element_type || "";
+    }
+    return "";
+  }, [relationshipSourceNodeId, relationshipSourceGroupingId, relationshipSourceSystemId, elements]);
+
+  const bowtieAllowedTargetsBySource = useMemo(() => {
+    const bySource: Record<string, string[]> = {
+      bowtie_hazard: ["bowtie_top_event"],
+      bowtie_threat: ["bowtie_top_event", "bowtie_control"],
+      bowtie_top_event: ["bowtie_consequence"],
+      bowtie_consequence: ["bowtie_control"],
+      bowtie_control: ["bowtie_escalation_factor", "bowtie_degradation_indicator", "person"],
+      bowtie_escalation_factor: ["bowtie_control"],
+    };
+    return bySource;
+  }, []);
+
+  const allowDocumentTargets = useMemo(() => {
+    if (relationshipSourceGroupingId) return false;
+    if (mapCategoryId === "org_chart") return false;
+    if (mapCategoryId !== "bow_tie") return true;
+    if (relationshipSourceKind === "image_asset") return true;
+    return (bowtieAllowedTargetsBySource[relationshipSourceKind] ?? []).includes("document");
+  }, [mapCategoryId, relationshipSourceGroupingId, bowtieAllowedTargetsBySource, relationshipSourceKind]);
+
+  const allowSystemTargets = useMemo(() => {
+    if (relationshipSourceGroupingId) return false;
+    if (mapCategoryId === "org_chart") return relationshipSourceKind === "person";
+    if (mapCategoryId !== "bow_tie") return true;
+    if (relationshipSourceKind === "image_asset") return true;
+    return (bowtieAllowedTargetsBySource[relationshipSourceKind] ?? []).length > 0;
+  }, [mapCategoryId, relationshipSourceGroupingId, bowtieAllowedTargetsBySource, relationshipSourceKind]);
+
   const relatedRows = useMemo(() => {
     if (!selectedNodeId) return [];
     return relations.filter((r) => r.from_node_id === selectedNodeId || r.to_node_id === selectedNodeId);
@@ -157,11 +197,12 @@ export function useCanvasRelationshipDerived({
 
   const documentRelationCandidates = useMemo(() => {
     if (!relationshipSourceNodeId && !relationshipSourceSystemId) return [];
+    if (!allowDocumentTargets) return [];
     const term = relationshipDocumentQuery.trim().toLowerCase();
     return nodes
       .filter((n) => n.id !== relationshipSourceNodeId)
       .filter((n) => n.title.toLowerCase().includes(term));
-  }, [nodes, relationshipSourceNodeId, relationshipSourceSystemId, relationshipDocumentQuery]);
+  }, [nodes, relationshipSourceNodeId, relationshipSourceSystemId, relationshipDocumentQuery, allowDocumentTargets]);
 
   const documentRelationCandidateLabelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -177,12 +218,27 @@ export function useCanvasRelationshipDerived({
 
   const systemRelationCandidates = useMemo(() => {
     if (!relationshipSourceNodeId && !relationshipSourceSystemId) return [];
+    if (!allowSystemTargets) return [];
     const term = relationshipSystemQuery.trim().toLowerCase();
+    const allowedKinds =
+      mapCategoryId === "bow_tie"
+        ? relationshipSourceKind === "image_asset"
+          ? null
+          : new Set(bowtieAllowedTargetsBySource[relationshipSourceKind] ?? [])
+        : null;
     return elements
-      .filter((el) => el.element_type === "system_circle" || el.element_type === "process_component" || el.element_type === "person")
+      .filter((el) => el.element_type !== "grouping_container" && el.element_type !== "sticky_note" && el.element_type !== "text_box")
       .filter((el) => el.id !== relationshipSourceSystemId)
+      .filter((el) => {
+        if (mapCategoryId === "org_chart") {
+          return el.element_type === "person";
+        }
+        if (mapCategoryId !== "bow_tie") return true;
+        if (relationshipSourceKind === "image_asset") return true;
+        return allowedKinds?.has(el.element_type) ?? false;
+      })
       .filter((el) => (el.heading || "").toLowerCase().includes(term));
-  }, [elements, relationshipSourceNodeId, relationshipSourceSystemId, relationshipSystemQuery]);
+  }, [elements, relationshipSourceNodeId, relationshipSourceSystemId, relationshipSystemQuery, allowSystemTargets, mapCategoryId, bowtieAllowedTargetsBySource, relationshipSourceKind]);
 
   const systemRelationCandidateLabelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -279,6 +335,8 @@ export function useCanvasRelationshipDerived({
     relationshipSourceSystem,
     relationshipSourceGrouping,
     relationshipModeGrouping,
+    allowDocumentTargets,
+    allowSystemTargets,
     documentRelationCandidates,
     documentRelationCandidateLabelById,
     documentRelationCandidateIdByLabel,

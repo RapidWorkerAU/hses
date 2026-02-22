@@ -5732,6 +5732,10 @@ body.mobile-menu-open {
   border-color: #0a0f1a;
 }
 
+.react-flow__node.rf-hover-related-document {
+  box-shadow: 0 0 0 4px #000000;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

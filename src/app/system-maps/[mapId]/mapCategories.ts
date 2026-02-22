@@ -7,7 +7,27 @@ export type NodePaletteKind =
   | "person"
   | "category"
   | "grouping_container"
-  | "sticky_note";
+  | "sticky_note"
+  | "image_asset"
+  | "text_box"
+  | "incident_sequence_step"
+  | "incident_outcome"
+  | "incident_task_condition"
+  | "incident_factor"
+  | "incident_system_factor"
+  | "incident_control_barrier"
+  | "incident_evidence"
+  | "incident_finding"
+  | "incident_recommendation"
+  | "bowtie_hazard"
+  | "bowtie_top_event"
+  | "bowtie_threat"
+  | "bowtie_consequence"
+  | "bowtie_control"
+  | "bowtie_escalation_factor"
+  | "bowtie_recovery_measure"
+  | "bowtie_degradation_indicator"
+  | "bowtie_risk_rating";
 
 export type MapCategoryId =
   | "document_map"
@@ -26,22 +46,56 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
     id: "document_map",
     label: "Document Map",
     // Current behavior baseline; future categories can narrow this safely.
-    allowedNodeKinds: ["document", "system", "process", "person", "category", "grouping_container", "sticky_note"],
+    allowedNodeKinds: ["document", "system", "process", "person", "category", "grouping_container", "sticky_note", "image_asset", "text_box"],
   },
   bow_tie: {
     id: "bow_tie",
     label: "Bow Tie",
-    allowedNodeKinds: ["category", "process", "sticky_note"],
+    allowedNodeKinds: [
+      "category",
+      "grouping_container",
+      "person",
+      "sticky_note",
+      "image_asset",
+      "text_box",
+      "bowtie_hazard",
+      "bowtie_top_event",
+      "bowtie_threat",
+      "bowtie_consequence",
+      "bowtie_control",
+      "bowtie_escalation_factor",
+      "bowtie_recovery_measure",
+      "bowtie_degradation_indicator",
+      "bowtie_risk_rating",
+    ],
   },
   incident_investigation: {
     id: "incident_investigation",
     label: "Incident Investigation",
-    allowedNodeKinds: ["document", "process", "person", "sticky_note"],
+    allowedNodeKinds: [
+      "document",
+      "process",
+      "category",
+      "grouping_container",
+      "person",
+      "sticky_note",
+      "image_asset",
+      "text_box",
+      "incident_sequence_step",
+      "incident_outcome",
+      "incident_task_condition",
+      "incident_factor",
+      "incident_system_factor",
+      "incident_control_barrier",
+      "incident_evidence",
+      "incident_finding",
+      "incident_recommendation",
+    ],
   },
   org_chart: {
     id: "org_chart",
     label: "Org Chart",
-    allowedNodeKinds: ["person", "grouping_container", "sticky_note"],
+    allowedNodeKinds: ["person", "category", "grouping_container", "image_asset", "text_box"],
   },
 };
 
@@ -51,4 +105,3 @@ export const getAllowedNodeKindsForCategory = (categoryId: MapCategoryId | null 
   if (!categoryId) return mapCategoryConfigs[defaultMapCategoryId].allowedNodeKinds;
   return mapCategoryConfigs[categoryId]?.allowedNodeKinds ?? mapCategoryConfigs[defaultMapCategoryId].allowedNodeKinds;
 };
-

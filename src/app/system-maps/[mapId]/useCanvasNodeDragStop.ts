@@ -118,7 +118,11 @@ export function useCanvasNodeDragStop({
         node.data.entityKind === "grouping_container" ||
         node.data.entityKind === "process_component" ||
         node.data.entityKind === "person" ||
-        node.data.entityKind === "sticky_note"
+        node.data.entityKind === "sticky_note" ||
+        node.data.entityKind === "image_asset" ||
+        node.data.entityKind === "text_box" ||
+        (typeof node.data.entityKind === "string" &&
+          (node.data.entityKind.startsWith("bowtie_") || node.data.entityKind.startsWith("incident_")))
       ) {
         const elementId = parseProcessFlowId(node.id);
         const sourceElement = elements.find((el) => el.id === elementId);

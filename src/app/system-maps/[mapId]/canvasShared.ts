@@ -4,6 +4,7 @@ export type SystemMap = {
   description: string | null;
   owner_id: string;
   map_code: string | null;
+  map_category?: string | null;
   updated_at: string;
   created_at: string;
 };
@@ -53,10 +54,37 @@ export type NodeRelationRow = {
 export type CanvasElementRow = {
   id: string;
   map_id: string;
-  element_type: "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note" | "person";
+  element_type:
+    | "category"
+    | "system_circle"
+    | "grouping_container"
+    | "process_component"
+    | "sticky_note"
+    | "person"
+    | "image_asset"
+    | "text_box"
+    | "bowtie_hazard"
+    | "bowtie_top_event"
+    | "bowtie_threat"
+    | "bowtie_consequence"
+    | "bowtie_control"
+    | "bowtie_escalation_factor"
+    | "bowtie_recovery_measure"
+    | "bowtie_degradation_indicator"
+    | "bowtie_risk_rating"
+    | "incident_sequence_step"
+    | "incident_outcome"
+    | "incident_task_condition"
+    | "incident_factor"
+    | "incident_system_factor"
+    | "incident_control_barrier"
+    | "incident_evidence"
+    | "incident_finding"
+    | "incident_recommendation";
   heading: string;
   color_hex: string | null;
   created_by_user_id: string | null;
+  element_config?: Record<string, unknown> | null;
   pos_x: number;
   pos_y: number;
   width: number;
@@ -88,7 +116,34 @@ export type OutlineItemRow = {
 };
 
 export type FlowData = {
-  entityKind: "document" | "category" | "system_circle" | "grouping_container" | "process_component" | "sticky_note" | "person";
+  entityKind:
+    | "document"
+    | "category"
+    | "system_circle"
+    | "grouping_container"
+    | "process_component"
+    | "sticky_note"
+    | "person"
+    | "image_asset"
+    | "text_box"
+    | "bowtie_hazard"
+    | "bowtie_top_event"
+    | "bowtie_threat"
+    | "bowtie_consequence"
+    | "bowtie_control"
+    | "bowtie_escalation_factor"
+    | "bowtie_recovery_measure"
+    | "bowtie_degradation_indicator"
+    | "bowtie_risk_rating"
+    | "incident_sequence_step"
+    | "incident_outcome"
+    | "incident_task_condition"
+    | "incident_factor"
+    | "incident_system_factor"
+    | "incident_control_barrier"
+    | "incident_evidence"
+    | "incident_finding"
+    | "incident_recommendation";
   typeName: string;
   title: string;
   documentNumber?: string;
@@ -102,9 +157,37 @@ export type FlowData = {
   bannerText: string;
   isLandscape: boolean;
   isUnconfigured: boolean;
+  isCritical?: boolean;
+  imageUrl?: string;
+  textStyle?: {
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    align?: "left" | "center" | "right";
+    fontSize?: number;
+  };
+  orgChartPerson?: {
+    label: string;
+    subtitle: string;
+    banner: string;
+    bannerBg: string;
+    bannerText: string;
+  };
 };
 export type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "training";
-export type RelationshipCategory = "information" | "systems" | "process" | "data" | "other";
+export type RelationshipCategory =
+  | "information"
+  | "systems"
+  | "process"
+  | "data"
+  | "leads_to"
+  | "contributes_to"
+  | "evidence_for"
+  | "barrier_for"
+  | "recommends"
+  | "reports_to"
+  | "other";
+export type RelationshipCategoryOption = { value: RelationshipCategory; label: string };
 export type SelectionMarquee = {
   active: boolean;
   startClientX: number;
@@ -148,6 +231,8 @@ export const personRoleLabelHeight = minorGridSize;
 export const personDepartmentLabelHeight = minorGridSize;
 export const personElementWidth = personIconSize;
 export const personElementHeight = personIconSize + personRoleLabelHeight + personDepartmentLabelHeight;
+export const orgChartPersonWidth = minorGridSize * 8;
+export const orgChartPersonHeight = minorGridSize * 5;
 export const groupingDefaultWidth = minorGridSize * 22;
 export const groupingDefaultHeight = minorGridSize * 12;
 export const groupingMinWidth = minorGridSize * 8;
@@ -156,6 +241,23 @@ export const groupingMinWidthSquares = Math.round(groupingMinWidth / minorGridSi
 export const groupingMinHeightSquares = Math.round(groupingMinHeight / minorGridSize);
 export const stickyDefaultSize = minorGridSize * 5;
 export const stickyMinSize = minorGridSize * 2;
+export const imageDefaultWidth = minorGridSize * 7;
+export const imageMinWidth = minorGridSize * 3;
+export const imageMinHeight = minorGridSize * 3;
+export const textBoxDefaultWidth = minorGridSize * 20;
+export const textBoxDefaultHeight = minorGridSize * 5;
+export const textBoxMinWidth = minorGridSize * 5;
+export const textBoxMinHeight = minorGridSize * 2;
+export const bowtieDefaultWidth = minorGridSize * 5;
+export const bowtieHazardHeight = Math.round((bowtieDefaultWidth * 2) / 3);
+export const bowtieSquareHeight = bowtieDefaultWidth;
+export const bowtieControlHeight = Math.round((bowtieDefaultWidth * 3) / 4);
+export const bowtieRiskRatingHeight = Math.round(bowtieDefaultWidth / 3);
+export const incidentDefaultWidth = minorGridSize * 6;
+export const incidentThreeTwoHeight = Math.round((incidentDefaultWidth * 2) / 3);
+export const incidentSquareSize = incidentDefaultWidth;
+export const incidentFourThreeHeight = Math.round((incidentDefaultWidth * 3) / 4);
+export const incidentThreeOneHeight = Math.round(incidentDefaultWidth / 3);
 export const unconfiguredDocumentTitle = "Click to configure";
 export const defaultCategoryColor = "#000000";
 export const categoryColorOptions = [
@@ -200,13 +302,95 @@ export const parsePersonLabels = (heading: string | null | undefined) => {
 };
 export const buildPersonHeading = (role: string, department: string) =>
   `${role.trim() || "Role Name"}\n${department.trim() || "Department"}`;
+export type OrgChartEmploymentType = "fte" | "contractor";
+export type OrgChartPersonConfig = {
+  position_title: string;
+  role_id: string;
+  department: string;
+  occupant_name: string;
+  start_date: string;
+  employment_type: OrgChartEmploymentType;
+  acting_name: string;
+  acting_start_date: string;
+  recruiting: boolean;
+  contractor_role: boolean;
+  proposed_role: boolean;
+};
+export const orgChartDepartmentOptions = [
+  "Executive",
+  "Operations",
+  "Projects",
+  "Engineering",
+  "HSE",
+  "Finance",
+  "HR",
+  "Commercial",
+  "IT",
+  "Other",
+] as const;
+export const getDefaultOrgChartPersonConfig = (): OrgChartPersonConfig => ({
+  position_title: "Position Title",
+  role_id: "",
+  department: "",
+  occupant_name: "",
+  start_date: "",
+  employment_type: "fte",
+  acting_name: "",
+  acting_start_date: "",
+  recruiting: false,
+  contractor_role: false,
+  proposed_role: false,
+});
+export const parseOrgChartPersonConfig = (value: unknown): OrgChartPersonConfig => {
+  const raw = (value && typeof value === "object" ? (value as Record<string, unknown>) : {}) as Record<string, unknown>;
+  const base = getDefaultOrgChartPersonConfig();
+  const parseText = (key: keyof OrgChartPersonConfig) => {
+    const v = raw[key];
+    return typeof v === "string" ? v.trim() : "";
+  };
+  const employment = parseText("employment_type").toLowerCase();
+  return {
+    position_title: parseText("position_title") || base.position_title,
+    role_id: parseText("role_id"),
+    department: parseText("department"),
+    occupant_name: parseText("occupant_name"),
+    start_date: parseText("start_date"),
+    employment_type: employment === "contractor" ? "contractor" : "fte",
+    acting_name: parseText("acting_name"),
+    acting_start_date: parseText("acting_start_date"),
+    recruiting: Boolean(raw.recruiting),
+    contractor_role: Boolean(raw.contractor_role),
+    proposed_role: Boolean(raw.proposed_role),
+  };
+};
+export const getOrgChartPersonLabel = (cfg: OrgChartPersonConfig) => {
+  if (cfg.occupant_name) return cfg.occupant_name;
+  if (cfg.acting_name) return cfg.acting_name;
+  return "VACANT";
+};
+export const getOrgChartPersonBanner = (cfg: OrgChartPersonConfig): { label: string; bg: string; text: string } => {
+  if (cfg.acting_name) return { label: "ACTING", bg: "#f97316", text: "#ffffff" };
+  if (cfg.contractor_role) return { label: "CONTRACTOR", bg: "#9333ea", text: "#ffffff" };
+  if (cfg.recruiting && !cfg.occupant_name) return { label: "RECRUITING", bg: "#2563eb", text: "#ffffff" };
+  if (cfg.proposed_role) return { label: "PROPOSED", bg: "#6b7280", text: "#ffffff" };
+  if (!cfg.occupant_name && !cfg.acting_name) return { label: "VACANT", bg: "#dc2626", text: "#ffffff" };
+  return { label: "FILLED", bg: "#16a34a", text: "#ffffff" };
+};
 export const processFlowId = (id: string) => `process:${id}`;
 export const parseProcessFlowId = (id: string) => (id.startsWith("process:") ? id.slice(8) : id);
 export const isAbortLikeError = (error: unknown) => {
   if (!error) return false;
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
-  return normalized.includes("aborterror") || normalized.includes("signal is aborted") || normalized.includes("aborted");
+  return (
+    normalized.includes("aborterror") ||
+    normalized.includes("signal is aborted") ||
+    normalized.includes("aborted") ||
+    normalized.includes("err_network_changed") ||
+    normalized.includes("err_name_not_resolved") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("networkerror when attempting to fetch resource")
+  );
 };
 export const userGroupOptions = [
   "Group/ Corporate",
@@ -296,8 +480,71 @@ export const getRelationshipCategoryLabel = (category: string | null | undefined
     const custom = (customType || "").trim();
     return custom || "Other";
   }
+  const labelByCategory: Record<string, string> = {
+    information: "Information",
+    systems: "Systems",
+    process: "Process",
+    data: "Data",
+    leads_to: "Leads To",
+    contributes_to: "Contributes To",
+    evidence_for: "Evidence For",
+    barrier_for: "Barrier For",
+    recommends: "Recommends",
+    reports_to: "Reports To",
+  };
   if (!normalized) return "Information";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return labelByCategory[normalized] || (normalized.charAt(0).toUpperCase() + normalized.slice(1));
+};
+
+export const defaultRelationshipCategoryOptions: RelationshipCategoryOption[] = [
+  { value: "information", label: "Information" },
+  { value: "systems", label: "Systems" },
+  { value: "process", label: "Process" },
+  { value: "data", label: "Data" },
+  { value: "other", label: "Other" },
+];
+
+export const incidentRelationshipCategoryOptions: RelationshipCategoryOption[] = [
+  { value: "leads_to", label: "Leads To" },
+  { value: "contributes_to", label: "Contributes To" },
+  { value: "evidence_for", label: "Evidence For" },
+  { value: "barrier_for", label: "Barrier For" },
+  { value: "recommends", label: "Recommends" },
+  { value: "other", label: "Other" },
+];
+export const orgChartRelationshipCategoryOptions: RelationshipCategoryOption[] = [
+  { value: "reports_to", label: "Reports To" },
+];
+
+export const getRelationshipCategoryOptions = (mapCategoryId: string | null | undefined): RelationshipCategoryOption[] =>
+  mapCategoryId === "incident_investigation"
+    ? incidentRelationshipCategoryOptions
+    : mapCategoryId === "org_chart"
+    ? orgChartRelationshipCategoryOptions
+    : defaultRelationshipCategoryOptions;
+
+export const getDefaultRelationshipCategoryForMap = (mapCategoryId: string | null | undefined): RelationshipCategory =>
+  mapCategoryId === "incident_investigation" ? "leads_to" : mapCategoryId === "org_chart" ? "reports_to" : "information";
+
+export const normalizeRelationshipCategoryForMap = (
+  value: string | null | undefined,
+  mapCategoryId: string | null | undefined,
+  customType?: string | null | undefined
+): RelationshipCategory => {
+  const normalized = (value || "").trim().toLowerCase() as RelationshipCategory;
+  const options = getRelationshipCategoryOptions(mapCategoryId);
+  if (mapCategoryId === "incident_investigation" && normalized === "other" && customType?.trim()) {
+    const normalizedCustom = customType.trim().toLowerCase();
+    const match = incidentRelationshipCategoryOptions.find(
+      (option) => option.value !== "other" && option.label.trim().toLowerCase() === normalizedCustom
+    );
+    if (match) return match.value;
+  }
+  if (mapCategoryId === "org_chart" && normalized === "other" && customType?.trim().toLowerCase() === "reports to") {
+    return "reports_to";
+  }
+  if (options.some((option) => option.value === normalized)) return normalized;
+  return getDefaultRelationshipCategoryForMap(mapCategoryId);
 };
 export const getRelationshipDisciplineLetters = (disciplines: string[] | null | undefined) => {
   if (!disciplines?.length) return "";
@@ -313,6 +560,26 @@ export const getElementRelationshipTypeLabel = (elementType: CanvasElementRow["e
   if (elementType === "grouping_container") return "Grouping Container";
   if (elementType === "category") return "Category";
   if (elementType === "sticky_note") return "Sticky Note";
+  if (elementType === "image_asset") return "Image";
+  if (elementType === "text_box") return "Text";
+  if (elementType === "bowtie_hazard") return "Hazard";
+  if (elementType === "bowtie_top_event") return "Top Event";
+  if (elementType === "bowtie_threat") return "Threat";
+  if (elementType === "bowtie_consequence") return "Consequence";
+  if (elementType === "bowtie_control") return "Control";
+  if (elementType === "bowtie_escalation_factor") return "Escalation Factor";
+  if (elementType === "bowtie_recovery_measure") return "Recovery Measure";
+  if (elementType === "bowtie_degradation_indicator") return "Degradation Indicator";
+  if (elementType === "bowtie_risk_rating") return "Risk Rating";
+  if (elementType === "incident_sequence_step") return "Sequence Step";
+  if (elementType === "incident_outcome") return "Outcome";
+  if (elementType === "incident_task_condition") return "Task / Condition";
+  if (elementType === "incident_factor") return "Factor";
+  if (elementType === "incident_system_factor") return "System Factor";
+  if (elementType === "incident_control_barrier") return "Control / Barrier";
+  if (elementType === "incident_evidence") return "Evidence";
+  if (elementType === "incident_finding") return "Finding";
+  if (elementType === "incident_recommendation") return "Recommendation";
   return "Component";
 };
 export const getElementDisplayName = (element: CanvasElementRow) => {

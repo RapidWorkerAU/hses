@@ -1,6 +1,15 @@
 ﻿"use client";
 
-import type { CanvasElementRow, DisciplineKey, DocumentNodeRow, OutlineItemRow, RelationshipCategory } from "./canvasShared";
+import {
+  type CanvasElementRow,
+  type DisciplineKey,
+  type DocumentNodeRow,
+  type OutlineItemRow,
+  type RelationshipCategory,
+  type RelationshipCategoryOption,
+  getElementDisplayName,
+  getElementRelationshipTypeLabel,
+} from "./canvasShared";
 
 type AddRelationshipAsideProps = {
   open: boolean;
@@ -8,6 +17,8 @@ type AddRelationshipAsideProps = {
   relationshipSourceLabel: string;
   relationshipSourceNodeTitle: string;
   relationshipSourceGroupingHeading: string;
+  allowDocumentTargets: boolean;
+  allowSystemTargets: boolean;
   relationshipGroupingQuery: string;
   setRelationshipGroupingQuery: (value: string) => void;
   groupingRelationCandidateIdByLabel: Map<string, string>;
@@ -44,6 +55,7 @@ type AddRelationshipAsideProps = {
   setRelationshipDisciplineSelection: (updater: (prev: DisciplineKey[]) => DisciplineKey[]) => void;
   relationshipCategory: RelationshipCategory;
   setRelationshipCategory: (value: RelationshipCategory) => void;
+  relationshipCategoryOptions: RelationshipCategoryOption[];
   relationshipCustomType: string;
   setRelationshipCustomType: (value: string) => void;
   relationshipDescription: string;
@@ -61,6 +73,8 @@ export function AddRelationshipAside({
   relationshipSourceLabel,
   relationshipSourceNodeTitle,
   relationshipSourceGroupingHeading,
+  allowDocumentTargets,
+  allowSystemTargets,
   relationshipGroupingQuery,
   setRelationshipGroupingQuery,
   groupingRelationCandidateIdByLabel,
@@ -97,6 +111,7 @@ export function AddRelationshipAside({
   setRelationshipDisciplineSelection,
   relationshipCategory,
   setRelationshipCategory,
+  relationshipCategoryOptions,
   relationshipCustomType,
   setRelationshipCustomType,
   relationshipDescription,
@@ -108,6 +123,9 @@ export function AddRelationshipAside({
   onCancel,
 }: AddRelationshipAsideProps) {
   if (!open) return null;
+  const showGroupingOptions = showRelationshipGroupingOptions;
+  const showDocumentOptions = showRelationshipDocumentOptions;
+  const showSystemOptions = showRelationshipSystemOptions;
   return (
     <aside className="fixed bottom-0 left-[420px] top-[70px] z-[74] w-full max-w-[420px] border-l border-r border-slate-300 bg-white shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform">
       <div className="flex h-full flex-col overflow-auto p-4">
@@ -126,10 +144,9 @@ export function AddRelationshipAside({
                   placeholder="Search grouping containers..."
                   value={relationshipGroupingQuery}
                   onChange={(e) => {
-                    const query = e.target.value;
-                    setRelationshipGroupingQuery(query);
-                    const candidateId = groupingRelationCandidateIdByLabel.get(query) ?? "";
-                    setRelationshipTargetGroupingId(candidateId && !alreadyRelatedGroupingTargetIds.has(candidateId) ? candidateId : "");
+                    setRelationshipGroupingQuery(e.target.value);
+                    setRelationshipTargetGroupingId("");
+                    setShowRelationshipGroupingOptions(() => true);
                   }}
                 />
                 <button
@@ -140,10 +157,10 @@ export function AddRelationshipAside({
                   {showRelationshipGroupingOptions ? "▲" : "▼"}
                 </button>
               </div>
-              {showRelationshipGroupingOptions && (
+              {showGroupingOptions && (
                 <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
                   {groupingRelationCandidates.length > 0 ? groupingRelationCandidates.map((el) => {
-                    const optionLabel = groupingRelationCandidateLabelById.get(el.id) ?? (el.heading || "Group label");
+                    const title = groupingRelationCandidateLabelById.get(el.id) ?? (el.heading || "Group label");
                     const isDisabled = alreadyRelatedGroupingTargetIds.has(el.id);
                     return (
                       <button
@@ -157,13 +174,16 @@ export function AddRelationshipAside({
                           e.preventDefault();
                           if (isDisabled) return;
                           setRelationshipTargetGroupingId(el.id);
-                          setRelationshipGroupingQuery(optionLabel);
+                          setRelationshipGroupingQuery(title);
                           setShowRelationshipGroupingOptions(() => false);
                         }}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span>{optionLabel}</span>
-                          {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold text-slate-900">{title}</div>
+                            <div className="truncate text-xs text-slate-500">Grouping Container</div>
+                          </div>
+                          {isDisabled && <span className="shrink-0 text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
                         </div>
                       </button>
                     );
@@ -175,7 +195,7 @@ export function AddRelationshipAside({
             </div>
           ) : (
             <>
-              <div className="relative">
+              {allowDocumentTargets ? <div className="relative">
                 <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
                 <div className="relative flex">
                   <input
@@ -183,10 +203,10 @@ export function AddRelationshipAside({
                     placeholder="Search documents..."
                     value={relationshipDocumentQuery}
                     onChange={(e) => {
-                      const query = e.target.value;
-                      setRelationshipDocumentQuery(query);
-                      const candidateId = documentRelationCandidateIdByLabel.get(query) ?? "";
-                      setRelationshipTargetDocumentId(candidateId && !alreadyRelatedDocumentTargetIds.has(candidateId) ? candidateId : "");
+                      setRelationshipDocumentQuery(e.target.value);
+                      setRelationshipTargetDocumentId("");
+                      setShowRelationshipDocumentOptions(() => true);
+                      setShowRelationshipSystemOptions(() => false);
                     }}
                   />
                   <button
@@ -200,10 +220,11 @@ export function AddRelationshipAside({
                     {showRelationshipDocumentOptions ? "▲" : "▼"}
                   </button>
                 </div>
-                {showRelationshipDocumentOptions && (
-                  <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
-                    {documentRelationCandidates.length > 0 ? documentRelationCandidates.map((n) => {
-                      const optionLabel = documentRelationCandidateLabelById.get(n.id) ?? n.title;
+                  {showDocumentOptions && (
+                    <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
+                      {documentRelationCandidates.length > 0 ? documentRelationCandidates.map((n) => {
+                      const title = n.title || "Untitled document";
+                      const subtitle = `${n.document_number?.trim() || "No number"} · Document`;
                       const isDisabled = alreadyRelatedDocumentTargetIds.has(n.id);
                       return (
                         <button
@@ -218,13 +239,16 @@ export function AddRelationshipAside({
                             if (isDisabled) return;
                             setRelationshipTargetDocumentId(n.id);
                             setRelationshipTargetSystemId("");
-                            setRelationshipDocumentQuery(optionLabel);
+                            setRelationshipDocumentQuery(title);
                             setShowRelationshipDocumentOptions(() => false);
                           }}
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <span>{optionLabel}</span>
-                            {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-900">{title}</div>
+                              <div className="truncate text-xs text-slate-500">{subtitle}</div>
+                            </div>
+                            {isDisabled && <span className="shrink-0 text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
                           </div>
                         </button>
                       );
@@ -233,8 +257,8 @@ export function AddRelationshipAside({
                     )}
                   </div>
                 )}
-              </div>
-              <div className="relative">
+              </div> : null}
+              {allowSystemTargets ? <div className="relative">
                 <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Components (Systems, Processes, People)</div>
                 <div className="relative flex">
                   <input
@@ -242,10 +266,10 @@ export function AddRelationshipAside({
                     placeholder="Search components..."
                     value={relationshipSystemQuery}
                     onChange={(e) => {
-                      const query = e.target.value;
-                      setRelationshipSystemQuery(query);
-                      const candidateId = systemRelationCandidateIdByLabel.get(query) ?? "";
-                      setRelationshipTargetSystemId(candidateId && !alreadyRelatedSystemTargetIds.has(candidateId) ? candidateId : "");
+                      setRelationshipSystemQuery(e.target.value);
+                      setRelationshipTargetSystemId("");
+                      setShowRelationshipSystemOptions(() => true);
+                      setShowRelationshipDocumentOptions(() => false);
                     }}
                   />
                   <button
@@ -259,10 +283,11 @@ export function AddRelationshipAside({
                     {showRelationshipSystemOptions ? "▲" : "▼"}
                   </button>
                 </div>
-                {showRelationshipSystemOptions && (
+                {showSystemOptions && (
                   <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
                     {systemRelationCandidates.length > 0 ? systemRelationCandidates.map((el) => {
-                      const optionLabel = systemRelationCandidateLabelById.get(el.id) ?? getElementRelationshipDisplayLabel(el);
+                      const title = getElementDisplayName(el);
+                      const subtitle = getElementRelationshipTypeLabel(el.element_type);
                       const isDisabled = alreadyRelatedSystemTargetIds.has(el.id);
                       return (
                         <button
@@ -277,13 +302,16 @@ export function AddRelationshipAside({
                             if (isDisabled) return;
                             setRelationshipTargetSystemId(el.id);
                             setRelationshipTargetDocumentId("");
-                            setRelationshipSystemQuery(optionLabel);
+                            setRelationshipSystemQuery(title);
                       setShowRelationshipSystemOptions(() => false);
                           }}
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <span>{optionLabel}</span>
-                            {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate font-semibold text-slate-900">{title}</div>
+                              <div className="truncate text-xs text-slate-500">{subtitle}</div>
+                            </div>
+                            {isDisabled && <span className="shrink-0 text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
                           </div>
                         </button>
                       );
@@ -292,7 +320,12 @@ export function AddRelationshipAside({
                     )}
                   </div>
                 )}
-              </div>
+              </div> : null}
+              {!allowDocumentTargets && !allowSystemTargets ? (
+                <div className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  No valid target component types are available for this source in Bow Tie mode.
+                </div>
+              ) : null}
             </>
           )}
           <div>
@@ -342,11 +375,11 @@ export function AddRelationshipAside({
                 value={relationshipCategory}
                 onChange={(e) => setRelationshipCategory(e.target.value as RelationshipCategory)}
               >
-                <option value="information">Information</option>
-                <option value="systems">Systems</option>
-                <option value="process">Process</option>
-                <option value="data">Data</option>
-                <option value="other">Other</option>
+                {relationshipCategoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">▼</span>
             </div>
@@ -372,6 +405,7 @@ export function AddRelationshipAside({
             <button
               className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={
+                (!relationshipModeGrouping && (!allowDocumentTargets && !allowSystemTargets)) ||
                 (!relationshipModeGrouping && !relationshipTargetDocumentId && !relationshipTargetSystemId) ||
                 (relationshipModeGrouping && !relationshipTargetGroupingId) ||
                 (relationshipCategory === "other" && !relationshipCustomType.trim())

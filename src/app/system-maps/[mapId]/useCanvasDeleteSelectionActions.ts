@@ -27,6 +27,10 @@ type UseCanvasDeleteSelectionActionsParams = {
   setSelectedGroupingId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedStickyId: string | null;
   setSelectedStickyId: React.Dispatch<React.SetStateAction<string | null>>;
+  selectedImageId: string | null;
+  setSelectedImageId: React.Dispatch<React.SetStateAction<string | null>>;
+  selectedTextBoxId: string | null;
+  setSelectedTextBoxId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedFlowIds: Set<string>;
   handleDeleteNode: (id: string) => Promise<void>;
   setShowDeleteSelectionConfirm: React.Dispatch<React.SetStateAction<boolean>>;
@@ -55,6 +59,10 @@ export function useCanvasDeleteSelectionActions({
   setSelectedGroupingId,
   selectedStickyId,
   setSelectedStickyId,
+  selectedImageId,
+  setSelectedImageId,
+  selectedTextBoxId,
+  setSelectedTextBoxId,
   selectedFlowIds,
   handleDeleteNode,
   setShowDeleteSelectionConfirm,
@@ -105,6 +113,8 @@ export function useCanvasDeleteSelectionActions({
     if (selectedPersonId === id) setSelectedPersonId(null);
     if (selectedGroupingId === id) setSelectedGroupingId(null);
     if (selectedStickyId === id) setSelectedStickyId(null);
+    if (selectedImageId === id) setSelectedImageId(null);
+    if (selectedTextBoxId === id) setSelectedTextBoxId(null);
   }, [
     canEditElement,
     elements,
@@ -115,6 +125,8 @@ export function useCanvasDeleteSelectionActions({
     selectedProcessComponentId,
     selectedProcessId,
     selectedStickyId,
+    selectedImageId,
+    selectedTextBoxId,
     selectedSystemId,
     setElements,
     setError,
@@ -125,6 +137,8 @@ export function useCanvasDeleteSelectionActions({
     setSelectedProcessComponentId,
     setSelectedProcessId,
     setSelectedStickyId,
+    setSelectedImageId,
+    setSelectedTextBoxId,
     setSelectedSystemId,
   ]);
 
