@@ -784,10 +784,18 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
+    const groupingElements = elements
+      .filter((el) => el.element_type === "grouping_container")
+      .sort((a, b) => {
+        const areaA = Math.max(groupingMinWidth, a.width || groupingDefaultWidth) * Math.max(groupingMinHeight, a.height || groupingDefaultHeight);
+        const areaB = Math.max(groupingMinWidth, b.width || groupingDefaultWidth) * Math.max(groupingMinHeight, b.height || groupingDefaultHeight);
+        if (areaA !== areaB) return areaB - areaA;
+        const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return createdA - createdB;
+      });
     const nextNodes: Node<FlowData>[] = [
-        ...elements
-          .filter((el) => el.element_type === "grouping_container")
-          .map((el) => {
+        ...groupingElements.map((el) => {
             const flowId = processFlowId(el.id);
             const isMarked = selectedFlowIds.has(flowId);
             const canEditThis = canEditElement(el);
@@ -799,7 +807,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               selected: isMarked,
               draggable: canEditThis,
               selectable: canWriteMap,
-              className: isMarked ? "pointer-events-auto" : "pointer-events-none",
+              className: "pointer-events-none",
               style: {
                 width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
                 height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
@@ -980,7 +988,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                       italic: Boolean(cfg.italic),
                       underline: Boolean(cfg.underline),
                       align: alignRaw === "center" || alignRaw === "right" ? alignRaw : "left",
-                      fontSize: Math.max(24, Math.min(168, Number(cfg.font_size ?? 24))),
+                      fontSize: Math.max(16, Math.min(168, Number(cfg.font_size ?? 16))),
                     },
                     userGroup: "",
                     disciplineKeys: [],
@@ -2806,8 +2814,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setTextBoxUnderlineDraft(Boolean(cfg.underline));
     const align = String(cfg.align ?? "left");
     setTextBoxAlignDraft(align === "center" || align === "right" ? align : "left");
-    const size = Number(cfg.font_size ?? 24);
-    setTextBoxFontSizeDraft(String(Number.isFinite(size) ? Math.max(24, Math.min(168, Math.round(size))) : 24));
+    const size = Number(cfg.font_size ?? 16);
+    setTextBoxFontSizeDraft(String(Number.isFinite(size) ? Math.max(16, Math.min(168, Math.round(size))) : 16));
   }, [selectedTextBox]);
   const imagePathPairs = useMemo(
     () =>
@@ -4060,8 +4068,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               }
               if (n.data.entityKind === "grouping_container") {
                 const target = event.target as HTMLElement | null;
-                const clickedLabel = !!target?.closest(".grouping-drag-handle");
-                if (!clickedLabel) return;
+                const clickedGroupingHandle = !!target?.closest(".grouping-drag-handle, .grouping-select-handle");
+                if (!clickedGroupingHandle) return;
                 if (isMobile) {
                   const now = Date.now();
                   const lastTap = lastMobileTapRef.current;
@@ -4233,8 +4241,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               e.preventDefault();
               if (n.data.entityKind === "grouping_container") {
                 const target = e.target as HTMLElement | null;
-                const clickedLabel = !!target?.closest(".grouping-drag-handle");
-                if (!clickedLabel) return;
+                const clickedGroupingHandle = !!target?.closest(".grouping-drag-handle, .grouping-select-handle");
+                if (!clickedGroupingHandle) return;
               }
               if (isMobile) {
                 setMobileNodeMenuId(n.id);

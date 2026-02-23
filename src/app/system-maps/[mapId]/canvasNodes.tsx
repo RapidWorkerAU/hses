@@ -208,9 +208,10 @@ function ProcessComponentNode({ data }: NodeProps<Node<FlowData>>) {
 }
 
 function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
+  const groupingBorderThickness = 10;
   return (
     <div
-      className={`relative h-full w-full rounded-[10px] border bg-transparent ${selected ? "pointer-events-auto" : "pointer-events-none"}`}
+      className="pointer-events-none relative h-full w-full rounded-[10px] border bg-transparent"
       style={{
         borderColor: "#000000",
         boxShadow: "0 6px 16px rgba(15, 23, 42, 0.12)",
@@ -224,6 +225,10 @@ function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
       <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
       <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
       <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+      <div className="grouping-select-handle pointer-events-auto absolute inset-x-0 top-0" style={{ height: groupingBorderThickness }} />
+      <div className="grouping-select-handle pointer-events-auto absolute inset-x-0 bottom-0" style={{ height: groupingBorderThickness }} />
+      <div className="grouping-select-handle pointer-events-auto absolute inset-y-0 left-0" style={{ width: groupingBorderThickness }} />
+      <div className="grouping-select-handle pointer-events-auto absolute inset-y-0 right-0" style={{ width: groupingBorderThickness }} />
       {selected ? (
         <>
           <NodeResizeControl
@@ -334,7 +339,7 @@ function ImageAssetNode({ data, selected }: NodeProps<Node<FlowData>>) {
 function TextBoxNode({ data, selected }: NodeProps<Node<FlowData>>) {
   const style = data.textStyle ?? {};
   const fontSize = Number(style.fontSize ?? 14);
-  const safeFontSize = Number.isFinite(fontSize) ? Math.min(168, Math.max(24, fontSize)) : 24;
+  const safeFontSize = Number.isFinite(fontSize) ? Math.min(168, Math.max(16, fontSize)) : 16;
   return (
     <div className="relative h-full w-full overflow-visible">
       {selected ? (

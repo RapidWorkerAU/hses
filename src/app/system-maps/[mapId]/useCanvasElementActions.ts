@@ -412,7 +412,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         italic: false,
         underline: false,
         align: "left",
-        font_size: 24,
+        font_size: 16,
       },
       pos_x: center.x,
       pos_y: center.y,
@@ -1065,7 +1065,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedTextBoxId) return;
     const parsedFontSize = Number(textBoxFontSizeDraft.trim());
-    const fontSize = Number.isFinite(parsedFontSize) ? Math.max(24, Math.min(168, Math.round(parsedFontSize))) : 24;
+    const fontSize = Number.isFinite(parsedFontSize) ? Math.max(16, Math.min(168, Math.round(parsedFontSize))) : 16;
     const { data, error: e } = await supabaseBrowser
       .schema("ms")
       .from("canvas_elements")

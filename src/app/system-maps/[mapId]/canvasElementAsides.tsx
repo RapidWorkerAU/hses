@@ -455,7 +455,7 @@ export function TextBoxAside({
   onClose,
 }: TextBoxAsideProps) {
   if (!open) return null;
-  const textSizeOptions = [24, 28, 32, 36, 42, 48, 56, 64, 72, 84, 96, 112, 128, 144, 168];
+  const textSizeOptions = [16, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72, 84, 96, 112, 128, 144, 168];
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Text Box" onClose={onClose}>
       <div className="mt-4 space-y-3">
@@ -508,7 +508,7 @@ export function TextBoxAside({
             </button>
           </div>
         </div>
-        <label className="text-sm text-white">Text Size (24px to 168px)
+        <label className="text-sm text-white">Text Size (16px to 168px)
           <select
             className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
             value={textBoxFontSizeDraft}
