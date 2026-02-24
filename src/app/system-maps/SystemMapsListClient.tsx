@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
@@ -21,6 +21,71 @@ type MapMemberRow = {
   map_id: string;
   user_id: string;
   role: string;
+};
+type DocumentTypeRow = {
+  id: string;
+  map_id: string | null;
+  name: string;
+  level_rank: number;
+  band_y_min: number | null;
+  band_y_max: number | null;
+  is_active: boolean;
+};
+type DocumentNodeRow = {
+  id: string;
+  map_id: string;
+  type_id: string;
+  title: string;
+  document_number: string | null;
+  discipline: string | null;
+  owner_user_id: string | null;
+  owner_name: string | null;
+  user_group: string | null;
+  pos_x: number;
+  pos_y: number;
+  width: number | null;
+  height: number | null;
+  is_archived: boolean;
+};
+type CanvasElementRow = {
+  id: string;
+  map_id: string;
+  element_type: string;
+  heading: string;
+  color_hex: string | null;
+  created_by_user_id: string | null;
+  element_config: Record<string, unknown> | null;
+  pos_x: number;
+  pos_y: number;
+  width: number;
+  height: number;
+};
+type NodeRelationRow = {
+  id: string;
+  map_id: string;
+  from_node_id: string | null;
+  to_node_id: string | null;
+  source_grouping_element_id: string | null;
+  target_grouping_element_id: string | null;
+  source_system_element_id: string | null;
+  target_system_element_id: string | null;
+  relation_type: string;
+  relationship_description: string | null;
+  relationship_disciplines: string[] | null;
+  relationship_category: string | null;
+  relationship_custom_type: string | null;
+};
+type DocumentOutlineItemRow = {
+  id: string;
+  map_id: string;
+  node_id: string;
+  kind: "heading" | "content";
+  heading_level: 1 | 2 | 3 | null;
+  parent_heading_id: string | null;
+  heading_id: string | null;
+  title: string | null;
+  content_text: string | null;
+  sort_order: number;
 };
 
 type MapCategoryOption = {
@@ -53,12 +118,21 @@ export default function SystemMapsListClient() {
   const [isLinking, setIsLinking] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [deletingMapId, setDeletingMapId] = useState<string | null>(null);
+  const [duplicatingMapId, setDuplicatingMapId] = useState<string | null>(null);
+  const [duplicateProgress, setDuplicateProgress] = useState<{ percent: number; message: string; status: "idle" | "running" | "success" | "error" | "aborted" }>({
+    percent: 0,
+    message: "",
+    status: "idle",
+  });
+  const [duplicateCancelRequested, setDuplicateCancelRequested] = useState(false);
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
+  const [pendingDuplicateRow, setPendingDuplicateRow] = useState<SystemMapRow | null>(null);
   const [pendingDeleteRow, setPendingDeleteRow] = useState<SystemMapRow | null>(null);
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [mapCodeInput, setMapCodeInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<SystemMapRow[]>([]);
+  const duplicateAbortRef = useRef(false);
 
   const redirectToLogin = useMemo(
     () => `/login?returnTo=${encodeURIComponent("/system-maps")}`,
@@ -226,7 +300,8 @@ export default function SystemMapsListClient() {
   };
 
   const getCategoryLabel = (row: SystemMapRow) => {
-    if (!row.map_category) return "Document Map";
+    if (!row.map_category) return "Document Type";
+    if (row.map_category === "document_map") return "Document Type";
     if (row.map_category === "bow_tie") return "Bow Tie";
     if (row.map_category === "incident_investigation") return "Incident Investigation";
     if (row.map_category === "org_chart") return "Org Chart";
@@ -296,6 +371,396 @@ export default function SystemMapsListClient() {
       setError("Unable to delete system map.");
     } finally {
       setDeletingMapId(null);
+    }
+  };
+
+  const handleDuplicateMap = async (row: SystemMapRow) => {
+    if (!currentUserId) return;
+    const setProgress = (percent: number, message: string, status: "running" | "success" | "error" = "running") => {
+      setDuplicateProgress({ percent, message, status });
+    };
+    const cancellationError = new Error("DUPLICATION_CANCELLED");
+    let createdMapId: string | null = null;
+    const throwIfCancelled = () => {
+      if (duplicateAbortRef.current) throw cancellationError;
+    };
+    const cleanupDuplicatedMap = async (mapId: string) => {
+      setProgress(90, "Stopping and removing duplicated items...");
+      await supabaseBrowser.schema("ms").from("document_outline_items").delete().eq("map_id", mapId);
+      await supabaseBrowser.schema("ms").from("node_relations").delete().eq("map_id", mapId);
+      await supabaseBrowser.schema("ms").from("canvas_elements").delete().eq("map_id", mapId);
+      await supabaseBrowser.schema("ms").from("document_nodes").delete().eq("map_id", mapId);
+      await supabaseBrowser.schema("ms").from("document_types").delete().eq("map_id", mapId);
+      await supabaseBrowser.schema("ms").from("map_members").delete().eq("map_id", mapId);
+      await supabaseBrowser.schema("ms").from("map_view_state").delete().eq("map_id", mapId);
+      await supabaseBrowser.schema("ms").from("system_maps").delete().eq("id", mapId);
+      setProgress(96, "Verifying no duplicated items remain...");
+
+      const [mapsCheck, nodesCheck, elementsCheck, relationsCheck, outlineCheck] = await Promise.all([
+        supabaseBrowser.schema("ms").from("system_maps").select("*", { count: "exact", head: true }).eq("id", mapId),
+        supabaseBrowser.schema("ms").from("document_nodes").select("*", { count: "exact", head: true }).eq("map_id", mapId),
+        supabaseBrowser.schema("ms").from("canvas_elements").select("*", { count: "exact", head: true }).eq("map_id", mapId),
+        supabaseBrowser.schema("ms").from("node_relations").select("*", { count: "exact", head: true }).eq("map_id", mapId),
+        supabaseBrowser.schema("ms").from("document_outline_items").select("*", { count: "exact", head: true }).eq("map_id", mapId),
+      ]);
+
+      const totalRemaining =
+        Number(mapsCheck.count ?? 0) +
+        Number(nodesCheck.count ?? 0) +
+        Number(elementsCheck.count ?? 0) +
+        Number(relationsCheck.count ?? 0) +
+        Number(outlineCheck.count ?? 0);
+      return totalRemaining;
+    };
+    try {
+      setDuplicatingMapId(row.id);
+      duplicateAbortRef.current = false;
+      setDuplicateCancelRequested(false);
+      setProgress(4, "Checking access...");
+      setError(null);
+      const user = await ensurePortalSupabaseUser();
+      if (!user) {
+        window.location.assign(redirectToLogin);
+        return;
+      }
+
+      const canDuplicate = row.owner_id === user.id || !!row.role;
+      if (!canDuplicate) {
+        setError("You do not have access to duplicate this map.");
+        return;
+      }
+
+      throwIfCancelled();
+      const duplicateTitle = `${row.title} (Copy)`;
+      setProgress(10, "Creating duplicate map...");
+      const { data: createdMap, error: createMapError } = await supabaseBrowser
+        .schema("ms")
+        .from("system_maps")
+        .insert({
+          owner_id: user.id,
+          title: duplicateTitle,
+          description: row.description,
+          map_category: row.map_category ?? "document_map",
+        })
+        .select("id")
+        .single();
+
+      if (!createMapError && createdMap?.id) {
+        createdMapId = createdMap.id;
+      } else {
+        const fallbackInsert = await supabaseBrowser
+          .schema("ms")
+          .from("system_maps")
+          .insert({
+            owner_id: user.id,
+            title: duplicateTitle,
+            description: row.description,
+            map_category: row.map_category ?? "document_map",
+          });
+        if (fallbackInsert.error) {
+          setError(createMapError?.message || fallbackInsert.error.message || "Unable to duplicate map.");
+          return;
+        }
+        const latestMap = await supabaseBrowser
+          .schema("ms")
+          .from("system_maps")
+          .select("id")
+          .eq("owner_id", user.id)
+          .eq("title", duplicateTitle)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestMap.error || !latestMap.data?.id) {
+          setError(latestMap.error?.message || "Map duplicated, but new map id could not be resolved.");
+          return;
+        }
+        createdMapId = latestMap.data.id;
+      }
+
+      throwIfCancelled();
+      const { error: memberInsertError } = await supabaseBrowser
+        .schema("ms")
+        .from("map_members")
+        .upsert(
+          {
+            map_id: createdMapId,
+            user_id: user.id,
+            role: "full_write",
+          },
+          { onConflict: "map_id,user_id" }
+        );
+      if (memberInsertError) {
+        setError(memberInsertError.message || "Map duplicated, but owner permissions could not be assigned.");
+        setProgress(100, "Failed to assign owner access.", "error");
+        return;
+      }
+
+      setProgress(16, "Loading source map data...");
+      const [typesRes, nodesRes, elementsRes, relationsRes, outlineRes] = await Promise.all([
+        supabaseBrowser
+          .schema("ms")
+          .from("document_types")
+          .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active")
+          .eq("map_id", row.id),
+        supabaseBrowser
+          .schema("ms")
+          .from("document_nodes")
+          .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
+          .eq("map_id", row.id),
+        supabaseBrowser
+          .schema("ms")
+          .from("canvas_elements")
+          .select("id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height")
+          .eq("map_id", row.id),
+        supabaseBrowser
+          .schema("ms")
+          .from("node_relations")
+          .select(
+            "id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,source_system_element_id,target_system_element_id,relation_type,relationship_description,relationship_disciplines,relationship_category,relationship_custom_type"
+          )
+          .eq("map_id", row.id),
+        supabaseBrowser
+          .schema("ms")
+          .from("document_outline_items")
+          .select("id,map_id,node_id,kind,heading_level,parent_heading_id,heading_id,title,content_text,sort_order")
+          .eq("map_id", row.id),
+      ]);
+
+      if (typesRes.error || nodesRes.error || elementsRes.error || relationsRes.error || outlineRes.error) {
+        setError(
+          typesRes.error?.message ||
+            nodesRes.error?.message ||
+            elementsRes.error?.message ||
+            relationsRes.error?.message ||
+            outlineRes.error?.message ||
+            "Unable to load source map data for duplication."
+        );
+        setProgress(100, "Failed while loading source data.", "error");
+        return;
+      }
+
+      const sourceTypes = (typesRes.data ?? []) as DocumentTypeRow[];
+      const sourceNodes = (nodesRes.data ?? []) as DocumentNodeRow[];
+      const sourceElements = (elementsRes.data ?? []) as CanvasElementRow[];
+      const sourceRelations = (relationsRes.data ?? []) as NodeRelationRow[];
+      const sourceOutlineItems = (outlineRes.data ?? []) as DocumentOutlineItemRow[];
+
+      const typeIdMap = new Map<string, string>();
+      const nodeIdMap = new Map<string, string>();
+      const elementIdMap = new Map<string, string>();
+      const outlineHeadingIdMap = new Map<string, string>();
+
+      setProgress(24, "Cloning document types...");
+      for (const sourceType of sourceTypes) {
+        throwIfCancelled();
+        const { data: insertedType, error: insertTypeError } = await supabaseBrowser
+          .schema("ms")
+          .from("document_types")
+          .insert({
+            map_id: createdMapId,
+            name: sourceType.name,
+            level_rank: sourceType.level_rank,
+            band_y_min: sourceType.band_y_min,
+            band_y_max: sourceType.band_y_max,
+            is_active: sourceType.is_active,
+          })
+          .select("id")
+          .single();
+        if (insertTypeError || !insertedType?.id) {
+          setError(insertTypeError?.message || "Unable to duplicate document hierarchy.");
+          setProgress(100, "Failed while duplicating document types.", "error");
+          return;
+        }
+        typeIdMap.set(sourceType.id, insertedType.id);
+      }
+
+      setProgress(42, "Cloning document nodes...");
+      for (const sourceNode of sourceNodes) {
+        throwIfCancelled();
+        const { data: insertedNode, error: insertNodeError } = await supabaseBrowser
+          .schema("ms")
+          .from("document_nodes")
+          .insert({
+            map_id: createdMapId,
+            type_id: typeIdMap.get(sourceNode.type_id) ?? sourceNode.type_id,
+            title: sourceNode.title,
+            document_number: sourceNode.document_number,
+            discipline: sourceNode.discipline,
+            owner_user_id: sourceNode.owner_user_id,
+            owner_name: sourceNode.owner_name,
+            user_group: sourceNode.user_group,
+            pos_x: sourceNode.pos_x,
+            pos_y: sourceNode.pos_y,
+            width: sourceNode.width,
+            height: sourceNode.height,
+            is_archived: sourceNode.is_archived,
+          })
+          .select("id")
+          .single();
+        if (insertNodeError || !insertedNode?.id) {
+          setError(insertNodeError?.message || "Unable to duplicate document nodes.");
+          setProgress(100, "Failed while duplicating document nodes.", "error");
+          return;
+        }
+        nodeIdMap.set(sourceNode.id, insertedNode.id);
+      }
+
+      setProgress(62, "Cloning canvas components...");
+      for (const sourceElement of sourceElements) {
+        throwIfCancelled();
+        const { data: insertedElement, error: insertElementError } = await supabaseBrowser
+          .schema("ms")
+          .from("canvas_elements")
+          .insert({
+            map_id: createdMapId,
+            element_type: sourceElement.element_type,
+            heading: sourceElement.heading,
+            color_hex: sourceElement.color_hex,
+            created_by_user_id: sourceElement.created_by_user_id,
+            element_config: sourceElement.element_config,
+            pos_x: sourceElement.pos_x,
+            pos_y: sourceElement.pos_y,
+            width: sourceElement.width,
+            height: sourceElement.height,
+          })
+          .select("id")
+          .single();
+        if (insertElementError || !insertedElement?.id) {
+          setError(insertElementError?.message || "Unable to duplicate canvas elements.");
+          setProgress(100, "Failed while duplicating canvas components.", "error");
+          return;
+        }
+        elementIdMap.set(sourceElement.id, insertedElement.id);
+      }
+
+      setProgress(78, "Cloning relationships...");
+      for (const sourceRelation of sourceRelations) {
+        throwIfCancelled();
+        const { error: insertRelationError } = await supabaseBrowser
+          .schema("ms")
+          .from("node_relations")
+          .insert({
+            map_id: createdMapId,
+            from_node_id: sourceRelation.from_node_id ? nodeIdMap.get(sourceRelation.from_node_id) ?? null : null,
+            to_node_id: sourceRelation.to_node_id ? nodeIdMap.get(sourceRelation.to_node_id) ?? null : null,
+            source_grouping_element_id: sourceRelation.source_grouping_element_id
+              ? elementIdMap.get(sourceRelation.source_grouping_element_id) ?? null
+              : null,
+            target_grouping_element_id: sourceRelation.target_grouping_element_id
+              ? elementIdMap.get(sourceRelation.target_grouping_element_id) ?? null
+              : null,
+            source_system_element_id: sourceRelation.source_system_element_id
+              ? elementIdMap.get(sourceRelation.source_system_element_id) ?? null
+              : null,
+            target_system_element_id: sourceRelation.target_system_element_id
+              ? elementIdMap.get(sourceRelation.target_system_element_id) ?? null
+              : null,
+            relation_type: sourceRelation.relation_type,
+            relationship_description: sourceRelation.relationship_description,
+            relationship_disciplines: sourceRelation.relationship_disciplines,
+            relationship_category: sourceRelation.relationship_category,
+            relationship_custom_type: sourceRelation.relationship_custom_type,
+          });
+        if (insertRelationError) {
+          setError(insertRelationError.message || "Unable to duplicate relationships.");
+          setProgress(100, "Failed while duplicating relationships.", "error");
+          return;
+        }
+      }
+
+      setProgress(88, "Cloning structure content...");
+      for (const sourceHeading of sourceOutlineItems.filter((item) => item.kind === "heading")) {
+        throwIfCancelled();
+        const { data: insertedHeading, error: insertHeadingError } = await supabaseBrowser
+          .schema("ms")
+          .from("document_outline_items")
+          .insert({
+            map_id: createdMapId,
+            node_id: nodeIdMap.get(sourceHeading.node_id) ?? sourceHeading.node_id,
+            kind: sourceHeading.kind,
+            heading_level: sourceHeading.heading_level,
+            parent_heading_id: sourceHeading.parent_heading_id
+              ? outlineHeadingIdMap.get(sourceHeading.parent_heading_id) ?? null
+              : null,
+            heading_id: null,
+            title: sourceHeading.title,
+            content_text: sourceHeading.content_text,
+            sort_order: sourceHeading.sort_order,
+          })
+          .select("id")
+          .single();
+        if (insertHeadingError || !insertedHeading?.id) {
+          setError(insertHeadingError?.message || "Unable to duplicate map structure headings.");
+          setProgress(100, "Failed while duplicating structure headings.", "error");
+          return;
+        }
+        outlineHeadingIdMap.set(sourceHeading.id, insertedHeading.id);
+      }
+
+      for (const sourceContent of sourceOutlineItems.filter((item) => item.kind === "content")) {
+        throwIfCancelled();
+        const { error: insertContentError } = await supabaseBrowser
+          .schema("ms")
+          .from("document_outline_items")
+          .insert({
+            map_id: createdMapId,
+            node_id: nodeIdMap.get(sourceContent.node_id) ?? sourceContent.node_id,
+            kind: sourceContent.kind,
+            heading_level: sourceContent.heading_level,
+            parent_heading_id: sourceContent.parent_heading_id
+              ? outlineHeadingIdMap.get(sourceContent.parent_heading_id) ?? null
+              : null,
+            heading_id: sourceContent.heading_id ? outlineHeadingIdMap.get(sourceContent.heading_id) ?? null : null,
+            title: sourceContent.title,
+            content_text: sourceContent.content_text,
+            sort_order: sourceContent.sort_order,
+          });
+        if (insertContentError) {
+          setError(insertContentError.message || "Unable to duplicate map structure content.");
+          setProgress(100, "Failed while duplicating structure content.", "error");
+          return;
+        }
+      }
+
+      setProgress(100, "Duplicate complete. Opening map...", "success");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setPendingDuplicateRow(null);
+      router.push(`/system-maps/${createdMapId}`);
+    } catch (e) {
+      if (e === cancellationError) {
+        setProgress(92, "Cancellation requested. Cleaning up...");
+        if (createdMapId) {
+          const remaining = await cleanupDuplicatedMap(createdMapId);
+          if (remaining === 0) {
+            setDuplicateProgress({
+              percent: 100,
+              message: "Duplication cancelled. No duplicated items remain.",
+              status: "aborted",
+            });
+          } else {
+            setDuplicateProgress({
+              percent: 100,
+              message: `Duplication cancelled, but ${remaining} item(s) remain. Please retry cleanup.`,
+              status: "error",
+            });
+          }
+        } else {
+          setDuplicateProgress({
+            percent: 100,
+            message: "Duplication cancelled before any map was created.",
+            status: "aborted",
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        setPendingDuplicateRow(null);
+      } else {
+        setError("Unable to duplicate system map.");
+        setProgress(100, "Duplicate failed.", "error");
+      }
+    } finally {
+      duplicateAbortRef.current = false;
+      setDuplicateCancelRequested(false);
+      setDuplicatingMapId(null);
     }
   };
 
@@ -461,6 +926,30 @@ export default function SystemMapsListClient() {
                         );
                       })()}
                       {(() => {
+                        const canDuplicate = !!row.role || row.owner_id === currentUserId;
+                        const duplicateTitle = canDuplicate ? "Duplicate map" : "You do not have permission to duplicate this map";
+                        return (
+                          <button
+                            type="button"
+                            title={duplicateTitle}
+                            aria-label={duplicateTitle}
+                            className={`flex h-9 w-9 items-center justify-center rounded-none border border-black bg-white ${
+                              canDuplicate ? "text-black hover:bg-slate-100" : "cursor-not-allowed text-slate-400 opacity-60"
+                            }`}
+                            disabled={!canDuplicate || duplicatingMapId === row.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPendingDuplicateRow(row);
+                              setDuplicateCancelRequested(false);
+                              duplicateAbortRef.current = false;
+                              setDuplicateProgress({ percent: 0, message: "", status: "idle" });
+                            }}
+                          >
+                            <img src="/icons/addcomponent.svg" alt="" className="h-4 w-4" />
+                          </button>
+                        );
+                      })()}
+                      {(() => {
                         const canDelete = row.owner_id === currentUserId;
                         const deleteTitle = canDelete ? "Delete map" : "Only the map creator can delete this map";
                         return (
@@ -489,6 +978,77 @@ export default function SystemMapsListClient() {
           </tbody>
         </table>
       </div>
+
+      {pendingDuplicateRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-lg rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-semibold text-slate-900">Duplicate map?</h2>
+            <p className="mt-2 text-sm text-slate-700">
+              You are about to duplicate <span className="font-semibold">"{pendingDuplicateRow.title}"</span>.
+            </p>
+            <div className="mt-3 text-sm text-slate-700">
+              The duplicate will include document nodes, canvas components, relationships, and structure content.
+            </div>
+            <p className="mt-2 text-sm text-slate-700">
+              You will be set as the owner of the new map.
+            </p>
+            {duplicateProgress.status !== "idle" ? (
+              <div className="mt-4">
+                <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
+                  <span>{duplicateProgress.message}</span>
+                  <span>{duplicateProgress.percent}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded bg-slate-200">
+                  <div
+                    className={`h-full transition-all ${
+                      duplicateProgress.status === "error"
+                        ? "bg-rose-600"
+                        : duplicateProgress.status === "success"
+                        ? "bg-emerald-600"
+                        : duplicateProgress.status === "aborted"
+                        ? "bg-amber-600"
+                        : "bg-slate-900"
+                    }`}
+                    style={{ width: `${Math.max(0, Math.min(100, duplicateProgress.percent))}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                onClick={() => {
+                  if (duplicatingMapId === pendingDuplicateRow.id) {
+                    duplicateAbortRef.current = true;
+                    setDuplicateCancelRequested(true);
+                    setDuplicateProgress((prev) => ({
+                      percent: prev.percent,
+                      message: "Cancellation requested...",
+                      status: "running",
+                    }));
+                    return;
+                  }
+                  setPendingDuplicateRow(null);
+                }}
+                disabled={duplicatingMapId === pendingDuplicateRow.id && duplicateCancelRequested}
+              >
+                {duplicatingMapId === pendingDuplicateRow.id ? (duplicateCancelRequested ? "Stopping..." : "Cancel duplication") : "Cancel"}
+              </button>
+              <button
+                type="button"
+                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => {
+                  void handleDuplicateMap(pendingDuplicateRow);
+                }}
+                disabled={duplicatingMapId === pendingDuplicateRow.id}
+              >
+                {duplicatingMapId === pendingDuplicateRow.id ? "Duplicating..." : "Duplicate map"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingDeleteRow && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">

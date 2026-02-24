@@ -232,16 +232,36 @@ function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
       {selected ? (
         <>
           <NodeResizeControl
+            className="grouping-select-handle pointer-events-auto"
             position={Position.Right}
             minWidth={groupingMinWidth}
             minHeight={groupingMinHeight}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 0,
+              border: "1px solid #334155",
+              background: "#ffffff",
+              pointerEvents: "auto",
+              cursor: "ew-resize",
+              zIndex: 30,
+            }}
           />
           <NodeResizeControl
+            className="grouping-select-handle pointer-events-auto"
             position={Position.Bottom}
             minWidth={groupingMinWidth}
             minHeight={groupingMinHeight}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 0,
+              border: "1px solid #334155",
+              background: "#ffffff",
+              pointerEvents: "auto",
+              cursor: "ns-resize",
+              zIndex: 30,
+            }}
           />
         </>
       ) : null}

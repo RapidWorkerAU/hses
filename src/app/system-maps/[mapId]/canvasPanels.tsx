@@ -50,6 +50,12 @@ type CanvasActionButtonsProps = {
   handleAddIncidentFinding: () => void;
   handleAddIncidentRecommendation: () => void;
   allowedNodeKinds: NodePaletteKind[];
+  showPrintMenu: boolean;
+  setShowPrintMenu: (updater: (prev: boolean) => boolean) => void;
+  printMenuRef: RefObject<HTMLDivElement | null>;
+  onPrintCurrentView: () => void;
+  onPrintSelectArea: () => void;
+  isPreparingPrint: boolean;
 };
 
 export function CanvasActionButtons({
@@ -95,14 +101,33 @@ export function CanvasActionButtons({
   handleAddIncidentFinding,
   handleAddIncidentRecommendation,
   allowedNodeKinds,
+  showPrintMenu,
+  setShowPrintMenu,
+  printMenuRef,
+  onPrintCurrentView,
+  onPrintSelectArea,
+  isPreparingPrint,
 }: CanvasActionButtonsProps) {
   const allowed = new Set<NodePaletteKind>(allowedNodeKinds);
   return (
-    <div
-      className="fixed top-[82px] z-[88] transition-[right] duration-300 ease-out"
-      style={{ right: showMapInfoAside ? "315px" : "20px" }}
-    >
-      <div className="relative flex items-center gap-3">
+    <>
+      <a
+        href="/system-maps"
+        aria-label="Back to all system maps"
+        title="All system maps"
+        className="fixed left-[20px] top-[82px] z-[88] group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
+      >
+        <span
+          aria-hidden="true"
+          className="h-7 w-7 bg-current"
+          style={{ WebkitMaskImage: "url('/icons/back.svg')", maskImage: "url('/icons/back.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
+        />
+      </a>
+      <div
+        className="fixed top-[82px] z-[88] transition-[right] duration-300 ease-out"
+        style={{ right: showMapInfoAside ? "315px" : "20px" }}
+      >
+        <div className="relative flex items-center gap-3">
         <button
           type="button"
           aria-label="Search components"
@@ -116,18 +141,6 @@ export function CanvasActionButtons({
             style={{ WebkitMaskImage: "url('/icons/finddocument.svg')", maskImage: "url('/icons/finddocument.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
           />
         </button>
-        <a
-          href="/system-maps"
-          aria-label="Back to all system maps"
-          title="All system maps"
-          className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
-        >
-          <span
-            aria-hidden="true"
-            className="h-7 w-7 bg-current"
-            style={{ WebkitMaskImage: "url('/icons/back.svg')", maskImage: "url('/icons/back.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
-          />
-        </a>
         <button
           type="button"
           aria-label="Zoom to fit"
@@ -154,6 +167,36 @@ export function CanvasActionButtons({
             style={{ WebkitMaskImage: "url('/icons/resetzoom.svg')", maskImage: "url('/icons/resetzoom.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
           />
         </button>
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Print to PDF"
+            title="Print to PDF"
+            onClick={() => setShowPrintMenu((prev) => !prev)}
+            disabled={isPreparingPrint}
+            className="group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 disabled:hover:bg-white disabled:hover:text-black disabled:hover:shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
+          >
+            {isPreparingPrint ? (
+              <span aria-hidden="true" className="h-6 w-6 animate-spin rounded-full border-2 border-current border-r-transparent" />
+            ) : (
+              <span
+                aria-hidden="true"
+                className="h-7 w-7 bg-current"
+                style={{ WebkitMaskImage: "url('/icons/printer.svg')", maskImage: "url('/icons/printer.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
+              />
+            )}
+          </button>
+          {showPrintMenu ? (
+            <div ref={printMenuRef} className="absolute right-0 top-full z-[70] mt-2 min-w-[200px] rounded-none border border-slate-300 bg-white p-1 text-sm shadow-xl">
+              <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100 disabled:opacity-50" onClick={onPrintCurrentView} disabled={isPreparingPrint}>
+                Current View
+              </button>
+              <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100 disabled:opacity-50" onClick={onPrintSelectArea} disabled={isPreparingPrint}>
+                Selected Area
+              </button>
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           aria-label="Add component"
@@ -241,8 +284,9 @@ export function CanvasActionButtons({
             )}
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

@@ -226,15 +226,192 @@ const flowEdgeTypes = {
   smartBezier: SmartBezierEdge,
 } as const;
 const canvasElementSelectColumns =
-  "id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height,direct_report_count,created_at,updated_at";
+  "id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height,created_at,updated_at";
 const isMethodologyElementType = (elementType: string) =>
   elementType.startsWith("bowtie_") || elementType.startsWith("incident_");
+const PRINT_HEADER_HEIGHT_PX = 82;
+
+type Html2CanvasFn = (element: HTMLElement, options?: Record<string, unknown>) => Promise<HTMLCanvasElement>;
+type HtmlToImageApi = {
+  toPng: (element: HTMLElement, options?: Record<string, unknown>) => Promise<string>;
+};
+
+const escapeHtml = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const loadHtml2Canvas = async (): Promise<Html2CanvasFn> => {
+  if (typeof window === "undefined") throw new Error("Window is unavailable.");
+  const existing = (window as unknown as { html2canvas?: Html2CanvasFn }).html2canvas;
+  if (existing) return existing;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Unable to load print renderer."));
+    document.head.appendChild(script);
+  });
+  const loaded = (window as unknown as { html2canvas?: Html2CanvasFn }).html2canvas;
+  if (!loaded) throw new Error("Print renderer is unavailable.");
+  return loaded;
+};
+const loadHtmlToImage = async (): Promise<HtmlToImageApi> => {
+  if (typeof window === "undefined") throw new Error("Window is unavailable.");
+  const existing = (window as unknown as { htmlToImage?: HtmlToImageApi }).htmlToImage;
+  if (existing?.toPng) return existing;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Unable to load image export engine."));
+    document.head.appendChild(script);
+  });
+  const loaded = (window as unknown as { htmlToImage?: HtmlToImageApi }).htmlToImage;
+  if (!loaded?.toPng) throw new Error("Image export engine is unavailable.");
+  return loaded;
+};
+const cropDataUrl = async (params: {
+  dataUrl: string;
+  crop: { x: number; y: number; width: number; height: number };
+  sourceWidth: number;
+  sourceHeight: number;
+}) => {
+  const { dataUrl, crop, sourceWidth, sourceHeight } = params;
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to process print image."));
+    image.src = dataUrl;
+  });
+  const scaleX = img.width / Math.max(1, sourceWidth);
+  const scaleY = img.height / Math.max(1, sourceHeight);
+  const srcX = Math.floor(crop.x * scaleX);
+  const srcY = Math.floor(crop.y * scaleY);
+  const srcW = Math.max(1, Math.floor(crop.width * scaleX));
+  const srcH = Math.max(1, Math.floor(crop.height * scaleY));
+  const canvas = document.createElement("canvas");
+  canvas.width = srcW;
+  canvas.height = srcH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Unable to prepare print crop.");
+  ctx.drawImage(
+    img,
+    srcX,
+    srcY,
+    srcW,
+    srcH,
+    0,
+    0,
+    srcW,
+    srcH
+  );
+  return canvas.toDataURL("image/png");
+};
+
+const buildPrintPreviewHtml = (params: { mapTitle: string; imageDataUrl: string; orientation: "portrait" | "landscape" }) => {
+  const title = escapeHtml(params.mapTitle || "System Map");
+  const image = params.imageDataUrl;
+  const orientation = params.orientation;
+  const pageWidth = orientation === "landscape" ? "297mm" : "210mm";
+  const pageHeight = orientation === "landscape" ? "210mm" : "297mm";
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const logoSrc = `${origin}/images/logo-black.png`;
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Print Preview</title>
+    <style>
+      @page { size: A4 ${orientation}; margin: 12mm; }
+      html, body { margin: 0; padding: 0; background: #f3f4f6; font-family: Arial, sans-serif; }
+      .page {
+        box-sizing: border-box;
+        width: ${pageWidth};
+        height: ${pageHeight};
+        margin: 0 auto;
+        background: #fff;
+        padding: 0;
+      }
+      .header {
+        height: 18mm;
+        background: #fff;
+        color: #111827;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 10px;
+        border-bottom: 1px solid #d1d5db;
+      }
+      .header img {
+        height: 12mm;
+        width: auto;
+        object-fit: contain;
+      }
+      .header .map-text {
+        color: #60a5fa;
+        font-weight: 700;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .header .doc-name {
+        margin-left: auto;
+        font-size: 13px;
+        font-weight: 600;
+        color: #111827;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .content {
+        box-sizing: border-box;
+        height: calc(${pageHeight} - 18mm);
+        padding: 8mm 10mm 10mm 10mm;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+      }
+      .content img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border: 1px solid #cbd5e1;
+      }
+      @media print {
+        html, body { background: #fff; }
+        .page { margin: 0; width: auto; height: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="page">
+      <header class="header">
+        <img src="${logoSrc}" alt="HSES" />
+        <div class="map-text">System Map</div>
+        <div class="doc-name">Document Name: ${title}</div>
+      </header>
+      <div class="content">
+        <img src="${image}" alt="Print Capture" />
+      </div>
+    </section>
+  </body>
+</html>`;
+};
 
 function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const relationshipPopupRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
+  const printMenuRef = useRef<HTMLDivElement | null>(null);
+  const printPreviewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const mapInfoAsideRef = useRef<HTMLDivElement | null>(null);
   const mapInfoButtonRef = useRef<HTMLButtonElement | null>(null);
   const disciplineMenuRef = useRef<HTMLDivElement | null>(null);
@@ -283,6 +460,37 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isNodeDragActive, setIsNodeDragActive] = useState(false);
   const [showSearchMenu, setShowSearchMenu] = useState(false);
+  const [showPrintMenu, setShowPrintMenu] = useState(false);
+  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printPreviewImageDataUrl, setPrintPreviewImageDataUrl] = useState<string | null>(null);
+  const [printOrientation, setPrintOrientation] = useState<"portrait" | "landscape">("portrait");
+  const [printSelectionMode, setPrintSelectionMode] = useState(false);
+  const [printSelectionDraft, setPrintSelectionDraft] = useState<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const [printSelectionRect, setPrintSelectionRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [showPrintSelectionConfirm, setShowPrintSelectionConfirm] = useState(false);
+  const printPreviewHtml = useMemo(
+    () =>
+      printPreviewImageDataUrl
+        ? buildPrintPreviewHtml({
+            mapTitle: map?.title || "System Map",
+            imageDataUrl: printPreviewImageDataUrl,
+            orientation: printOrientation,
+          })
+        : null,
+    [map?.title, printOrientation, printPreviewImageDataUrl]
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const snapToMinorGrid = useCallback((v: number) => Math.round(v / minorGridSize) * minorGridSize, []);
   const canWriteMap = mapRole === "partial_write" || mapRole === "full_write";
@@ -320,6 +528,171 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     });
     return m;
   }, [mapMembers]);
+  const activePrintSelectionRect = useMemo(() => {
+    if (printSelectionDraft) {
+      const left = Math.min(printSelectionDraft.startX, printSelectionDraft.currentX);
+      const top = Math.min(printSelectionDraft.startY, printSelectionDraft.currentY);
+      const width = Math.abs(printSelectionDraft.currentX - printSelectionDraft.startX);
+      const height = Math.abs(printSelectionDraft.currentY - printSelectionDraft.startY);
+      return { left, top, width, height };
+    }
+    return printSelectionRect;
+  }, [printSelectionDraft, printSelectionRect]);
+  const exitPrintSelectionMode = useCallback(() => {
+    setPrintSelectionMode(false);
+    setPrintSelectionDraft(null);
+    setPrintSelectionRect(null);
+    setShowPrintSelectionConfirm(false);
+  }, []);
+  const openPrintPreviewFromDataUrl = useCallback(
+    (imageDataUrl: string) => {
+      setPrintPreviewImageDataUrl(imageDataUrl);
+      setShowPrintPreview(true);
+    },
+    []
+  );
+  const capturePrintImage = useCallback(
+    async (mode: "current" | "area") => {
+      const root = canvasRef.current as HTMLElement | null;
+      if (!root) {
+        setError("Unable to capture canvas for print.");
+        return;
+      }
+      const target = (root.querySelector(".react-flow") as HTMLElement | null) ?? root;
+      const targetBounds = target.getBoundingClientRect();
+      const captureWidth = Math.max(1, Math.floor(target.clientWidth || targetBounds.width));
+      const captureHeight = Math.max(1, Math.floor(target.clientHeight || targetBounds.height));
+      let crop: { x: number; y: number; width: number; height: number } | null = null;
+      if (mode === "area") {
+        if (!printSelectionRect || printSelectionRect.width < 12 || printSelectionRect.height < 12) {
+          setError("Please select a larger area to print.");
+          return;
+        }
+        const x = clamp(printSelectionRect.left - targetBounds.left, 0, targetBounds.width);
+        const y = clamp(printSelectionRect.top - targetBounds.top, 0, targetBounds.height);
+        const width = clamp(printSelectionRect.width, 1, targetBounds.width - x);
+        const height = clamp(printSelectionRect.height, 1, targetBounds.height - y);
+        crop = { x, y, width, height };
+      } else {
+        crop = { x: 0, y: 0, width: captureWidth, height: captureHeight };
+      }
+      setIsPreparingPrint(true);
+      try {
+        let dataUrl = "";
+        try {
+          const htmlToImage = await loadHtmlToImage();
+          const fullDataUrl = await htmlToImage.toPng(target, {
+            cacheBust: true,
+            pixelRatio: 2,
+            backgroundColor: "#fafaf9",
+            width: captureWidth,
+            height: captureHeight,
+            filter: (node: Node) => {
+              const el = node as unknown as HTMLElement;
+              if (!el?.classList) return true;
+              return !(
+                el.classList.contains("react-flow__background") ||
+                el.classList.contains("print-hidden") ||
+                el.dataset?.printIgnore === "true"
+              );
+            },
+          });
+          dataUrl = crop
+            ? await cropDataUrl({
+                dataUrl: fullDataUrl,
+                crop,
+                sourceWidth: captureWidth,
+                sourceHeight: captureHeight,
+              })
+            : fullDataUrl;
+        } catch {
+          const html2canvas = await loadHtml2Canvas();
+          const canvas = await html2canvas(target, {
+            backgroundColor: "#fafaf9",
+            useCORS: true,
+            logging: false,
+            scale: 2,
+            x: crop?.x ?? 0,
+            y: crop?.y ?? 0,
+            width: crop?.width ?? captureWidth,
+            height: crop?.height ?? captureHeight,
+            ignoreElements: (element: Element) => {
+              const el = element as HTMLElement;
+              return (
+                el.classList.contains("react-flow__background") ||
+                el.classList.contains("print-hidden") ||
+                el.dataset.printIgnore === "true"
+              );
+            },
+          });
+          dataUrl = canvas.toDataURL("image/png");
+        }
+        openPrintPreviewFromDataUrl(dataUrl);
+      } catch (e) {
+        setError((e as Error)?.message || "Unable to prepare print preview.");
+      } finally {
+        setIsPreparingPrint(false);
+      }
+    },
+    [openPrintPreviewFromDataUrl, printSelectionRect, setError]
+  );
+  const handlePrintCurrentView = useCallback(async () => {
+    setShowPrintMenu(false);
+    setShowPrintSelectionConfirm(false);
+    setPrintSelectionMode(false);
+    setPrintSelectionDraft(null);
+    setPrintSelectionRect(null);
+    await capturePrintImage("current");
+  }, [capturePrintImage]);
+  const handlePrintSelectArea = useCallback(() => {
+    setShowPrintMenu(false);
+    setShowPrintSelectionConfirm(false);
+    setPrintSelectionDraft(null);
+    setPrintSelectionRect(null);
+    setPrintSelectionMode(true);
+  }, []);
+  const handleConfirmPrintArea = useCallback(async () => {
+    setShowPrintSelectionConfirm(false);
+    await capturePrintImage("area");
+    setPrintSelectionMode(false);
+  }, [capturePrintImage]);
+  const handlePrintOverlayPointerDown = useCallback((event: { clientX: number; clientY: number }) => {
+    if (showPrintSelectionConfirm) return;
+    setPrintSelectionDraft({
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
+    });
+  }, [showPrintSelectionConfirm]);
+  const handlePrintOverlayPointerMove = useCallback((event: { clientX: number; clientY: number }) => {
+    setPrintSelectionDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            currentX: event.clientX,
+            currentY: event.clientY,
+          }
+        : prev
+    );
+  }, []);
+  const handlePrintOverlayPointerUp = useCallback(() => {
+    setPrintSelectionDraft((prev) => {
+      if (!prev) return prev;
+      const left = Math.min(prev.startX, prev.currentX);
+      const top = Math.min(prev.startY, prev.currentY);
+      const width = Math.abs(prev.currentX - prev.startX);
+      const height = Math.abs(prev.currentY - prev.startY);
+      if (width < 12 || height < 12) {
+        setPrintSelectionRect(null);
+        return null;
+      }
+      setPrintSelectionRect({ left, top, width, height });
+      setShowPrintSelectionConfirm(true);
+      return null;
+    });
+  }, []);
 
   const loadMapMembers = useCallback(
     async (ownerId?: string | null) => {
@@ -1159,7 +1532,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   const candidates = [
                     directReportCountByPersonNormalizedId.get(normalizeRef(el.id)),
                     orgDirectReportCountByPersonId.get(el.id),
-                    el.direct_report_count,
                     orgConfig?.direct_report_count,
                   ];
                   const valid = candidates
@@ -3028,6 +3400,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       setShowAddMenu(false);
       if (searchMenuRef.current && target && searchMenuRef.current.contains(target)) return;
       setShowSearchMenu(false);
+      if (printMenuRef.current && target && printMenuRef.current.contains(target)) return;
+      setShowPrintMenu(false);
       if (disciplineMenuRef.current && target && disciplineMenuRef.current.contains(target)) return;
       setShowDisciplineMenu(false);
     };
@@ -3569,15 +3943,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .map((person) => {
         const cfg = parseOrgChartPersonConfig(person.element_config);
         const nextCount = orgDirectReportCountByPersonId.get(person.id) ?? 0;
-        const currentColumnCount = Number(person.direct_report_count ?? 0);
-        const currentKnownCount = Math.max(
-          Number.isFinite(currentColumnCount) ? Math.max(0, Math.floor(currentColumnCount)) : 0,
-          Number.isFinite(Number(cfg.direct_report_count)) ? Math.max(0, Math.floor(Number(cfg.direct_report_count))) : 0
-        );
+        const currentKnownCount = Number.isFinite(Number(cfg.direct_report_count))
+          ? Math.max(0, Math.floor(Number(cfg.direct_report_count)))
+          : 0;
         // Never downgrade an existing non-zero persisted count to zero from client-side inference.
         // This avoids hiding the label when relation IDs are stored in older endpoint fields.
         if (nextCount === 0 && currentKnownCount > 0) return null;
-        if (cfg.direct_report_count === nextCount && currentColumnCount === nextCount) return null;
+        if (cfg.direct_report_count === nextCount) return null;
         return {
           id: person.id,
           nextConfig: {
@@ -3590,14 +3962,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       .filter((entry): entry is { id: string; nextConfig: ReturnType<typeof parseOrgChartPersonConfig>; nextCount: number } => Boolean(entry));
     if (!changed.length) return;
     const changedConfigById = new Map(changed.map((entry) => [entry.id, entry.nextConfig] as const));
-    const changedCountById = new Map(changed.map((entry) => [entry.id, entry.nextCount] as const));
     setElements((prev) =>
       prev.map((el) =>
         changedConfigById.has(el.id)
           ? {
               ...el,
               element_config: changedConfigById.get(el.id) ?? el.element_config,
-              direct_report_count: changedCountById.get(el.id) ?? el.direct_report_count ?? 0,
             }
           : el
       )
@@ -3608,7 +3978,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         supabaseBrowser
           .schema("ms")
           .from("canvas_elements")
-          .update({ element_config: entry.nextConfig, direct_report_count: entry.nextCount })
+          .update({ element_config: entry.nextConfig })
           .eq("id", entry.id)
           .eq("map_id", mapId)
       )
@@ -4189,6 +4559,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         handleAddIncidentFinding={handleAddIncidentFinding}
         handleAddIncidentRecommendation={handleAddIncidentRecommendation}
         allowedNodeKinds={allowedNodeKinds}
+        showPrintMenu={showPrintMenu}
+        setShowPrintMenu={setShowPrintMenu}
+        printMenuRef={printMenuRef}
+        onPrintCurrentView={() => void handlePrintCurrentView()}
+        onPrintSelectArea={handlePrintSelectArea}
+        isPreparingPrint={isPreparingPrint}
       />
 
       <MapInfoAside
@@ -4233,6 +4609,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             edges={flowEdges}
             nodeTypes={flowNodeTypes}
             edgeTypes={flowEdgeTypes}
+            onlyRenderVisibleElements
+            nodesConnectable={false}
+            edgesReconnectable={false}
+            nodesFocusable={false}
+            edgesFocusable={false}
             onInit={(instance) => setRf({ fitView: instance.fitView, screenToFlowPosition: instance.screenToFlowPosition, setViewport: instance.setViewport })}
             onNodesChange={handleFlowNodesChange}
             onNodeClick={(event, n) => {
@@ -4668,6 +5049,55 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           </ReactFlow>
         </div>
 
+        {printSelectionMode ? (
+          <div
+            className="print-hidden fixed inset-x-0 bottom-0 z-[90]"
+            style={{ top: `${PRINT_HEADER_HEIGHT_PX}px` }}
+            onPointerDown={handlePrintOverlayPointerDown}
+            onPointerMove={handlePrintOverlayPointerMove}
+            onPointerUp={handlePrintOverlayPointerUp}
+          >
+            <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-none border border-black bg-white px-3 py-2 text-xs text-slate-800 shadow-lg">
+              Drag to select area for print
+            </div>
+            {activePrintSelectionRect ? (
+              <>
+                <div className="absolute bg-slate-800/45" style={{ left: 0, top: 0, right: 0, height: Math.max(0, activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX) }} />
+                <div className="absolute bg-slate-800/45" style={{ left: 0, top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX, width: activePrintSelectionRect.left, height: activePrintSelectionRect.height }} />
+                <div
+                  className="absolute bg-slate-800/45"
+                  style={{
+                    left: activePrintSelectionRect.left + activePrintSelectionRect.width,
+                    top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX,
+                    right: 0,
+                    height: activePrintSelectionRect.height,
+                  }}
+                />
+                <div
+                  className="absolute bg-slate-800/45"
+                  style={{
+                    left: 0,
+                    top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX + activePrintSelectionRect.height,
+                    right: 0,
+                    bottom: 0,
+                  }}
+                />
+                <div
+                  className="absolute border-2 border-black bg-transparent"
+                  style={{
+                    left: activePrintSelectionRect.left,
+                    top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX,
+                    width: activePrintSelectionRect.width,
+                    height: activePrintSelectionRect.height,
+                  }}
+                />
+              </>
+            ) : (
+              <div className="absolute inset-0 bg-slate-800/35" />
+            )}
+          </div>
+        ) : null}
+
         {selectionMarquee.active && (
           <div
             className="pointer-events-none fixed z-[66] border border-[#0f172a] bg-[#0f172a]/10"
@@ -4679,6 +5109,86 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             }}
           />
         )}
+
+        {showPrintSelectionConfirm ? (
+          <div className="fixed inset-0 z-[91] flex items-center justify-center bg-slate-900/45 p-4 print-hidden">
+            <div className="w-full max-w-md rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
+              <h2 className="text-lg font-semibold text-slate-900">Print selected area?</h2>
+              <p className="mt-2 text-sm text-slate-700">Use this selected area for the PDF export.</p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                  onClick={exitPrintSelectionMode}
+                >
+                  Cancel Print Selection
+                </button>
+                <button
+                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => void handleConfirmPrintArea()}
+                  disabled={isPreparingPrint}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {isPreparingPrint ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-black border-r-transparent" /> : null}
+                    {isPreparingPrint ? "Preparing..." : "Print This Area"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {showPrintPreview && printPreviewHtml ? (
+          <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-900/60 p-4 print-hidden">
+            <div className="flex h-[92vh] w-[92vw] max-w-[1280px] flex-col rounded-none border border-slate-300 bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                <h2 className="text-base font-semibold text-slate-900">PDF Preview</h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    className={`rounded-none border border-black px-3 py-2 text-sm hover:bg-slate-100 ${
+                      printOrientation === "portrait" ? "bg-black text-white hover:bg-black" : "bg-white text-black"
+                    }`}
+                    onClick={() => setPrintOrientation("portrait")}
+                  >
+                    Vertical
+                  </button>
+                  <button
+                    className={`rounded-none border border-black px-3 py-2 text-sm hover:bg-slate-100 ${
+                      printOrientation === "landscape" ? "bg-black text-white hover:bg-black" : "bg-white text-black"
+                    }`}
+                    onClick={() => setPrintOrientation("landscape")}
+                  >
+                    Horizontal
+                  </button>
+                  <button
+                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                    onClick={() => {
+                      const w = printPreviewFrameRef.current?.contentWindow;
+                      if (!w) return;
+                      w.focus();
+                      w.print();
+                    }}
+                  >
+                    Save / Print
+                  </button>
+                  <button
+                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                    onClick={() => setShowPrintPreview(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 bg-slate-100 p-4">
+                <iframe
+                  ref={printPreviewFrameRef}
+                  title="Print Preview"
+                  srcDoc={printPreviewHtml}
+                  className="h-full w-full border border-slate-300 bg-white"
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {showDeleteSelectionConfirm && (
           <div className="fixed inset-0 z-[92] flex items-center justify-center bg-slate-900/45 p-4">
@@ -5755,12 +6265,3 @@ export default function SystemMapCanvasClient({ mapId }: { mapId: string }) {
     </ReactFlowProvider>
   );
 }
-
-
-
-
-
-
-
-
-

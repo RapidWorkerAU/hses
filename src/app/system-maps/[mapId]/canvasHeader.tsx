@@ -38,12 +38,21 @@ export function MapCanvasHeader({
   setIsEditingMapInfo,
   setError,
 }: MapCanvasHeaderProps) {
+  const mapCategoryHeaderLabel = (() => {
+    const category = (map.map_category || "").toLowerCase();
+    if (category === "document_map") return "Document System Map";
+    if (category === "bow_tie") return "Bow Tie Builder";
+    if (category === "incident_investigation") return "Investigation Board";
+    if (category === "org_chart") return "Org Chart Builder";
+    return "System Map";
+  })();
+
   return (
     <header className="site-header fixed inset-x-0 top-0 z-[90] md:sticky" style={{ backgroundColor: "#000000", borderBottomColor: "#0f172a" }}>
       <div className="header-inner" style={{ paddingLeft: "12px", paddingRight: "20px", backgroundColor: "#000000" }}>
         <div className="header-left flex items-center gap-8">
           <a href="/"><img src="/images/logo-white.png" alt="HSES" className="header-logo" /></a>
-          <span className="text-xl font-semibold uppercase tracking-[0.14em]" style={{ color: "#05c3dd" }}>System Map</span>
+          <span className="text-xl font-semibold uppercase tracking-[0.14em]" style={{ color: "#05c3dd" }}>{mapCategoryHeaderLabel}</span>
         </div>
         <div className="header-actions flex items-center">
           <div className="flex items-center gap-2">
@@ -126,4 +135,3 @@ export function MapCanvasHeader({
     </header>
   );
 }
-

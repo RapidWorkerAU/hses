@@ -221,6 +221,13 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     setSelectedTextBoxId,
   } = params;
 
+  const normalizeColorHex = useCallback((value: string | null | undefined): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) return null;
+    return trimmed.toUpperCase();
+  }, []);
+
   const getCenter = useCallback(() => {
     if (!rf || !canvasRef.current) return null;
     const box = canvasRef.current.getBoundingClientRect();
@@ -262,10 +269,16 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
   }, [canWriteMap, addDocumentTypes, getCenter, mapId, unconfiguredDocumentTitle, isLandscapeTypeName, landscapeDefaultWidth, defaultWidth, landscapeDefaultHeight, defaultHeight, setError, setNodes, savedPos, setShowAddMenu]);
 
   const addElement = useCallback(async (payload: Partial<CanvasElementRow>, errorMessage: string) => {
+    const normalizedColor =
+      payload.element_type === "sticky_note" ? null : normalizeColorHex(payload.color_hex ?? null);
+    const normalizedPayload: Partial<CanvasElementRow> = {
+      ...payload,
+      color_hex: normalizedColor,
+    };
     const { data, error: e } = await supabaseBrowser
       .schema("ms")
       .from("canvas_elements")
-      .insert(payload)
+      .insert(normalizedPayload)
       .select(canvasElementSelectColumns)
       .single();
     if (e || !data) {
@@ -276,7 +289,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     setElements((prev) => [...prev, inserted]);
     setShowAddMenu(false);
     return inserted;
-  }, [canvasElementSelectColumns, setElements, setError, setShowAddMenu]);
+  }, [canvasElementSelectColumns, normalizeColorHex, setElements, setError, setShowAddMenu]);
 
   const handleAddProcessHeading = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -387,7 +400,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
       map_id: mapId,
       element_type: "sticky_note",
       heading: "Enter Text",
-      color_hex: "#fef08a",
+      color_hex: null,
       created_by_user_id: userId,
       pos_x: center.x,
       pos_y: center.y,
@@ -913,12 +926,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     }
     const width = Math.max(processMinWidth, snapToMinorGrid(widthSquares * minorGridSize));
     const height = Math.max(processMinHeight, snapToMinorGrid(heightSquares * minorGridSize));
-    const { data, error: e } = await supabaseBrowser.schema("ms").from("canvas_elements").update({ heading, width, height, color_hex: processColorDraft ?? null }).eq("id", selectedProcessId).eq("map_id", mapId).select(canvasElementSelectColumns).single();
+    const { data, error: e } = await supabaseBrowser.schema("ms").from("canvas_elements").update({ heading, width, height, color_hex: normalizeColorHex(processColorDraft ?? null) }).eq("id", selectedProcessId).eq("map_id", mapId).select(canvasElementSelectColumns).single();
     if (e || !data) return setError(e?.message || "Unable to save process heading.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
     setSelectedProcessId(null);
-  }, [canWriteMap, setError, selectedProcessId, processHeadingDraft, processWidthDraft, processHeightDraft, processMinWidthSquares, processMinHeightSquares, processMinWidth, snapToMinorGrid, minorGridSize, processMinHeight, processColorDraft, mapId, canvasElementSelectColumns, setElements, setSelectedProcessId]);
+  }, [canWriteMap, setError, selectedProcessId, processHeadingDraft, processWidthDraft, processHeightDraft, processMinWidthSquares, processMinHeightSquares, processMinWidth, snapToMinorGrid, minorGridSize, processMinHeight, processColorDraft, mapId, canvasElementSelectColumns, normalizeColorHex, setElements, setSelectedProcessId]);
 
   const handleSaveSystemName = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -948,16 +961,14 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
       selectedPersonId ? elements.find((el) => el.id === selectedPersonId && el.element_type === "person") ?? null : null;
     const currentDirectReportCount = currentPerson
       ? Math.max(
-          Number(currentPerson.direct_report_count ?? 0),
           Number(parseOrgChartPersonConfig(currentPerson.element_config).direct_report_count || 0)
         )
       : 0;
     const payload = isOrgChart
-      ? {
+        ? {
           heading: personRoleDraft.trim() || "Position Title",
           width: orgChartPersonWidth,
           height: orgChartPersonHeight,
-          direct_report_count: currentDirectReportCount,
           element_config: {
             position_title: personRoleDraft.trim() || "Position Title",
             role_id: personRoleIdDraft.trim(),
