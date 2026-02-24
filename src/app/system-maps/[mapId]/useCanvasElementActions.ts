@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { CanvasElementRow, DisciplineKey, DocumentNodeRow } from "./canvasShared";
+import { parseOrgChartPersonConfig } from "./canvasShared";
 import type { MapCategoryId } from "./mapCategories";
 
 type UseCanvasElementActionsParams = {
@@ -84,7 +85,6 @@ type UseCanvasElementActionsParams = {
   personActingNameDraft: string;
   personActingStartDateDraft: string;
   personRecruitingDraft: boolean;
-  personContractorRoleDraft: boolean;
   personProposedRoleDraft: boolean;
   setSelectedPersonId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedGroupingId: string | null;
@@ -193,7 +193,6 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     personActingNameDraft,
     personActingStartDateDraft,
     personRecruitingDraft,
-    personContractorRoleDraft,
     personProposedRoleDraft,
     setSelectedPersonId,
     selectedGroupingId,
@@ -945,11 +944,20 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedPersonId) return;
     const isOrgChart = mapCategoryId === "org_chart";
+    const currentPerson =
+      selectedPersonId ? elements.find((el) => el.id === selectedPersonId && el.element_type === "person") ?? null : null;
+    const currentDirectReportCount = currentPerson
+      ? Math.max(
+          Number(currentPerson.direct_report_count ?? 0),
+          Number(parseOrgChartPersonConfig(currentPerson.element_config).direct_report_count || 0)
+        )
+      : 0;
     const payload = isOrgChart
       ? {
           heading: personRoleDraft.trim() || "Position Title",
           width: orgChartPersonWidth,
           height: orgChartPersonHeight,
+          direct_report_count: currentDirectReportCount,
           element_config: {
             position_title: personRoleDraft.trim() || "Position Title",
             role_id: personRoleIdDraft.trim(),
@@ -960,8 +968,8 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
             acting_name: personActingNameDraft.trim(),
             acting_start_date: personActingStartDateDraft.trim(),
             recruiting: personRecruitingDraft,
-            contractor_role: personContractorRoleDraft,
             proposed_role: personProposedRoleDraft,
+            direct_report_count: currentDirectReportCount,
           },
         }
       : {
@@ -989,8 +997,8 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     personActingNameDraft,
     personActingStartDateDraft,
     personRecruitingDraft,
-    personContractorRoleDraft,
     personProposedRoleDraft,
+    elements,
     personElementWidth,
     personElementHeight,
     orgChartPersonWidth,

@@ -94,8 +94,13 @@ export function useCanvasRelationshipDerived({
 
   const relatedPersonRows = useMemo(() => {
     if (!selectedPersonId) return [];
-    return relations.filter((r) => r.target_system_element_id === selectedPersonId || r.source_system_element_id === selectedPersonId);
-  }, [relations, selectedPersonId]);
+    return relations.filter((r) => {
+      const isLinked = r.target_system_element_id === selectedPersonId || r.source_system_element_id === selectedPersonId;
+      if (!isLinked) return false;
+      if (mapCategoryId !== "org_chart") return true;
+      return String(r.relation_type ?? "").trim().toLowerCase() === "reports_to";
+    });
+  }, [relations, selectedPersonId, mapCategoryId]);
 
   const relatedSystemRows = useMemo(() => {
     if (!selectedSystemId) return [];

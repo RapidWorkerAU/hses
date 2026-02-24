@@ -422,6 +422,127 @@ export function AddRelationshipAside({
   );
 }
 
+type OrgChartDirectReportCandidate = {
+  id: string;
+  nameLine: string;
+  detailLine: string;
+  disabled: boolean;
+};
+
+type OrgChartDirectReportAsideProps = {
+  open: boolean;
+  sourceLabel: string;
+  query: string;
+  setQuery: (value: string) => void;
+  showOptions: boolean;
+  setShowOptions: (updater: (prev: boolean) => boolean) => void;
+  candidates: OrgChartDirectReportCandidate[];
+  selectedTargetId: string;
+  setSelectedTargetId: (value: string) => void;
+  notes: string;
+  setNotes: (value: string) => void;
+  onAdd: () => Promise<void>;
+  onCancel: () => void;
+};
+
+export function OrgChartDirectReportAside({
+  open,
+  sourceLabel,
+  query,
+  setQuery,
+  showOptions,
+  setShowOptions,
+  candidates,
+  selectedTargetId,
+  setSelectedTargetId,
+  notes,
+  setNotes,
+  onAdd,
+  onCancel,
+}: OrgChartDirectReportAsideProps) {
+  if (!open) return null;
+  return (
+    <aside className="fixed bottom-0 left-[420px] top-[70px] z-[74] w-full max-w-[420px] border-l border-r border-slate-300 bg-white shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform">
+      <div className="flex h-full flex-col overflow-auto p-4">
+        <div className="flex items-center justify-between border-b border-slate-300 pb-3">
+          <h2 className="text-base font-semibold">Link Direct Report</h2>
+          <button className="rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100" onClick={onCancel}>Close</button>
+        </div>
+        <p className="mt-3 text-sm text-slate-600">Leader: {sourceLabel || "Unknown person"}</p>
+        <div className="mt-3 grid gap-3">
+          <div className="relative">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Direct Report</div>
+            <div className="relative flex">
+              <input
+                className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
+                placeholder="Search by role, position ID, occupant, or acting name..."
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setSelectedTargetId("");
+                  setShowOptions(() => true);
+                }}
+              />
+              <button
+                type="button"
+                className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
+                onClick={() => setShowOptions((prev) => !prev)}
+              >
+                {showOptions ? "▲" : "▼"}
+              </button>
+            </div>
+            {showOptions ? (
+              <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
+                {candidates.length > 0 ? candidates.map((candidate) => (
+                  <button
+                    key={candidate.id}
+                    type="button"
+                    className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
+                      candidate.disabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
+                    }`}
+                    disabled={candidate.disabled}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (candidate.disabled) return;
+                      setSelectedTargetId(candidate.id);
+                      setQuery(candidate.nameLine);
+                      setShowOptions(() => false);
+                    }}
+                  >
+                    <div className="truncate font-semibold text-slate-900">{candidate.nameLine}</div>
+                    <div className="truncate text-xs text-slate-500">{candidate.detailLine}</div>
+                  </button>
+                )) : (
+                  <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <label className="text-sm">Notes (optional)
+            <textarea
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+              rows={3}
+              placeholder="Add optional notes for this reporting link"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </label>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!selectedTargetId}
+              onClick={() => void onAdd()}
+            >
+              Save Link
+            </button>
+            <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={onCancel}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 type DeleteDocumentAsideProps = {
   open: boolean;
   onDelete: () => Promise<void>;

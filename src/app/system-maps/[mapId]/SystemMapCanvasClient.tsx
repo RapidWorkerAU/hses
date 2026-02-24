@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -82,8 +82,6 @@ import {
   buildPersonHeading,
   parsePersonLabels,
   parseOrgChartPersonConfig,
-  getOrgChartPersonBanner,
-  getOrgChartPersonLabel,
   orgChartDepartmentOptions,
   parseProcessFlowId,
   pointInAnyRect,
@@ -146,7 +144,7 @@ import {
   SystemPropertiesAside,
   TextBoxAside,
 } from "./canvasElementAsides";
-import { AddRelationshipAside, DeleteDocumentAside, DocumentStructureAside } from "./canvasDrilldownAsides";
+import { AddRelationshipAside, DeleteDocumentAside, DocumentStructureAside, OrgChartDirectReportAside } from "./canvasDrilldownAsides";
 import { ConfirmDialog } from "./canvasDialogs";
 import { defaultMapCategoryId, getAllowedNodeKindsForCategory, type MapCategoryId } from "./mapCategories";
 import { useCanvasRelationNodeActions } from "./useCanvasRelationNodeActions";
@@ -228,7 +226,7 @@ const flowEdgeTypes = {
   smartBezier: SmartBezierEdge,
 } as const;
 const canvasElementSelectColumns =
-  "id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height,created_at,updated_at";
+  "id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height,direct_report_count,created_at,updated_at";
 const isMethodologyElementType = (elementType: string) =>
   elementType.startsWith("bowtie_") || elementType.startsWith("incident_");
 
@@ -399,7 +397,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [personActingNameDraft, setPersonActingNameDraft] = useState("");
   const [personActingStartDateDraft, setPersonActingStartDateDraft] = useState("");
   const [personRecruitingDraft, setPersonRecruitingDraft] = useState(false);
-  const [personContractorRoleDraft, setPersonContractorRoleDraft] = useState(false);
   const [personProposedRoleDraft, setPersonProposedRoleDraft] = useState(false);
   const [groupingLabelDraft, setGroupingLabelDraft] = useState("");
   const [groupingWidthDraft, setGroupingWidthDraft] = useState<string>(String(Math.round(groupingDefaultWidth / minorGridSize)));
@@ -610,8 +607,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         return { x: el.pos_x, y: el.pos_y, width: processComponentWidth, height: processComponentElementHeight };
       }
       if (el.element_type === "person") {
-        const width = mapCategoryId === "org_chart" ? Math.max(minorGridSize * 4, el.width || orgChartPersonWidth) : personElementWidth;
-        const height = mapCategoryId === "org_chart" ? Math.max(minorGridSize * 3, el.height || orgChartPersonHeight) : personElementHeight;
+        const width = mapCategoryId === "org_chart" ? orgChartPersonWidth : personElementWidth;
+        const height = mapCategoryId === "org_chart" ? orgChartPersonHeight : personElementHeight;
         return { x: el.pos_x, y: el.pos_y, width, height };
       }
       if (el.element_type === "sticky_note") {
@@ -784,6 +781,113 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
+    const personElements = elements.filter((el) => el.element_type === "person");
+    const normalizeRef = (value: string | null | undefined) => {
+      if (!value) return "";
+      const trimmed = value.replace(/^process:/i, "").trim().toLowerCase();
+      const uuidMatch = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+      return uuidMatch ? uuidMatch[0].toLowerCase() : trimmed;
+    };
+    const normalizeFlowRef = (value: string | null | undefined) => {
+      if (!value) return "";
+      const trimmed = value.trim();
+      if (/^process:/i.test(trimmed)) {
+        return `process:${normalizeRef(trimmed)}`;
+      }
+      const uuid = normalizeRef(trimmed);
+      return uuid ? `process:${uuid}` : "";
+    };
+    const personElementIdByNormalizedId = new Map(personElements.map((el) => [normalizeRef(el.id), el.id] as const));
+    const personElementByNormalizedId = new Map(personElements.map((el) => [normalizeRef(el.id), el] as const));
+    const personElementIdByNormalizedFlowId = new Map(
+      personElements.map((el) => [normalizeFlowRef(processFlowId(el.id)), el.id] as const)
+    );
+    const directReportIdsByLeaderNormalizedId = new Map<string, Set<string>>();
+    relations.forEach((rel) => {
+      const relationType = String(rel.relation_type || "").trim().toLowerCase();
+      const relationCategory = String(rel.relationship_category || "").trim().toLowerCase();
+      if (mapCategoryId !== "org_chart" && relationType !== "reports_to" && relationCategory !== "reports_to") return;
+      const sourceCandidates = [
+        rel.source_system_element_id,
+        rel.source_system_element_id ? parseProcessFlowId(rel.source_system_element_id) : null,
+        rel.source_system_element_id ? processFlowId(parseProcessFlowId(rel.source_system_element_id)) : null,
+        rel.from_node_id ? parseProcessFlowId(rel.from_node_id) : null,
+        rel.from_node_id || null,
+      ].filter((id): id is string => Boolean(id));
+      const targetCandidates = [
+        rel.target_system_element_id,
+        rel.target_system_element_id ? parseProcessFlowId(rel.target_system_element_id) : null,
+        rel.target_system_element_id ? processFlowId(parseProcessFlowId(rel.target_system_element_id)) : null,
+        rel.to_node_id ? parseProcessFlowId(rel.to_node_id) : null,
+        rel.to_node_id || null,
+      ].filter((id): id is string => Boolean(id));
+      const sourcePersonNormalizedId =
+        sourceCandidates.map((id) => normalizeRef(id)).find((id) => personElementIdByNormalizedId.has(id)) ?? "";
+      const targetPersonNormalizedId =
+        targetCandidates.map((id) => normalizeRef(id)).find((id) => personElementIdByNormalizedId.has(id)) ?? "";
+      const sourcePersonIdFromFlow =
+        sourceCandidates
+          .map((id) => normalizeFlowRef(id))
+          .map((id) => personElementIdByNormalizedFlowId.get(id) ?? null)
+          .find((id): id is string => Boolean(id)) ?? null;
+      const targetPersonIdFromFlow =
+        targetCandidates
+          .map((id) => normalizeFlowRef(id))
+          .map((id) => personElementIdByNormalizedFlowId.get(id) ?? null)
+          .find((id): id is string => Boolean(id)) ?? null;
+      const resolvedSourcePersonNormalizedId = sourcePersonNormalizedId || (sourcePersonIdFromFlow ? normalizeRef(sourcePersonIdFromFlow) : "");
+      const resolvedTargetPersonNormalizedId = targetPersonNormalizedId || (targetPersonIdFromFlow ? normalizeRef(targetPersonIdFromFlow) : "");
+      let managerNormalizedId = "";
+      let reportNormalizedId = "";
+      if (resolvedSourcePersonNormalizedId && resolvedTargetPersonNormalizedId) {
+        const sourcePerson = personElementByNormalizedId.get(resolvedSourcePersonNormalizedId);
+        const targetPerson = personElementByNormalizedId.get(resolvedTargetPersonNormalizedId);
+        if (sourcePerson && targetPerson) {
+          if (sourcePerson.pos_y <= targetPerson.pos_y) {
+            managerNormalizedId = resolvedSourcePersonNormalizedId;
+            reportNormalizedId = resolvedTargetPersonNormalizedId;
+          } else {
+            managerNormalizedId = resolvedTargetPersonNormalizedId;
+            reportNormalizedId = resolvedSourcePersonNormalizedId;
+          }
+        }
+      }
+      if (!managerNormalizedId || !reportNormalizedId) {
+        const allRelationRefs = [
+          rel.source_system_element_id,
+          rel.target_system_element_id,
+          rel.from_node_id,
+          rel.to_node_id,
+          rel.source_grouping_element_id,
+          rel.target_grouping_element_id,
+        ]
+          .map((id) => normalizeRef(id ? String(id) : ""))
+          .filter(Boolean);
+        const uniquePersonNormalizedIds = Array.from(
+          new Set(
+            allRelationRefs.filter((id) => personElementIdByNormalizedId.has(id))
+          )
+        );
+        if (uniquePersonNormalizedIds.length >= 2) {
+          const ranked = uniquePersonNormalizedIds
+            .map((id) => ({ id, person: personElementByNormalizedId.get(id) }))
+            .filter((entry): entry is { id: string; person: CanvasElementRow } => Boolean(entry.person))
+            .sort((a, b) => a.person.pos_y - b.person.pos_y);
+          if (ranked.length >= 2) {
+            managerNormalizedId = ranked[0].id;
+            reportNormalizedId = ranked[ranked.length - 1].id;
+          }
+        }
+      }
+      if (!managerNormalizedId || !reportNormalizedId || managerNormalizedId === reportNormalizedId) return;
+      const existing = directReportIdsByLeaderNormalizedId.get(managerNormalizedId) ?? new Set<string>();
+      existing.add(reportNormalizedId);
+      directReportIdsByLeaderNormalizedId.set(managerNormalizedId, existing);
+    });
+    const directReportCountByPersonNormalizedId = new Map<string, number>();
+    directReportIdsByLeaderNormalizedId.forEach((reportIds, leaderNormalizedId) => {
+      directReportCountByPersonNormalizedId.set(leaderNormalizedId, reportIds.size);
+    });
     const groupingElements = elements
       .filter((el) => el.element_type === "grouping_container")
       .sort((a, b) => {
@@ -1040,10 +1144,37 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 const flowId = processFlowId(el.id);
                 const isMarked = selectedFlowIds.has(flowId);
                 const canEditThis = canEditElement(el);
-                const personWidth = mapCategoryId === "org_chart" ? Math.max(minorGridSize * 4, el.width || orgChartPersonWidth) : personElementWidth;
-                const personHeight = mapCategoryId === "org_chart" ? Math.max(minorGridSize * 3, el.height || orgChartPersonHeight) : personElementHeight;
+                const personWidth = mapCategoryId === "org_chart" ? orgChartPersonWidth : personElementWidth;
+                const personHeight = mapCategoryId === "org_chart" ? orgChartPersonHeight : personElementHeight;
                 const orgConfig = mapCategoryId === "org_chart" ? parseOrgChartPersonConfig(el.element_config) : null;
-                const orgBanner = orgConfig ? getOrgChartPersonBanner(orgConfig) : null;
+                const actingName = orgConfig?.acting_name || "";
+                const occupantName = orgConfig?.occupant_name || "";
+                const hasActing = actingName.length > 0;
+                const displayName = hasActing ? `${actingName} (A)` : occupantName || "VACANT";
+                const positionTitle = orgConfig?.position_title || "Position Title";
+                const positionId = orgConfig?.role_id ? ` (${orgConfig.role_id})` : "";
+                const positionLine = `${positionTitle}${positionId}`;
+                const roleTypeLabel = orgConfig?.employment_type === "contractor" ? "Contractor" : "Employee";
+                const resolvedDirectReportCount = (() => {
+                  const candidates = [
+                    directReportCountByPersonNormalizedId.get(normalizeRef(el.id)),
+                    orgDirectReportCountByPersonId.get(el.id),
+                    el.direct_report_count,
+                    orgConfig?.direct_report_count,
+                  ];
+                  const valid = candidates
+                    .map((value) => Number(value))
+                    .filter((value) => Number.isFinite(value))
+                    .map((value) => Math.max(0, Math.floor(value)));
+                  return valid.length ? Math.max(...valid) : 0;
+                })();
+                const status = orgConfig?.proposed_role
+                  ? { label: "Proposed", bg: "#7c3aed", text: "#ffffff" }
+                  : hasActing
+                  ? { label: "Acting", bg: "#f59e0b", text: "#111827" }
+                  : orgConfig?.recruiting
+                  ? { label: "Hiring", bg: "#2563eb", text: "#ffffff" }
+                  : null;
                 return {
                 id: flowId,
                 type: "personNode",
@@ -1065,7 +1196,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 data: {
                   entityKind: "person" as const,
                   typeName: "Person",
-                  title: orgConfig ? getOrgChartPersonLabel(orgConfig) : el.heading ?? buildPersonHeading("Role Name", "Department"),
+                  title: orgConfig ? displayName : el.heading ?? buildPersonHeading("Role Name", "Department"),
                   userGroup: "",
                   disciplineKeys: [],
                   bannerBg: "#ffffff",
@@ -1074,11 +1205,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                   isUnconfigured: false,
                   orgChartPerson: orgConfig
                     ? {
-                        label: getOrgChartPersonLabel(orgConfig),
-                        subtitle: orgConfig.position_title || "Position Title",
-                        banner: orgBanner?.label || "VACANT",
-                        bannerBg: orgBanner?.bg || "#dc2626",
-                        bannerText: orgBanner?.text || "#ffffff",
+                        displayName,
+                        positionLine,
+                        avatarSrc: "/icons/account.svg",
+                        roleTypeLabel,
+                        statusLabel: status?.label ?? null,
+                        statusBg: status?.bg ?? null,
+                        statusText: status?.text ?? null,
+                        directReportCount: resolvedDirectReportCount,
                       }
                     : undefined,
                 },
@@ -1810,7 +1944,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         ).filter(Boolean) as Node<FlowData>[],
       ];
     setFlowNodes(nextNodes);
-  }, [nodes, elements, typesById, setFlowNodes, getNodeSize, selectedFlowIds, canWriteMap, canEditElement, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive]);
+  }, [nodes, elements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, canWriteMap, canEditElement, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive]);
 
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
@@ -1872,8 +2006,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         if (el.element_type === "person") {
           if (mapCategoryId === "org_chart") {
             return {
-              width: Math.max(minorGridSize * 4, el.width || orgChartPersonWidth),
-              height: Math.max(minorGridSize * 3, el.height || orgChartPersonHeight),
+              width: orgChartPersonWidth,
+              height: orgChartPersonHeight,
             };
           }
           return { width: personElementWidth, height: personElementHeight };
@@ -2773,7 +2907,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       setPersonActingNameDraft(cfg.acting_name);
       setPersonActingStartDateDraft(cfg.acting_start_date);
       setPersonRecruitingDraft(cfg.recruiting);
-      setPersonContractorRoleDraft(cfg.contractor_role);
       setPersonProposedRoleDraft(cfg.proposed_role);
       return;
     }
@@ -2787,7 +2920,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setPersonActingNameDraft("");
     setPersonActingStartDateDraft("");
     setPersonRecruitingDraft(false);
-    setPersonContractorRoleDraft(false);
     setPersonProposedRoleDraft(false);
   }, [selectedPerson, mapCategoryId]);
   useEffect(() => {
@@ -3315,7 +3447,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     personActingNameDraft,
     personActingStartDateDraft,
     personRecruitingDraft,
-    personContractorRoleDraft,
     personProposedRoleDraft,
     setSelectedPersonId,
     selectedGroupingId,
@@ -3388,6 +3519,140 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     elements,
     mapCategoryId,
   });
+  const orgDirectReportCountByPersonId = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (mapCategoryId !== "org_chart") return counts;
+    const normalizeRef = (value: string | null | undefined) => {
+      if (!value) return "";
+      const trimmed = String(value).replace(/^process:/i, "").trim().toLowerCase();
+      const uuidMatch = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+      return uuidMatch ? uuidMatch[0].toLowerCase() : trimmed;
+    };
+    const peopleByNormalizedId = new Map(
+      elements
+        .filter((el) => el.element_type === "person")
+        .map((el) => [normalizeRef(el.id), el] as const)
+    );
+    const resolvePersonByAnyRef = (refs: Array<string | null | undefined>) => {
+      for (const ref of refs) {
+        const normalized = normalizeRef(ref ?? "");
+        if (!normalized) continue;
+        const person = peopleByNormalizedId.get(normalized);
+        if (person) return person;
+      }
+      return null;
+    };
+    peopleByNormalizedId.forEach((person) => counts.set(person.id, 0));
+    relations.forEach((r) => {
+      const relationType = String(r.relation_type ?? "").trim().toLowerCase();
+      if (relationType !== "reports_to") return;
+      const source = resolvePersonByAnyRef([
+        r.source_system_element_id,
+        r.from_node_id,
+      ]);
+      const target = resolvePersonByAnyRef([
+        r.target_system_element_id,
+        r.to_node_id,
+      ]);
+      if (!source || !target) return;
+      if (source.id === target.id) return;
+      const leaderId = source.pos_y <= target.pos_y ? source.id : target.id;
+      counts.set(leaderId, (counts.get(leaderId) ?? 0) + 1);
+    });
+    return counts;
+  }, [elements, mapCategoryId, relations]);
+  useEffect(() => {
+    if (mapCategoryId !== "org_chart") return;
+    const personElements = elements.filter((el) => el.element_type === "person");
+    if (!personElements.length) return;
+    const changed = personElements
+      .map((person) => {
+        const cfg = parseOrgChartPersonConfig(person.element_config);
+        const nextCount = orgDirectReportCountByPersonId.get(person.id) ?? 0;
+        const currentColumnCount = Number(person.direct_report_count ?? 0);
+        const currentKnownCount = Math.max(
+          Number.isFinite(currentColumnCount) ? Math.max(0, Math.floor(currentColumnCount)) : 0,
+          Number.isFinite(Number(cfg.direct_report_count)) ? Math.max(0, Math.floor(Number(cfg.direct_report_count))) : 0
+        );
+        // Never downgrade an existing non-zero persisted count to zero from client-side inference.
+        // This avoids hiding the label when relation IDs are stored in older endpoint fields.
+        if (nextCount === 0 && currentKnownCount > 0) return null;
+        if (cfg.direct_report_count === nextCount && currentColumnCount === nextCount) return null;
+        return {
+          id: person.id,
+          nextConfig: {
+            ...cfg,
+            direct_report_count: nextCount,
+          },
+          nextCount,
+        };
+      })
+      .filter((entry): entry is { id: string; nextConfig: ReturnType<typeof parseOrgChartPersonConfig>; nextCount: number } => Boolean(entry));
+    if (!changed.length) return;
+    const changedConfigById = new Map(changed.map((entry) => [entry.id, entry.nextConfig] as const));
+    const changedCountById = new Map(changed.map((entry) => [entry.id, entry.nextCount] as const));
+    setElements((prev) =>
+      prev.map((el) =>
+        changedConfigById.has(el.id)
+          ? {
+              ...el,
+              element_config: changedConfigById.get(el.id) ?? el.element_config,
+              direct_report_count: changedCountById.get(el.id) ?? el.direct_report_count ?? 0,
+            }
+          : el
+      )
+    );
+    if (!canWriteMap) return;
+    void Promise.all(
+      changed.map((entry) =>
+        supabaseBrowser
+          .schema("ms")
+          .from("canvas_elements")
+          .update({ element_config: entry.nextConfig, direct_report_count: entry.nextCount })
+          .eq("id", entry.id)
+          .eq("map_id", mapId)
+      )
+    ).catch((e) => {
+      setError(e?.message || "Unable to persist direct report counts.");
+    });
+  }, [canWriteMap, elements, mapCategoryId, mapId, orgDirectReportCountByPersonId, setElements, setError]);
+  const orgDirectReportCandidates = useMemo(() => {
+    if (mapCategoryId !== "org_chart" || !relationshipSourceSystemId) return [];
+    const sourceId = parseProcessFlowId(relationshipSourceSystemId);
+    const term = relationshipSystemQuery.trim().toLowerCase();
+    return elements
+      .filter((el) => el.element_type === "person")
+      .filter((el) => el.id !== sourceId)
+      .map((el) => {
+        const cfg = parseOrgChartPersonConfig(el.element_config);
+        const actingName = cfg.acting_name.trim();
+        const occupantName = cfg.occupant_name.trim();
+        const nameLine = actingName ? `${actingName} (A)` : occupantName || "VACANT";
+        const detailLine = `${cfg.position_title || "Position Title"}${cfg.role_id ? ` (${cfg.role_id})` : ""}`;
+        const haystack = [cfg.position_title, cfg.role_id, occupantName, actingName, el.heading, nameLine, detailLine]
+          .join(" ")
+          .toLowerCase();
+        return {
+          id: el.id,
+          nameLine,
+          detailLine,
+          disabled: alreadyRelatedSystemTargetIds.has(el.id),
+          haystack,
+        };
+      })
+      .filter((candidate) => !term || candidate.haystack.includes(term))
+      .map(({ haystack: _ignore, ...candidate }) => candidate)
+      .sort((a, b) => a.nameLine.localeCompare(b.nameLine));
+  }, [alreadyRelatedSystemTargetIds, elements, mapCategoryId, relationshipSourceSystemId, relationshipSystemQuery]);
+  const orgDirectReportSourceLabel = useMemo(() => {
+    if (!relationshipSourceSystemId || mapCategoryId !== "org_chart") return "";
+    const source = elements.find((el) => el.id === parseProcessFlowId(relationshipSourceSystemId) && el.element_type === "person");
+    if (!source) return "";
+    const cfg = parseOrgChartPersonConfig(source.element_config);
+    const actingName = cfg.acting_name.trim();
+    const occupantName = cfg.occupant_name.trim();
+    return actingName ? `${actingName} (A)` : occupantName || "VACANT";
+  }, [elements, mapCategoryId, relationshipSourceSystemId]);
   const relatedBowtieRows = useMemo(() => {
     if (!selectedBowtieElementId) return [];
     return relations.filter(
@@ -3642,6 +3907,74 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     },
     []
   );
+  const handleAddOrgDirectReport = useCallback(async () => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    if (mapCategoryId !== "org_chart") return;
+    const sourceId = relationshipSourceSystemId ? parseProcessFlowId(relationshipSourceSystemId) : "";
+    const targetId = relationshipTargetSystemId ? parseProcessFlowId(relationshipTargetSystemId) : "";
+    if (!sourceId || !targetId || sourceId === targetId) {
+      setError("Please select a valid direct report.");
+      return;
+    }
+    const sourcePerson = elements.find((el) => el.id === sourceId && el.element_type === "person");
+    const targetPerson = elements.find((el) => el.id === targetId && el.element_type === "person");
+    if (!sourcePerson || !targetPerson) {
+      setError("Direct report links must be person-to-person.");
+      return;
+    }
+    const exists = relations.some(
+      (r) =>
+        r.source_system_element_id &&
+        r.target_system_element_id &&
+        ((parseProcessFlowId(r.source_system_element_id) === sourceId && parseProcessFlowId(r.target_system_element_id) === targetId) ||
+          (parseProcessFlowId(r.source_system_element_id) === targetId && parseProcessFlowId(r.target_system_element_id) === sourceId))
+    );
+    if (exists) {
+      setError("Direct report link already exists.");
+      return;
+    }
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("node_relations")
+      .insert({
+        map_id: mapId,
+        from_node_id: null,
+        to_node_id: null,
+        source_grouping_element_id: null,
+        target_grouping_element_id: null,
+        source_system_element_id: sourceId,
+        target_system_element_id: targetId,
+        relation_type: "reports_to",
+        relationship_category: "other",
+        relationship_custom_type: "direct_report",
+        relationship_description: relationshipDescription.trim() || null,
+        relationship_disciplines: null,
+      })
+      .select("*")
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to link direct report.");
+      return;
+    }
+    setRelations((prev) => [...prev, data as NodeRelationRow]);
+    closeAddRelationshipModal();
+    setDesktopNodeAction(null);
+  }, [
+    canWriteMap,
+    closeAddRelationshipModal,
+    elements,
+    mapCategoryId,
+    mapId,
+    relationshipDescription,
+    relationshipSourceSystemId,
+    relationshipTargetSystemId,
+    relations,
+    setError,
+    setRelations,
+  ]);
 
   const { handleAddRelation, handleDeleteRelation, handleUpdateRelation, handleDeleteNode, handleSaveNode } =
     useCanvasRelationNodeActions({
@@ -4536,7 +4869,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                         className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
                         onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
                       >
-                        {showRelationshipGroupingOptions ? "â–²" : "â–¼"}
+                        {showRelationshipGroupingOptions ? "▲" : "▼"}
                       </button>
                     </div>
                     {showRelationshipGroupingOptions && (
@@ -4596,7 +4929,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                         setShowRelationshipSystemOptions(false);
                       }}
                     >
-                      {showRelationshipDocumentOptions ? "â–²" : "â–¼"}
+                      {showRelationshipDocumentOptions ? "▲" : "▼"}
                     </button>
                   </div>
                   {showRelationshipDocumentOptions && (
@@ -4655,7 +4988,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                         setShowRelationshipDocumentOptions(false);
                       }}
                     >
-                      {showRelationshipSystemOptions ? "â–²" : "â–¼"}
+                      {showRelationshipSystemOptions ? "▲" : "▼"}
                     </button>
                   </div>
                   {showRelationshipSystemOptions && (
@@ -4712,7 +5045,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                           ? relationshipDisciplineSelection.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
                           : "Select disciplines"}
                       </span>
-                      <span className="text-xs text-slate-500">{showRelationshipDisciplineMenu ? "â–²" : "â–¼"}</span>
+                      <span className="text-xs text-slate-500">{showRelationshipDisciplineMenu ? "▲" : "▼"}</span>
                     </button>
                     {showRelationshipDisciplineMenu && (
                       <div className="absolute z-20 mt-1 w-full rounded border border-slate-300 bg-white p-2 shadow-lg">
@@ -4938,8 +5271,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           setPersonActingStartDateDraft={setPersonActingStartDateDraft}
           personRecruitingDraft={personRecruitingDraft}
           setPersonRecruitingDraft={setPersonRecruitingDraft}
-          personContractorRoleDraft={personContractorRoleDraft}
-          setPersonContractorRoleDraft={setPersonContractorRoleDraft}
           personProposedRoleDraft={personProposedRoleDraft}
           setPersonProposedRoleDraft={setPersonProposedRoleDraft}
           orgChartDepartmentOptions={orgChartDepartmentOptions}
@@ -5236,8 +5567,27 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             onSave: (id) => void handleUpdateRelation(id),
             onCancelEdit: cancelEditRelation,
           }}
-        />        <AddRelationshipAside
-          open={Boolean(!isMobile && desktopNodeAction === "relationship" && showAddRelationship)}
+        />
+        <OrgChartDirectReportAside
+          open={Boolean(mapCategoryId === "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship)}
+          sourceLabel={orgDirectReportSourceLabel}
+          query={relationshipSystemQuery}
+          setQuery={setRelationshipSystemQuery}
+          showOptions={showRelationshipSystemOptions}
+          setShowOptions={setShowRelationshipSystemOptions}
+          candidates={orgDirectReportCandidates}
+          selectedTargetId={relationshipTargetSystemId}
+          setSelectedTargetId={setRelationshipTargetSystemId}
+          notes={relationshipDescription}
+          setNotes={setRelationshipDescription}
+          onAdd={handleAddOrgDirectReport}
+          onCancel={() => {
+            closeAddRelationshipModal();
+            setDesktopNodeAction(null);
+          }}
+        />
+        <AddRelationshipAside
+          open={Boolean(mapCategoryId !== "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship)}
           relationshipModeGrouping={relationshipModeGrouping}
           relationshipSourceLabel={
             relationshipSourceNode?.title ||
@@ -5405,6 +5755,7 @@ export default function SystemMapCanvasClient({ mapId }: { mapId: string }) {
     </ReactFlowProvider>
   );
 }
+
 
 
 

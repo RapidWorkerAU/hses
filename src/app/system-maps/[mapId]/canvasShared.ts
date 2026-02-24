@@ -89,6 +89,7 @@ export type CanvasElementRow = {
   pos_y: number;
   width: number;
   height: number;
+  direct_report_count?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -167,11 +168,14 @@ export type FlowData = {
     fontSize?: number;
   };
   orgChartPerson?: {
-    label: string;
-    subtitle: string;
-    banner: string;
-    bannerBg: string;
-    bannerText: string;
+    displayName: string;
+    positionLine: string;
+    avatarSrc: string;
+    roleTypeLabel: string;
+    statusLabel: string | null;
+    statusBg: string | null;
+    statusText: string | null;
+    directReportCount: number;
   };
 };
 export type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "training";
@@ -231,8 +235,8 @@ export const personRoleLabelHeight = minorGridSize;
 export const personDepartmentLabelHeight = minorGridSize;
 export const personElementWidth = personIconSize;
 export const personElementHeight = personIconSize + personRoleLabelHeight + personDepartmentLabelHeight;
-export const orgChartPersonWidth = minorGridSize * 8;
-export const orgChartPersonHeight = minorGridSize * 5;
+export const orgChartPersonWidth = minorGridSize * 13;
+export const orgChartPersonHeight = minorGridSize * 4;
 export const groupingDefaultWidth = minorGridSize * 22;
 export const groupingDefaultHeight = minorGridSize * 12;
 export const groupingMinWidth = minorGridSize * 8;
@@ -315,6 +319,7 @@ export type OrgChartPersonConfig = {
   recruiting: boolean;
   contractor_role: boolean;
   proposed_role: boolean;
+  direct_report_count: number;
 };
 export const orgChartDepartmentOptions = [
   "Executive",
@@ -340,6 +345,7 @@ export const getDefaultOrgChartPersonConfig = (): OrgChartPersonConfig => ({
   recruiting: false,
   contractor_role: false,
   proposed_role: false,
+  direct_report_count: 0,
 });
 export const parseOrgChartPersonConfig = (value: unknown): OrgChartPersonConfig => {
   const raw = (value && typeof value === "object" ? (value as Record<string, unknown>) : {}) as Record<string, unknown>;
@@ -349,6 +355,7 @@ export const parseOrgChartPersonConfig = (value: unknown): OrgChartPersonConfig 
     return typeof v === "string" ? v.trim() : "";
   };
   const employment = parseText("employment_type").toLowerCase();
+  const directReportRaw = Number(raw.direct_report_count);
   return {
     position_title: parseText("position_title") || base.position_title,
     role_id: parseText("role_id"),
@@ -359,8 +366,9 @@ export const parseOrgChartPersonConfig = (value: unknown): OrgChartPersonConfig 
     acting_name: parseText("acting_name"),
     acting_start_date: parseText("acting_start_date"),
     recruiting: Boolean(raw.recruiting),
-    contractor_role: Boolean(raw.contractor_role),
+    contractor_role: employment === "contractor" || Boolean(raw.contractor_role),
     proposed_role: Boolean(raw.proposed_role),
+    direct_report_count: Number.isFinite(directReportRaw) ? Math.max(0, Math.floor(directReportRaw)) : 0,
   };
 };
 export const getOrgChartPersonLabel = (cfg: OrgChartPersonConfig) => {

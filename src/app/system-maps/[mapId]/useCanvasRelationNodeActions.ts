@@ -119,22 +119,15 @@ export function useCanvasRelationNodeActions({
   const getRelationshipPersistenceFields = useCallback(
     (category: RelationshipCategory, customType: string) => {
       if (mapCategoryId !== "incident_investigation") {
-        if (mapCategoryId !== "org_chart") {
-          return {
-            relationship_category: category,
-            relationship_custom_type: category === "other" ? customType.trim() || null : null,
-          };
-        }
-        if (category === "other") {
+        if (mapCategoryId === "org_chart") {
           return {
             relationship_category: "other" as const,
-            relationship_custom_type: customType.trim() || null,
+            relationship_custom_type: "direct_report",
           };
         }
-        const mappedLabel = orgChartRelationshipCategoryOptions.find((option) => option.value === category)?.label ?? category;
         return {
-          relationship_category: "other" as const,
-          relationship_custom_type: mappedLabel,
+          relationship_category: category,
+          relationship_custom_type: category === "other" ? customType.trim() || null : null,
         };
       }
 

@@ -752,8 +752,6 @@ type PersonPropertiesAsideProps = {
   setPersonActingStartDateDraft: (value: string) => void;
   personRecruitingDraft: boolean;
   setPersonRecruitingDraft: (value: boolean) => void;
-  personContractorRoleDraft: boolean;
-  setPersonContractorRoleDraft: (value: boolean) => void;
   personProposedRoleDraft: boolean;
   setPersonProposedRoleDraft: (value: boolean) => void;
   orgChartDepartmentOptions: readonly string[];
@@ -789,8 +787,6 @@ export function PersonPropertiesAside({
   setPersonActingStartDateDraft,
   personRecruitingDraft,
   setPersonRecruitingDraft,
-  personContractorRoleDraft,
-  setPersonContractorRoleDraft,
   personProposedRoleDraft,
   setPersonProposedRoleDraft,
   orgChartDepartmentOptions,
@@ -808,13 +804,13 @@ export function PersonPropertiesAside({
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Person Properties" onClose={onClose}>
       <div className="mt-3">
         <button
-          title="Add Relationship"
-          aria-label="Add Relationship"
+          title={isOrgChart ? "Link Direct Report" : "Add Relationship"}
+          aria-label={isOrgChart ? "Link Direct Report" : "Add Relationship"}
           className="flex h-11 w-full items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
           onClick={onAddRelationship}
         >
           <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
-          <span className="truncate">Relationship</span>
+          <span className="truncate">{isOrgChart ? "Link Direct Report" : "Relationship"}</span>
         </button>
       </div>
       <div className="mt-4 space-y-3">
@@ -895,10 +891,6 @@ export function PersonPropertiesAside({
             <label className="flex items-center gap-2 text-sm text-white">
               <input type="checkbox" checked={personRecruitingDraft} onChange={(e) => setPersonRecruitingDraft(e.target.checked)} />
               Recruiting
-            </label>
-            <label className="flex items-center gap-2 text-sm text-white">
-              <input type="checkbox" checked={personContractorRoleDraft} onChange={(e) => setPersonContractorRoleDraft(e.target.checked)} />
-              Contractor Role
             </label>
             <label className="flex items-center gap-2 text-sm text-white">
               <input type="checkbox" checked={personProposedRoleDraft} onChange={(e) => setPersonProposedRoleDraft(e.target.checked)} />

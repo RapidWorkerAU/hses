@@ -379,21 +379,55 @@ function TextBoxNode({ data, selected }: NodeProps<Node<FlowData>>) {
 
 function PersonNode({ data }: NodeProps<Node<FlowData>>) {
   if (data.orgChartPerson) {
+    const isProposed = data.orgChartPerson.statusLabel === "Proposed";
     return (
-      <div className="relative flex h-full w-full flex-col overflow-hidden border border-slate-300 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.16)]">
+      <div
+        className="relative flex h-full w-full overflow-hidden border"
+        style={{
+          borderColor: isProposed ? "#6b7280" : "#cbd5e1",
+          borderWidth: isProposed ? 2 : 1,
+          borderStyle: isProposed ? "dashed" : "solid",
+          backgroundColor: isProposed ? "rgba(255,255,255,0)" : "#ffffff",
+          boxShadow: isProposed ? "0 12px 28px rgba(15,23,42,0.24)" : "0 8px 20px rgba(15,23,42,0.16)",
+        }}
+      >
         <HiddenEdgeHandles />
-        <div
-          className="flex h-5 items-center justify-center px-2 text-[9px] font-semibold uppercase tracking-[0.08em]"
-          style={{ backgroundColor: data.orgChartPerson.bannerBg, color: data.orgChartPerson.bannerText }}
-        >
-          <span className="truncate">{data.orgChartPerson.banner}</span>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col justify-center px-2 py-1">
-          <div className="line-clamp-2 text-center text-[11px] font-semibold leading-tight text-slate-900">
-            {data.orgChartPerson.label}
+        <div className="flex h-full w-full">
+          <div className="flex shrink-0 items-center justify-center" style={{ width: `${minorGridSize * 3.5}px`, height: `${minorGridSize * 4}px` }}>
+            <div
+              className="flex items-center justify-center rounded-full border border-slate-300 bg-white shadow-[0_4px_10px_rgba(15,23,42,0.12)]"
+              style={{ width: `${minorGridSize * 3}px`, height: `${minorGridSize * 3}px` }}
+            >
+              <img src={data.orgChartPerson.avatarSrc || "/icons/account.svg"} alt="" className="h-full w-full object-contain" />
+            </div>
           </div>
-          <div className="mt-1 line-clamp-2 text-center text-[9px] font-medium leading-tight text-slate-600">
-            {data.orgChartPerson.subtitle}
+          <div className="relative flex min-w-0 flex-1 flex-col justify-center px-1.5 py-2">
+            <div className="truncate text-[15px] font-bold leading-tight text-slate-900">{data.orgChartPerson.displayName}</div>
+            <div className="mt-0.5 truncate text-[13px] font-normal leading-tight text-slate-700">{data.orgChartPerson.positionLine}</div>
+            <div className="mt-2 grid min-w-0 grid-cols-3 gap-1">
+              <span className="inline-flex h-6 min-w-0 items-center justify-center rounded-sm bg-black px-1.5 text-[9px] font-semibold text-white">
+                <span className="truncate">{data.orgChartPerson.roleTypeLabel}</span>
+              </span>
+              <span
+                className="inline-flex h-6 min-w-0 items-center justify-center rounded-sm border px-1.5 text-[9px] font-semibold"
+                style={{ backgroundColor: "#ffffff", borderColor: "#4b5563", color: "#111827" }}
+              >
+                <span className="inline-flex items-center">
+                  <img src="/icons/account.svg" alt="" className="h-3 w-3 object-contain" />
+                  <span className="ml-1">{data.orgChartPerson.directReportCount}</span>
+                </span>
+              </span>
+              {data.orgChartPerson.statusLabel ? (
+                <span
+                  className="inline-flex h-6 min-w-0 items-center justify-center rounded-sm px-1.5 text-[9px] font-semibold"
+                  style={{ backgroundColor: data.orgChartPerson.statusBg || "#475569", color: data.orgChartPerson.statusText || "#ffffff" }}
+                >
+                  <span className="truncate">{data.orgChartPerson.statusLabel}</span>
+                </span>
+              ) : (
+                <span className="h-6" />
+              )}
+            </div>
           </div>
         </div>
       </div>
