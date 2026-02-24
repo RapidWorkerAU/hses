@@ -10,6 +10,7 @@ import {
   getElementDisplayName,
   getElementRelationshipTypeLabel,
 } from "./canvasShared";
+import { MobileDocumentPropertiesModal } from "./canvasElementAsides";
 
 type AddRelationshipAsideProps = {
   open: boolean;
@@ -841,6 +842,32 @@ export function DocumentStructureAside({
         </div>
       </div>
     </aside>
+  );
+}
+
+type CanvasDrilldownOverlaysProps = {
+  orgChartDirectReportAsideProps: Parameters<typeof OrgChartDirectReportAside>[0];
+  addRelationshipAsideProps: Parameters<typeof AddRelationshipAside>[0];
+  deleteDocumentAsideProps: Parameters<typeof DeleteDocumentAside>[0];
+  mobileDocumentPropertiesModalProps: Parameters<typeof MobileDocumentPropertiesModal>[0];
+  documentStructureAsideProps: Parameters<typeof DocumentStructureAside>[0];
+};
+
+export function CanvasDrilldownOverlays({
+  orgChartDirectReportAsideProps,
+  addRelationshipAsideProps,
+  deleteDocumentAsideProps,
+  mobileDocumentPropertiesModalProps,
+  documentStructureAsideProps,
+}: CanvasDrilldownOverlaysProps) {
+  return (
+    <>
+      <OrgChartDirectReportAside {...orgChartDirectReportAsideProps} />
+      <AddRelationshipAside {...addRelationshipAsideProps} />
+      <DeleteDocumentAside {...deleteDocumentAsideProps} />
+      <MobileDocumentPropertiesModal {...mobileDocumentPropertiesModalProps} />
+      <DocumentStructureAside {...documentStructureAsideProps} />
+    </>
   );
 }
 

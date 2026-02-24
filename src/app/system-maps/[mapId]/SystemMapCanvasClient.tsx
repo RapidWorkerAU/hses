@@ -1,18 +1,14 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BaseEdge,
   Background,
   BackgroundVariant,
   type Edge,
-  EdgeLabelRenderer,
-  type EdgeProps,
   type NodeChange,
   type Node,
   ReactFlow,
   ReactFlowProvider,
-  getBezierPath,
   useNodesState,
   type Viewport,
 } from "@xyflow/react";
@@ -84,7 +80,6 @@ import {
   parseOrgChartPersonConfig,
   orgChartDepartmentOptions,
   parseProcessFlowId,
-  pointInAnyRect,
   processComponentBodyHeight,
   processComponentElementHeight,
   processComponentLabelHeight,
@@ -131,21 +126,14 @@ import {
 import { flowNodeTypes } from "./canvasNodes";
 import { CanvasActionButtons, MapInfoAside } from "./canvasPanels";
 import { MapCanvasHeader } from "./canvasHeader";
-import {
-  BowtiePropertiesAside,
-  CategoryPropertiesAside,
-  DocumentPropertiesAside,
-  GroupingContainerAside,
-  MobileDocumentPropertiesModal,
-  ImageAssetAside,
-  PersonPropertiesAside,
-  ProcessPropertiesAside,
-  StickyNoteAside,
-  SystemPropertiesAside,
-  TextBoxAside,
-} from "./canvasElementAsides";
-import { AddRelationshipAside, DeleteDocumentAside, DocumentStructureAside, OrgChartDirectReportAside } from "./canvasDrilldownAsides";
-import { ConfirmDialog } from "./canvasDialogs";
+import { flowEdgeTypes } from "./canvasEdges";
+import { buildFlowEdgesBase } from "./canvasEdgeBuilder";
+import { CanvasPrintOverlay } from "./canvasPrintOverlay";
+import { CanvasFloatingOverlays } from "./canvasFloatingOverlays";
+import { MobileAddRelationshipModal, MobileNodeActionSheet } from "./canvasMobileOverlays";
+import { CanvasDrilldownOverlays } from "./canvasDrilldownAsides";
+import { CanvasConfirmDialogs } from "./canvasDialogs";
+import { CanvasElementPropertyOverlays } from "./canvasPropertyOverlays";
 import { defaultMapCategoryId, getAllowedNodeKindsForCategory, type MapCategoryId } from "./mapCategories";
 import { useCanvasRelationNodeActions } from "./useCanvasRelationNodeActions";
 import { useCanvasElementActions } from "./useCanvasElementActions";
@@ -155,255 +143,28 @@ import { useCanvasOutlineActions } from "./useCanvasOutlineActions";
 import { useCanvasPaneSelectionActions } from "./useCanvasPaneSelectionActions";
 import { useCanvasNodeDragStop } from "./useCanvasNodeDragStop";
 import { useCanvasRelationshipDerived } from "./useCanvasRelationshipDerived";
-
-function SmartBezierEdge(props: EdgeProps<Edge<{ displayLabel?: string; obstacleRects?: Rect[] }>>) {
-  const {
-    id,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    markerEnd,
-    style,
-    labelStyle,
-    data,
-    pathOptions,
-  } = props;
-  const curvature =
-    pathOptions && typeof pathOptions === "object" && "curvature" in pathOptions && typeof pathOptions.curvature === "number"
-      ? pathOptions.curvature
-      : 0.25;
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    curvature,
-  });
-  const obstacles = data?.obstacleRects ?? [];
-  let finalLabelX = labelX;
-  let finalLabelY = labelY;
-  if (obstacles.length && pointInAnyRect(finalLabelX, finalLabelY, obstacles)) {
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
-    const len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len;
-    const uy = dy / len;
-    const candidateOffsets = [120, -120, 180, -180, 240, -240, 300, -300];
-    for (const offset of candidateOffsets) {
-      const cx = labelX + ux * offset;
-      const cy = labelY + uy * offset;
-      if (!pointInAnyRect(cx, cy, obstacles)) {
-        finalLabelX = cx;
-        finalLabelY = cy;
-        break;
-      }
-    }
-  }
-
-  const displayLabel = data?.displayLabel ?? "";
-  return (
-    <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
-      {displayLabel ? (
-        <EdgeLabelRenderer>
-          <div
-            className="nodrag nopan pointer-events-auto absolute z-[8] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm border border-slate-200 bg-white px-1 py-0 text-[11px] shadow-sm"
-            style={{ left: finalLabelX, top: finalLabelY, color: labelStyle?.fill as string | undefined, zIndex: 8 }}
-          >
-            {displayLabel}
-          </div>
-        </EdgeLabelRenderer>
-      ) : null}
-    </>
-  );
-}
-const flowEdgeTypes = {
-  smartBezier: SmartBezierEdge,
-} as const;
+import { useCanvasImageUpload } from "./useCanvasImageUpload";
+import { handleCanvasNodeClick } from "./canvasNodeClickHandler";
+import {
+  buildDocumentFlowNodes,
+  buildGroupingFlowNodes,
+  buildPrimaryElementFlowNode,
+  buildSecondaryElementFlowNode,
+  buildOrgDirectReportCountByPersonNormalizedId,
+  normalizeElementRef,
+  sortGroupingElementsForRender,
+} from "./canvasFlowNodeBuilder";
+import {
+  PRINT_HEADER_HEIGHT_PX,
+  buildPrintPreviewHtml,
+  cropDataUrl,
+  loadHtml2Canvas,
+  loadHtmlToImage,
+} from "./canvasPrintUtils";
 const canvasElementSelectColumns =
   "id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height,created_at,updated_at";
 const isMethodologyElementType = (elementType: string) =>
   elementType.startsWith("bowtie_") || elementType.startsWith("incident_");
-const PRINT_HEADER_HEIGHT_PX = 82;
-
-type Html2CanvasFn = (element: HTMLElement, options?: Record<string, unknown>) => Promise<HTMLCanvasElement>;
-type HtmlToImageApi = {
-  toPng: (element: HTMLElement, options?: Record<string, unknown>) => Promise<string>;
-};
-
-const escapeHtml = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-
-const loadHtml2Canvas = async (): Promise<Html2CanvasFn> => {
-  if (typeof window === "undefined") throw new Error("Window is unavailable.");
-  const existing = (window as unknown as { html2canvas?: Html2CanvasFn }).html2canvas;
-  if (existing) return existing;
-  await new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Unable to load print renderer."));
-    document.head.appendChild(script);
-  });
-  const loaded = (window as unknown as { html2canvas?: Html2CanvasFn }).html2canvas;
-  if (!loaded) throw new Error("Print renderer is unavailable.");
-  return loaded;
-};
-const loadHtmlToImage = async (): Promise<HtmlToImageApi> => {
-  if (typeof window === "undefined") throw new Error("Window is unavailable.");
-  const existing = (window as unknown as { htmlToImage?: HtmlToImageApi }).htmlToImage;
-  if (existing?.toPng) return existing;
-  await new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Unable to load image export engine."));
-    document.head.appendChild(script);
-  });
-  const loaded = (window as unknown as { htmlToImage?: HtmlToImageApi }).htmlToImage;
-  if (!loaded?.toPng) throw new Error("Image export engine is unavailable.");
-  return loaded;
-};
-const cropDataUrl = async (params: {
-  dataUrl: string;
-  crop: { x: number; y: number; width: number; height: number };
-  sourceWidth: number;
-  sourceHeight: number;
-}) => {
-  const { dataUrl, crop, sourceWidth, sourceHeight } = params;
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Unable to process print image."));
-    image.src = dataUrl;
-  });
-  const scaleX = img.width / Math.max(1, sourceWidth);
-  const scaleY = img.height / Math.max(1, sourceHeight);
-  const srcX = Math.floor(crop.x * scaleX);
-  const srcY = Math.floor(crop.y * scaleY);
-  const srcW = Math.max(1, Math.floor(crop.width * scaleX));
-  const srcH = Math.max(1, Math.floor(crop.height * scaleY));
-  const canvas = document.createElement("canvas");
-  canvas.width = srcW;
-  canvas.height = srcH;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Unable to prepare print crop.");
-  ctx.drawImage(
-    img,
-    srcX,
-    srcY,
-    srcW,
-    srcH,
-    0,
-    0,
-    srcW,
-    srcH
-  );
-  return canvas.toDataURL("image/png");
-};
-
-const buildPrintPreviewHtml = (params: { mapTitle: string; imageDataUrl: string; orientation: "portrait" | "landscape" }) => {
-  const title = escapeHtml(params.mapTitle || "System Map");
-  const image = params.imageDataUrl;
-  const orientation = params.orientation;
-  const pageWidth = orientation === "landscape" ? "297mm" : "210mm";
-  const pageHeight = orientation === "landscape" ? "210mm" : "297mm";
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const logoSrc = `${origin}/images/logo-black.png`;
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Print Preview</title>
-    <style>
-      @page { size: A4 ${orientation}; margin: 12mm; }
-      html, body { margin: 0; padding: 0; background: #f3f4f6; font-family: Arial, sans-serif; }
-      .page {
-        box-sizing: border-box;
-        width: ${pageWidth};
-        height: ${pageHeight};
-        margin: 0 auto;
-        background: #fff;
-        padding: 0;
-      }
-      .header {
-        height: 18mm;
-        background: #fff;
-        color: #111827;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0 10px;
-        border-bottom: 1px solid #d1d5db;
-      }
-      .header img {
-        height: 12mm;
-        width: auto;
-        object-fit: contain;
-      }
-      .header .map-text {
-        color: #60a5fa;
-        font-weight: 700;
-        font-size: 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-      }
-      .header .doc-name {
-        margin-left: auto;
-        font-size: 13px;
-        font-weight: 600;
-        color: #111827;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .content {
-        box-sizing: border-box;
-        height: calc(${pageHeight} - 18mm);
-        padding: 8mm 10mm 10mm 10mm;
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-      }
-      .content img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        border: 1px solid #cbd5e1;
-      }
-      @media print {
-        html, body { background: #fff; }
-        .page { margin: 0; width: auto; height: auto; }
-      }
-    </style>
-  </head>
-  <body>
-    <section class="page">
-      <header class="header">
-        <img src="${logoSrc}" alt="HSES" />
-        <div class="map-text">System Map</div>
-        <div class="doc-name">Document Name: ${title}</div>
-      </header>
-      <div class="content">
-        <img src="${image}" alt="Print Capture" />
-      </div>
-    </section>
-  </body>
-</html>`;
-};
 
 function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -784,13 +545,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [textBoxFontSizeDraft, setTextBoxFontSizeDraft] = useState("24");
   const [bowtieHeadingDraft, setBowtieHeadingDraft] = useState("");
   const [bowtieDraft, setBowtieDraft] = useState<Record<string, string | boolean>>({});
-  const [showImageUploadModal, setShowImageUploadModal] = useState(false);
-  const [imageUploadFile, setImageUploadFile] = useState<File | null>(null);
-  const [imageUploadPreviewUrl, setImageUploadPreviewUrl] = useState<string | null>(null);
-  const [imageUploadWidth, setImageUploadWidth] = useState<number>(imageDefaultWidth);
-  const [imageUploadHeight, setImageUploadHeight] = useState<number>(imageDefaultWidth);
-  const [imageUploadDescription, setImageUploadDescription] = useState("");
-  const [imageUploadSaving, setImageUploadSaving] = useState(false);
   const [imageUrlsByElementId, setImageUrlsByElementId] = useState<Record<string, string>>({});
 
   const [desktopNodeAction, setDesktopNodeAction] = useState<"relationship" | "structure" | "delete" | null>(null);
@@ -1061,10 +815,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     const dimensionChanges = changes.filter((c) => {
       const change = c as { type?: string; id?: string; dimensions?: { width: number; height: number } };
       return change.type === "dimensions" && typeof change.id === "string" && change.id.startsWith("process:") && !!change.dimensions;
-    }) as Array<{ id: string; dimensions: { width: number; height: number } }>;
+    }) as Array<{ id: string; dimensions: { width: number; height: number }; resizing?: boolean }>;
     if (!dimensionChanges.length) return;
 
     const nextSizes = new Map<string, { width: number; height: number }>();
+    const completedResizeIds = new Set<string>();
     dimensionChanges.forEach((change) => {
       const elementId = parseProcessFlowId(change.id);
       const current = elementsById.get(elementId);
@@ -1075,7 +830,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const height = Math.max(processMinHeight, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(processMinWidth, snapToMinorGrid(current.width || processHeadingWidth));
         const currentHeight = Math.max(processMinHeight, snapToMinorGrid(current.height || processHeadingHeight));
-        if (width !== currentWidth || height !== currentHeight) nextSizes.set(elementId, { width, height });
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
         return;
       }
       if (current.element_type === "grouping_container") {
@@ -1083,7 +841,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const height = Math.max(groupingMinHeight, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(groupingMinWidth, snapToMinorGrid(current.width || groupingDefaultWidth));
         const currentHeight = Math.max(groupingMinHeight, snapToMinorGrid(current.height || groupingDefaultHeight));
-        if (width !== currentWidth || height !== currentHeight) nextSizes.set(elementId, { width, height });
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
         return;
       }
       if (current.element_type === "sticky_note") {
@@ -1091,7 +852,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const height = Math.max(stickyMinSize, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(stickyMinSize, snapToMinorGrid(current.width || stickyDefaultSize));
         const currentHeight = Math.max(stickyMinSize, snapToMinorGrid(current.height || stickyDefaultSize));
-        if (width !== currentWidth || height !== currentHeight) nextSizes.set(elementId, { width, height });
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
         return;
       }
       if (current.element_type === "image_asset") {
@@ -1099,7 +863,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const height = Math.max(imageMinHeight, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(imageMinWidth, snapToMinorGrid(current.width || imageDefaultWidth));
         const currentHeight = Math.max(imageMinHeight, snapToMinorGrid(current.height || imageDefaultWidth));
-        if (width !== currentWidth || height !== currentHeight) nextSizes.set(elementId, { width, height });
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
         return;
       }
       if (current.element_type === "text_box") {
@@ -1107,22 +874,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const height = Math.max(textBoxMinHeight, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(textBoxMinWidth, snapToMinorGrid(current.width || textBoxDefaultWidth));
         const currentHeight = Math.max(textBoxMinHeight, snapToMinorGrid(current.height || textBoxDefaultHeight));
-        if (width !== currentWidth || height !== currentHeight) nextSizes.set(elementId, { width, height });
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
       }
     });
     if (!nextSizes.size) return;
-
-    setElements((prev) =>
-      prev.map((el) =>
-        nextSizes.has(el.id)
-          ? {
-              ...el,
-              width: nextSizes.get(el.id)!.width,
-              height: nextSizes.get(el.id)!.height,
-            }
-          : el
-      )
-    );
 
     nextSizes.forEach((size, elementId) => {
       resizePersistValuesRef.current.set(elementId, size);
@@ -1131,6 +889,22 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       const timer = setTimeout(async () => {
         const queued = resizePersistValuesRef.current.get(elementId);
         if (!queued) return;
+        setElements((prev) => {
+          let changed = false;
+          const next = prev.map((el) => {
+            if (el.id !== elementId) return el;
+            const nextWidth = queued.width;
+            const nextHeight = queued.height;
+            if ((el.width ?? 0) === nextWidth && (el.height ?? 0) === nextHeight) return el;
+            changed = true;
+            return {
+              ...el,
+              width: nextWidth,
+              height: nextHeight,
+            };
+          });
+          return changed ? next : prev;
+        });
         const { error: e } = await supabaseBrowser
           .schema("ms")
           .from("canvas_elements")
@@ -1139,7 +913,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           .eq("map_id", mapId);
         if (e && !isAbortLikeError(e)) setError(e.message || "Unable to save component size.");
         resizePersistTimersRef.current.delete(elementId);
-      }, 220);
+      }, completedResizeIds.has(elementId) ? 0 : 220);
       resizePersistTimersRef.current.set(elementId, timer);
     });
   }, [onFlowNodesChange, elementsById, mapId, snapToMinorGrid, canEditElement]);
@@ -1154,1166 +928,56 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
-    const personElements = elements.filter((el) => el.element_type === "person");
-    const normalizeRef = (value: string | null | undefined) => {
-      if (!value) return "";
-      const trimmed = value.replace(/^process:/i, "").trim().toLowerCase();
-      const uuidMatch = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
-      return uuidMatch ? uuidMatch[0].toLowerCase() : trimmed;
-    };
-    const normalizeFlowRef = (value: string | null | undefined) => {
-      if (!value) return "";
-      const trimmed = value.trim();
-      if (/^process:/i.test(trimmed)) {
-        return `process:${normalizeRef(trimmed)}`;
-      }
-      const uuid = normalizeRef(trimmed);
-      return uuid ? `process:${uuid}` : "";
-    };
-    const personElementIdByNormalizedId = new Map(personElements.map((el) => [normalizeRef(el.id), el.id] as const));
-    const personElementByNormalizedId = new Map(personElements.map((el) => [normalizeRef(el.id), el] as const));
-    const personElementIdByNormalizedFlowId = new Map(
-      personElements.map((el) => [normalizeFlowRef(processFlowId(el.id)), el.id] as const)
-    );
-    const directReportIdsByLeaderNormalizedId = new Map<string, Set<string>>();
-    relations.forEach((rel) => {
-      const relationType = String(rel.relation_type || "").trim().toLowerCase();
-      const relationCategory = String(rel.relationship_category || "").trim().toLowerCase();
-      if (mapCategoryId !== "org_chart" && relationType !== "reports_to" && relationCategory !== "reports_to") return;
-      const sourceCandidates = [
-        rel.source_system_element_id,
-        rel.source_system_element_id ? parseProcessFlowId(rel.source_system_element_id) : null,
-        rel.source_system_element_id ? processFlowId(parseProcessFlowId(rel.source_system_element_id)) : null,
-        rel.from_node_id ? parseProcessFlowId(rel.from_node_id) : null,
-        rel.from_node_id || null,
-      ].filter((id): id is string => Boolean(id));
-      const targetCandidates = [
-        rel.target_system_element_id,
-        rel.target_system_element_id ? parseProcessFlowId(rel.target_system_element_id) : null,
-        rel.target_system_element_id ? processFlowId(parseProcessFlowId(rel.target_system_element_id)) : null,
-        rel.to_node_id ? parseProcessFlowId(rel.to_node_id) : null,
-        rel.to_node_id || null,
-      ].filter((id): id is string => Boolean(id));
-      const sourcePersonNormalizedId =
-        sourceCandidates.map((id) => normalizeRef(id)).find((id) => personElementIdByNormalizedId.has(id)) ?? "";
-      const targetPersonNormalizedId =
-        targetCandidates.map((id) => normalizeRef(id)).find((id) => personElementIdByNormalizedId.has(id)) ?? "";
-      const sourcePersonIdFromFlow =
-        sourceCandidates
-          .map((id) => normalizeFlowRef(id))
-          .map((id) => personElementIdByNormalizedFlowId.get(id) ?? null)
-          .find((id): id is string => Boolean(id)) ?? null;
-      const targetPersonIdFromFlow =
-        targetCandidates
-          .map((id) => normalizeFlowRef(id))
-          .map((id) => personElementIdByNormalizedFlowId.get(id) ?? null)
-          .find((id): id is string => Boolean(id)) ?? null;
-      const resolvedSourcePersonNormalizedId = sourcePersonNormalizedId || (sourcePersonIdFromFlow ? normalizeRef(sourcePersonIdFromFlow) : "");
-      const resolvedTargetPersonNormalizedId = targetPersonNormalizedId || (targetPersonIdFromFlow ? normalizeRef(targetPersonIdFromFlow) : "");
-      let managerNormalizedId = "";
-      let reportNormalizedId = "";
-      if (resolvedSourcePersonNormalizedId && resolvedTargetPersonNormalizedId) {
-        const sourcePerson = personElementByNormalizedId.get(resolvedSourcePersonNormalizedId);
-        const targetPerson = personElementByNormalizedId.get(resolvedTargetPersonNormalizedId);
-        if (sourcePerson && targetPerson) {
-          if (sourcePerson.pos_y <= targetPerson.pos_y) {
-            managerNormalizedId = resolvedSourcePersonNormalizedId;
-            reportNormalizedId = resolvedTargetPersonNormalizedId;
-          } else {
-            managerNormalizedId = resolvedTargetPersonNormalizedId;
-            reportNormalizedId = resolvedSourcePersonNormalizedId;
-          }
-        }
-      }
-      if (!managerNormalizedId || !reportNormalizedId) {
-        const allRelationRefs = [
-          rel.source_system_element_id,
-          rel.target_system_element_id,
-          rel.from_node_id,
-          rel.to_node_id,
-          rel.source_grouping_element_id,
-          rel.target_grouping_element_id,
-        ]
-          .map((id) => normalizeRef(id ? String(id) : ""))
-          .filter(Boolean);
-        const uniquePersonNormalizedIds = Array.from(
-          new Set(
-            allRelationRefs.filter((id) => personElementIdByNormalizedId.has(id))
-          )
-        );
-        if (uniquePersonNormalizedIds.length >= 2) {
-          const ranked = uniquePersonNormalizedIds
-            .map((id) => ({ id, person: personElementByNormalizedId.get(id) }))
-            .filter((entry): entry is { id: string; person: CanvasElementRow } => Boolean(entry.person))
-            .sort((a, b) => a.person.pos_y - b.person.pos_y);
-          if (ranked.length >= 2) {
-            managerNormalizedId = ranked[0].id;
-            reportNormalizedId = ranked[ranked.length - 1].id;
-          }
-        }
-      }
-      if (!managerNormalizedId || !reportNormalizedId || managerNormalizedId === reportNormalizedId) return;
-      const existing = directReportIdsByLeaderNormalizedId.get(managerNormalizedId) ?? new Set<string>();
-      existing.add(reportNormalizedId);
-      directReportIdsByLeaderNormalizedId.set(managerNormalizedId, existing);
+    const directReportCountByPersonNormalizedId = buildOrgDirectReportCountByPersonNormalizedId({
+      elements,
+      relations,
+      mapCategoryId,
     });
-    const directReportCountByPersonNormalizedId = new Map<string, number>();
-    directReportIdsByLeaderNormalizedId.forEach((reportIds, leaderNormalizedId) => {
-      directReportCountByPersonNormalizedId.set(leaderNormalizedId, reportIds.size);
+    const groupingElements = sortGroupingElementsForRender({
+      elements,
+      minWidth: groupingMinWidth,
+      minHeight: groupingMinHeight,
+      defaultWidth: groupingDefaultWidth,
+      defaultHeight: groupingDefaultHeight,
     });
-    const groupingElements = elements
-      .filter((el) => el.element_type === "grouping_container")
-      .sort((a, b) => {
-        const areaA = Math.max(groupingMinWidth, a.width || groupingDefaultWidth) * Math.max(groupingMinHeight, a.height || groupingDefaultHeight);
-        const areaB = Math.max(groupingMinWidth, b.width || groupingDefaultWidth) * Math.max(groupingMinHeight, b.height || groupingDefaultHeight);
-        if (areaA !== areaB) return areaB - areaA;
-        const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return createdA - createdB;
-      });
     const nextNodes: Node<FlowData>[] = [
-        ...groupingElements.map((el) => {
-            const flowId = processFlowId(el.id);
-            const isMarked = selectedFlowIds.has(flowId);
-            const canEditThis = canEditElement(el);
-            return {
-              id: flowId,
-              type: "groupingContainer",
-              position: { x: el.pos_x, y: el.pos_y },
-              zIndex: 1,
-              selected: isMarked,
-              draggable: canEditThis,
-              selectable: canWriteMap,
-              className: "pointer-events-none",
-              style: {
-                width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
-                height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
-                borderRadius: 0,
-                border: "none",
-                background: "transparent",
-                boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                padding: 0,
-                overflow: "visible",
-              },
-              dragHandle: ".grouping-drag-handle",
-              data: {
-                entityKind: "grouping_container" as const,
-                typeName: "Grouping Container",
-                title: el.heading ?? "Group label",
-                userGroup: "",
-                disciplineKeys: [],
-                bannerBg: "#ffffff",
-                bannerText: "#111827",
-                isLandscape: true,
-                isUnconfigured: false,
-              },
-            };
-          }),
-        ...nodes.map((n) => {
-          const rawTypeName = typesById.get(n.type_id)?.name ?? "Document";
-          const isLandscape = isLandscapeTypeName(rawTypeName);
-          const { width, height } = getNodeSize(n);
-          const typeName = getDisplayTypeName(rawTypeName);
-          const banner = getTypeBannerStyle(typeName);
-          const isMarked = selectedFlowIds.has(n.id);
-          return {
-            id: n.id,
-            type: "documentTile",
-            position: { x: n.pos_x, y: n.pos_y },
-            zIndex: 20,
-            selected: isMarked,
-            draggable: canWriteMap,
-            selectable: canWriteMap,
-            style: {
-              width,
-              height,
-              borderRadius: 0,
-              border: "none",
-              background: "transparent",
-              boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-              padding: 0,
-              overflow: "hidden",
-            },
-            data: {
-              entityKind: "document" as const,
-              typeName,
-              title: n.title ?? "",
-              documentNumber: n.document_number ?? "",
-              userGroup: n.user_group ?? "",
-              disciplineKeys: parseDisciplines(n.discipline),
-              bannerBg: banner.bg,
-              bannerText: banner.text,
-              isLandscape,
-              isUnconfigured: (n.title ?? "").trim().toLowerCase() === unconfiguredDocumentTitle.toLowerCase(),
-            },
-          };
+        ...buildGroupingFlowNodes({
+          groupingElements,
+          selectedFlowIds,
+          canWriteMap,
+          canEditElement,
         }),
-        ...elements.map((el) =>
-          el.element_type === "grouping_container"
-            ? null
-            : el.element_type === "sticky_note"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "stickyNote",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 60,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canEditThis,
-                  style: {
-                    width: Math.max(stickyMinSize, el.width || stickyDefaultSize),
-                    height: Math.max(stickyMinSize, el.height || stickyDefaultSize),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "sticky_note" as const,
-                    typeName: "Sticky Note",
-                    title: el.heading ?? "Enter Text",
-                    canEdit: canEditThis,
-                    creatorName:
-                      (el.created_by_user_id ? memberDisplayNameByUserId.get(el.created_by_user_id) : null) ||
-                      (el.created_by_user_id === userId ? userEmail : null) ||
-                      "User",
-                    createdAtLabel: formatStickyDate(el.created_at),
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#fef08a",
-                    bannerText: "#000000",
-                    isLandscape: false,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "image_asset"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
-                return {
-                  id: flowId,
-                  type: "imageAsset",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 45,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(imageMinWidth, el.width || imageDefaultWidth),
-                    height: Math.max(imageMinHeight, el.height || imageDefaultWidth),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "image_asset" as const,
-                    typeName: "Image",
-                    title: String(cfg.description ?? el.heading ?? "Image"),
-                    imageUrl: imageUrlsByElementId[el.id],
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#ffffff",
-                    bannerText: "#111827",
-                    isLandscape: false,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "text_box"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
-                const alignRaw = String(cfg.align ?? "left");
-                return {
-                  id: flowId,
-                  type: "textBox",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 55,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(textBoxMinWidth, el.width || textBoxDefaultWidth),
-                    height: Math.max(textBoxMinHeight, el.height || textBoxDefaultHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "text_box" as const,
-                    typeName: "Text",
-                    title: el.heading ?? "Click to edit text box",
-                    textStyle: {
-                      bold: Boolean(cfg.bold),
-                      italic: Boolean(cfg.italic),
-                      underline: Boolean(cfg.underline),
-                      align: alignRaw === "center" || alignRaw === "right" ? alignRaw : "left",
-                      fontSize: Math.max(16, Math.min(168, Number(cfg.font_size ?? 16))),
-                    },
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#ffffff",
-                    bannerText: "#111827",
-                    isLandscape: false,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "process_component"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                id: flowId,
-                type: "processComponent",
-                position: { x: el.pos_x, y: el.pos_y },
-                zIndex: 30,
-                selected: isMarked,
-                draggable: canEditThis,
-                selectable: canWriteMap,
-                style: {
-                  width: processComponentWidth,
-                  height: processComponentElementHeight,
-                  borderRadius: 0,
-                  border: "none",
-                  background: "transparent",
-                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                  padding: 0,
-                  overflow: "visible",
-                },
-                data: {
-                  entityKind: "process_component" as const,
-                  typeName: "Process",
-                  title: el.heading ?? "Process",
-                  userGroup: "",
-                  disciplineKeys: [],
-                  bannerBg: "#8ca8d6",
-                  bannerText: "#ffffff",
-                  isLandscape: true,
-                  isUnconfigured: false,
-                },
-              };
-            })()
-            : el.element_type === "person"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                const personWidth = mapCategoryId === "org_chart" ? orgChartPersonWidth : personElementWidth;
-                const personHeight = mapCategoryId === "org_chart" ? orgChartPersonHeight : personElementHeight;
-                const orgConfig = mapCategoryId === "org_chart" ? parseOrgChartPersonConfig(el.element_config) : null;
-                const actingName = orgConfig?.acting_name || "";
-                const occupantName = orgConfig?.occupant_name || "";
-                const hasActing = actingName.length > 0;
-                const displayName = hasActing ? `${actingName} (A)` : occupantName || "VACANT";
-                const positionTitle = orgConfig?.position_title || "Position Title";
-                const positionId = orgConfig?.role_id ? ` (${orgConfig.role_id})` : "";
-                const positionLine = `${positionTitle}${positionId}`;
-                const roleTypeLabel = orgConfig?.employment_type === "contractor" ? "Contractor" : "Employee";
-                const resolvedDirectReportCount = (() => {
-                  const candidates = [
-                    directReportCountByPersonNormalizedId.get(normalizeRef(el.id)),
-                    orgDirectReportCountByPersonId.get(el.id),
-                    orgConfig?.direct_report_count,
-                  ];
-                  const valid = candidates
-                    .map((value) => Number(value))
-                    .filter((value) => Number.isFinite(value))
-                    .map((value) => Math.max(0, Math.floor(value)));
-                  return valid.length ? Math.max(...valid) : 0;
-                })();
-                const status = orgConfig?.proposed_role
-                  ? { label: "Proposed", bg: "#7c3aed", text: "#ffffff" }
-                  : hasActing
-                  ? { label: "Acting", bg: "#f59e0b", text: "#111827" }
-                  : orgConfig?.recruiting
-                  ? { label: "Hiring", bg: "#2563eb", text: "#ffffff" }
-                  : null;
-                return {
-                id: flowId,
-                type: "personNode",
-                position: { x: el.pos_x, y: el.pos_y },
-                zIndex: 30,
-                selected: isMarked,
-                draggable: canEditThis,
-                selectable: canWriteMap,
-                style: {
-                  width: personWidth,
-                  height: personHeight,
-                  borderRadius: 0,
-                  border: "none",
-                  background: "transparent",
-                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                  padding: 0,
-                  overflow: "visible",
-                },
-                data: {
-                  entityKind: "person" as const,
-                  typeName: "Person",
-                  title: orgConfig ? displayName : el.heading ?? buildPersonHeading("Role Name", "Department"),
-                  userGroup: "",
-                  disciplineKeys: [],
-                  bannerBg: "#ffffff",
-                  bannerText: "#111827",
-                  isLandscape: true,
-                  isUnconfigured: false,
-                  orgChartPerson: orgConfig
-                    ? {
-                        displayName,
-                        positionLine,
-                        avatarSrc: "/icons/account.svg",
-                        roleTypeLabel,
-                        statusLabel: status?.label ?? null,
-                        statusBg: status?.bg ?? null,
-                        statusText: status?.text ?? null,
-                        directReportCount: resolvedDirectReportCount,
-                      }
-                    : undefined,
-                },
-              };
-            })()
-            : el.element_type === "system_circle"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                id: flowId,
-                type: "systemCircle",
-                position: { x: el.pos_x, y: el.pos_y },
-                zIndex: 30,
-                selected: isMarked,
-                draggable: canEditThis,
-                selectable: canWriteMap,
-                style: {
-                  width: systemCircleDiameter,
-                  height: systemCircleElementHeight,
-                  borderRadius: 0,
-                  border: "none",
-                  background: "transparent",
-                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                  padding: 0,
-                  overflow: "visible",
-                },
-                data: {
-                  entityKind: "system_circle" as const,
-                  typeName: "System",
-                  title: el.heading ?? "System Name",
-                  userGroup: "",
-                  disciplineKeys: [],
-                  bannerBg: "#1e3a8a",
-                  bannerText: "#ffffff",
-                  isLandscape: true,
-                  isUnconfigured: false,
-                },
-              };
-            })()
-            : el.element_type === "bowtie_hazard"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieHazard",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieHazardHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_hazard" as const,
-                    typeName: "Hazard",
-                    title: el.heading ?? "Hazard",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#374151",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_top_event"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieTopEvent",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_top_event" as const,
-                    typeName: "Top Event",
-                    title: el.heading ?? "Top Event",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#dc2626",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_threat"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieThreat",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_threat" as const,
-                    typeName: "Threat",
-                    title: el.heading ?? "Threat",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#f97316",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_consequence"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieConsequence",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_consequence" as const,
-                    typeName: "Consequence",
-                    title: el.heading ?? "Consequence",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#9333ea",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_control"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                const controlCategory = String((el.element_config as { control_category?: string } | null)?.control_category || "preventive");
-                const isCritical = Boolean((el.element_config as { is_critical_control?: boolean } | null)?.is_critical_control);
-                return {
-                  id: flowId,
-                  type: "bowtieControl",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieControlHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_control" as const,
-                    typeName: controlCategory.charAt(0).toUpperCase() + controlCategory.slice(1),
-                    title: el.heading ?? "Control",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#ffffff",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                    isCritical,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_escalation_factor"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieEscalationFactor",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_escalation_factor" as const,
-                    typeName: "Escalation Factor",
-                    title: el.heading ?? "Escalation Factor",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#facc15",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_recovery_measure"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieRecoveryMeasure",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieHazardHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_recovery_measure" as const,
-                    typeName: "Recovery Measure",
-                    title: el.heading ?? "Recovery Measure",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#22c55e",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_degradation_indicator"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieDegradationIndicator",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_degradation_indicator" as const,
-                    typeName: "Degradation Indicator",
-                    title: el.heading ?? "Degradation Indicator",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#f472b6",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "bowtie_risk_rating"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "bowtieRiskRating",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-                    height: Math.max(minorGridSize, el.height || bowtieRiskRatingHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "bowtie_risk_rating" as const,
-                    typeName: "Risk Rating",
-                    title: el.heading ?? "Risk Level: Medium",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#111827",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_sequence_step"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentSequenceStep",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_sequence_step" as const,
-                    typeName: "Sequence Step",
-                    title: el.heading ?? "Sequence Step",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#bfdbfe",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_outcome"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentOutcome",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_outcome" as const,
-                    typeName: "Outcome",
-                    title: el.heading ?? "Outcome",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#ef4444",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_task_condition"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentTaskCondition",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_task_condition" as const,
-                    typeName: "Task / Condition",
-                    title: el.heading ?? "Task / Condition",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#fb923c",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_factor"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentFactor",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentSquareSize),
-                    height: Math.max(minorGridSize * 2, el.height || incidentSquareSize),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_factor" as const,
-                    typeName: "Factor",
-                    title: el.heading ?? "Factor",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#fde047",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_system_factor"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentSystemFactor",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentSquareSize),
-                    height: Math.max(minorGridSize * 2, el.height || incidentSquareSize),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_system_factor" as const,
-                    typeName: "System Factor",
-                    title: el.heading ?? "System Factor",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#a78bfa",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_control_barrier"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentControlBarrier",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || incidentFourThreeHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_control_barrier" as const,
-                    typeName: "Control / Barrier",
-                    title: el.heading ?? "Control / Barrier",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#4ade80",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_evidence"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentEvidence",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_evidence" as const,
-                    typeName: "Evidence",
-                    title: el.heading ?? "Evidence",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#cbd5e1",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_finding"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentFinding",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-                    height: Math.max(minorGridSize, el.height || incidentThreeOneHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_finding" as const,
-                    typeName: "Finding",
-                    title: el.heading ?? "Finding",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#1d4ed8",
-                    bannerText: "#ffffff",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : el.element_type === "incident_recommendation"
-            ? (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                  id: flowId,
-                  type: "incidentRecommendation",
-                  position: { x: el.pos_x, y: el.pos_y },
-                  zIndex: 30,
-                  selected: isMarked,
-                  draggable: canEditThis,
-                  selectable: canWriteMap,
-                  style: {
-                    width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-                    height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
-                    borderRadius: 0,
-                    border: "none",
-                    background: "transparent",
-                    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                    padding: 0,
-                    overflow: "visible",
-                  },
-                  data: {
-                    entityKind: "incident_recommendation" as const,
-                    typeName: "Recommendation",
-                    title: el.heading ?? "Recommendation",
-                    userGroup: "",
-                    disciplineKeys: [],
-                    bannerBg: "#14b8a6",
-                    bannerText: "#111827",
-                    isLandscape: true,
-                    isUnconfigured: false,
-                  },
-                };
-              })()
-            : (() => {
-                const flowId = processFlowId(el.id);
-                const isMarked = selectedFlowIds.has(flowId);
-                const canEditThis = canEditElement(el);
-                return {
-                id: flowId,
-                type: "processHeading",
-                position: { x: el.pos_x, y: el.pos_y },
-                zIndex: 30,
-                selected: isMarked,
-                draggable: canEditThis,
-                selectable: canWriteMap,
-                style: {
-                  width: Math.max(processMinWidth, el.width || processHeadingWidth),
-                  height: el.height || processHeadingHeight,
-                  borderRadius: 0,
-                  border: "none",
-                  background: "transparent",
-                  boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-                  padding: 0,
-                  overflow: "hidden",
-                },
-                data: {
-                  entityKind: "category" as const,
-                  typeName: "Category",
-                  title: el.heading ?? "New Category",
-                  categoryColor: el.color_hex ?? defaultCategoryColor,
-                  userGroup: "",
-                  disciplineKeys: [],
-                  bannerBg: "#000000",
-                  bannerText: "#ffffff",
-                  isLandscape: true,
-                  isUnconfigured: false,
-                },
-              };
-            })()
-        ).filter(Boolean) as Node<FlowData>[],
+        ...buildDocumentFlowNodes({
+          nodes,
+          typesById,
+          selectedFlowIds,
+          canWriteMap,
+          getNodeSize,
+          unconfiguredDocumentTitle,
+        }),
+        ...elements.map((el) => {
+          const primaryElementNode = buildPrimaryElementFlowNode({
+            element: el,
+            selectedFlowIds,
+            canEditElement,
+            canWriteMap,
+            mapCategoryId,
+            userId,
+            userEmail,
+            memberDisplayNameByUserId,
+            formatStickyDate,
+            imageUrlsByElementId,
+            directReportCountByPersonNormalizedId,
+            orgDirectReportCountByPersonId,
+          });
+          if (primaryElementNode !== undefined) return primaryElementNode;
+          return buildSecondaryElementFlowNode({
+            element: el,
+            selectedFlowIds,
+            canEditElement,
+            canWriteMap,
+          });
+        }).filter(Boolean) as Node<FlowData>[],
       ];
     setFlowNodes(nextNodes);
   }, [nodes, elements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, canWriteMap, canEditElement, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive]);
@@ -2363,505 +1027,17 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [hoveredNodeId, hoveredEdgeId, relations, setFlowNodes, isNodeDragActive]);
 
   const flowEdgesBase = useMemo<Edge[]>(
-    () => {
-      const pairTotals = new Map<string, number>();
-      const pairSeen = new Map<string, number>();
-      const nodesById = new Map(nodes.map((n) => [n.id, n]));
-      const relationshipElementsById = new Map(
-        elements
-          .filter((el) => el.element_type !== "sticky_note")
-          .map((el) => [el.id, el])
-      );
-      const getElementDimensions = (el: CanvasElementRow) => {
-        if (el.element_type === "system_circle") return { width: systemCircleDiameter, height: systemCircleElementHeight };
-        if (el.element_type === "process_component") return { width: processComponentWidth, height: processComponentElementHeight };
-        if (el.element_type === "person") {
-          if (mapCategoryId === "org_chart") {
-            return {
-              width: orgChartPersonWidth,
-              height: orgChartPersonHeight,
-            };
-          }
-          return { width: personElementWidth, height: personElementHeight };
-        }
-        if (el.element_type === "image_asset") return { width: Math.max(imageMinWidth, el.width || imageDefaultWidth), height: Math.max(imageMinHeight, el.height || imageDefaultWidth) };
-        if (el.element_type === "text_box") return { width: Math.max(textBoxMinWidth, el.width || textBoxDefaultWidth), height: Math.max(textBoxMinHeight, el.height || textBoxDefaultHeight) };
-        if (el.element_type === "grouping_container") {
-          return {
-            width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
-            height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
-          };
-        }
-        if (isMethodologyElementType(el.element_type)) {
-          return {
-            width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-            height: Math.max(minorGridSize, el.height || incidentSquareSize),
-          };
-        }
-        return { width: Math.max(processMinWidth, el.width || processHeadingWidth), height: Math.max(processMinHeight, el.height || processHeadingHeight) };
-      };
-      const relationEndpointKey = (r: NodeRelationRow) => {
-        if (r.source_grouping_element_id && r.target_grouping_element_id) {
-          const a = processFlowId(r.source_grouping_element_id);
-          const b = processFlowId(r.target_grouping_element_id);
-          return a < b ? `group:${a}|${b}` : `group:${b}|${a}`;
-        }
-        if (r.from_node_id && r.to_node_id) {
-          const a = r.from_node_id;
-          const b = r.to_node_id;
-          return a < b ? `doc:${a}|${b}` : `doc:${b}|${a}`;
-        }
-        if (r.from_node_id && r.target_system_element_id) {
-          const a = r.from_node_id;
-          const b = processFlowId(r.target_system_element_id);
-          return a < b ? `docsys:${a}|${b}` : `docsys:${b}|${a}`;
-        }
-        if (r.source_system_element_id && r.to_node_id) {
-          const a = processFlowId(r.source_system_element_id);
-          const b = r.to_node_id;
-          return a < b ? `sysdoc:${a}|${b}` : `sysdoc:${b}|${a}`;
-        }
-        if (r.source_system_element_id && r.target_system_element_id) {
-          const a = processFlowId(r.source_system_element_id);
-          const b = processFlowId(r.target_system_element_id);
-          return a < b ? `syssys:${a}|${b}` : `syssys:${b}|${a}`;
-        }
-        return `rel:${r.id}`;
-      };
-      relations.forEach((r) => {
-        const key = relationEndpointKey(r);
-        pairTotals.set(key, (pairTotals.get(key) ?? 0) + 1);
-      });
-      const obstacleElementRects = elements
-        .filter((el) => el.element_type !== "grouping_container" && el.element_type !== "sticky_note")
-        .map((el) => {
-          const dims = getElementDimensions(el);
-          return { id: el.id, x: el.pos_x, y: el.pos_y, width: dims.width, height: dims.height };
-        });
-      const labelObstacleRects: Rect[] = [
-        ...nodes.map((n) => {
-          const size = getNodeSize(n);
-          return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
-        }),
-        ...obstacleElementRects.map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
-      ];
-      return relations.map((r) => {
-        const sourceDoc = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
-        const sourceElement = r.source_system_element_id ? relationshipElementsById.get(r.source_system_element_id) : undefined;
-        const targetDoc = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
-        const targetElement = r.target_system_element_id ? relationshipElementsById.get(r.target_system_element_id) : undefined;
-        const sourceGrouping = r.source_grouping_element_id ? relationshipElementsById.get(r.source_grouping_element_id) : undefined;
-        const targetGrouping = r.target_grouping_element_id ? relationshipElementsById.get(r.target_grouping_element_id) : undefined;
-        if (!sourceDoc && !sourceElement && !(sourceGrouping && targetGrouping)) return null;
-        if ((sourceDoc || sourceElement) && !targetDoc && !targetElement) return null;
-        const from = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
-        const to = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
-        let source = from ? from.id : "";
-        let target = to ? to.id : "";
-        let sourceHandle = "bottom";
-        let targetHandle = "top";
-
-        if (sourceGrouping && targetGrouping) {
-          source = processFlowId(sourceGrouping.id);
-          target = processFlowId(targetGrouping.id);
-          const sourceDims = getElementDimensions(sourceGrouping);
-          const targetDims = getElementDimensions(targetGrouping);
-          const sourceWidth = sourceDims.width;
-          const sourceHeight = sourceDims.height;
-          const targetWidth = targetDims.width;
-          const targetHeight = targetDims.height;
-          const fromCenterX = sourceGrouping.pos_x + sourceWidth / 2;
-          const fromCenterY = sourceGrouping.pos_y + sourceHeight / 2;
-          const toCenterX = targetGrouping.pos_x + targetWidth / 2;
-          const toCenterY = targetGrouping.pos_y + targetHeight / 2;
-          const dx = toCenterX - fromCenterX;
-          const dy = toCenterY - fromCenterY;
-          if (Math.abs(dx) > Math.abs(dy)) {
-            sourceHandle = dx > 0 ? "right" : "left";
-            targetHandle = dx > 0 ? "left-target" : "right-target";
-          } else {
-            sourceHandle = dy > 0 ? "bottom" : "top-source";
-            targetHandle = dy > 0 ? "top" : "bottom-target";
-          }
-        }
-
-        if (from && to) {
-          const getAnchors = (node: DocumentNodeRow) => {
-            const { width, height } = getNodeSize(node);
-            const left = node.pos_x;
-            const top = node.pos_y;
-            return {
-              top: { x: left + width / 2, y: top },
-              bottom: { x: left + width / 2, y: top + height },
-              left: { x: left, y: top + height / 2 },
-              right: { x: left + width, y: top + height / 2 },
-            };
-          };
-          const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top-source",
-            bottom: "bottom",
-            left: "left",
-            right: "right",
-          };
-          const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top",
-            bottom: "bottom-target",
-            left: "left-target",
-            right: "right-target",
-          };
-          const blockingRects = [
-            ...nodes
-            .filter((n) => n.id !== from.id && n.id !== to.id)
-            .map((n) => {
-              const size = getNodeSize(n);
-              return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
-            }),
-            ...obstacleElementRects.map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
-          ];
-          const pickClosest = (srcNode: DocumentNodeRow, dstNode: DocumentNodeRow) => {
-            const srcAnchors = getAnchors(srcNode);
-            const dstAnchors = getAnchors(dstNode);
-            const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
-            let best: { sourceHandle: string; targetHandle: string; score: number; dist2: number } | null = null;
-            for (const srcSide of sides) {
-              for (const dstSide of sides) {
-                const srcAnchor = srcAnchors[srcSide];
-                const dstAnchor = dstAnchors[dstSide];
-                const dx = srcAnchor.x - dstAnchor.x;
-                const dy = srcAnchor.y - dstAnchor.y;
-                const dist2 = dx * dx + dy * dy;
-                const crossesOtherNode = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
-                const score = dist2 + (crossesOtherNode ? 1_000_000_000 : 0);
-                if (!best || score < best.score) {
-                  best = {
-                    sourceHandle: sourceSideToHandle[srcSide],
-                    targetHandle: targetSideToHandle[dstSide],
-                    score,
-                    dist2,
-                  };
-                }
-              }
-            }
-            return best!;
-          };
-
-          const forward = pickClosest(from, to);
-          const reverse = pickClosest(to, from);
-          if (reverse.dist2 < forward.dist2) {
-            source = to.id;
-            target = from.id;
-            sourceHandle = reverse.sourceHandle;
-            targetHandle = reverse.targetHandle;
-          } else {
-            source = from.id;
-            target = to.id;
-            sourceHandle = forward.sourceHandle;
-            targetHandle = forward.targetHandle;
-          }
-        }
-        if (from && targetElement) {
-          target = processFlowId(targetElement.id);
-          const fromSize = getNodeSize(from);
-          const fromLeft = from.pos_x;
-          const fromTop = from.pos_y;
-          const toLeft = targetElement.pos_x;
-          const toTop = targetElement.pos_y;
-          const targetSize = getElementDimensions(targetElement);
-          const fromAnchors = {
-            top: { x: fromLeft + fromSize.width / 2, y: fromTop },
-            bottom: { x: fromLeft + fromSize.width / 2, y: fromTop + fromSize.height },
-            left: { x: fromLeft, y: fromTop + fromSize.height / 2 },
-            right: { x: fromLeft + fromSize.width, y: fromTop + fromSize.height / 2 },
-          };
-          const toAnchors = {
-            top: { x: toLeft + targetSize.width / 2, y: toTop },
-            bottom: { x: toLeft + targetSize.width / 2, y: toTop + targetSize.height },
-            left: { x: toLeft, y: toTop + targetSize.height / 2 },
-            right: { x: toLeft + targetSize.width, y: toTop + targetSize.height / 2 },
-          };
-          const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top-source",
-            bottom: "bottom",
-            left: "left",
-            right: "right",
-          };
-          const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top",
-            bottom: "bottom-target",
-            left: "left-target",
-            right: "right-target",
-          };
-          const blockingRects = [
-            ...nodes
-              .filter((n) => n.id !== from.id)
-              .map((n) => {
-                const size = getNodeSize(n);
-                return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
-              }),
-            ...obstacleElementRects
-              .filter((rect) => rect.id !== targetElement.id)
-              .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
-          ];
-          const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
-          let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
-          for (const srcSide of sides) {
-            for (const dstSide of sides) {
-              const srcAnchor = fromAnchors[srcSide];
-              const dstAnchor = toAnchors[dstSide];
-              const dx = srcAnchor.x - dstAnchor.x;
-              const dy = srcAnchor.y - dstAnchor.y;
-              const dist2 = dx * dx + dy * dy;
-              const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
-              const score = dist2 + (crosses ? 1_000_000_000 : 0);
-              if (!best || score < best.score) {
-                best = {
-                  sourceHandle: sourceSideToHandle[srcSide],
-                  targetHandle: targetSideToHandle[dstSide],
-                  score,
-                };
-              }
-            }
-          }
-          if (best) {
-            sourceHandle = best.sourceHandle;
-            targetHandle = best.targetHandle;
-          }
-        }
-        if (sourceElement && targetDoc) {
-          source = processFlowId(sourceElement.id);
-          target = targetDoc.id;
-          const sourceSize = getElementDimensions(sourceElement);
-          const targetSize = getNodeSize(targetDoc);
-          const sourceAnchors = {
-            top: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y },
-            bottom: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y + sourceSize.height },
-            left: { x: sourceElement.pos_x, y: sourceElement.pos_y + sourceSize.height / 2 },
-            right: { x: sourceElement.pos_x + sourceSize.width, y: sourceElement.pos_y + sourceSize.height / 2 },
-          };
-          const targetAnchors = {
-            top: { x: targetDoc.pos_x + targetSize.width / 2, y: targetDoc.pos_y },
-            bottom: { x: targetDoc.pos_x + targetSize.width / 2, y: targetDoc.pos_y + targetSize.height },
-            left: { x: targetDoc.pos_x, y: targetDoc.pos_y + targetSize.height / 2 },
-            right: { x: targetDoc.pos_x + targetSize.width, y: targetDoc.pos_y + targetSize.height / 2 },
-          };
-          const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top-source",
-            bottom: "bottom",
-            left: "left",
-            right: "right",
-          };
-          const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top",
-            bottom: "bottom-target",
-            left: "left-target",
-            right: "right-target",
-          };
-          const blockingRects = [
-            ...nodes
-              .filter((n) => n.id !== targetDoc.id)
-              .map((n) => {
-                const size = getNodeSize(n);
-                return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
-              }),
-            ...obstacleElementRects
-              .filter((rect) => rect.id !== sourceElement.id)
-              .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
-          ];
-          const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
-          let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
-          for (const srcSide of sides) {
-            for (const dstSide of sides) {
-              const srcAnchor = sourceAnchors[srcSide];
-              const dstAnchor = targetAnchors[dstSide];
-              const dx = srcAnchor.x - dstAnchor.x;
-              const dy = srcAnchor.y - dstAnchor.y;
-              const dist2 = dx * dx + dy * dy;
-              const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
-              const score = dist2 + (crosses ? 1_000_000_000 : 0);
-              if (!best || score < best.score) {
-                best = {
-                  sourceHandle: sourceSideToHandle[srcSide],
-                  targetHandle: targetSideToHandle[dstSide],
-                  score,
-                };
-              }
-            }
-          }
-          if (best) {
-            sourceHandle = best.sourceHandle;
-            targetHandle = best.targetHandle;
-          }
-        }
-        if (sourceElement && targetElement) {
-          source = processFlowId(sourceElement.id);
-          target = processFlowId(targetElement.id);
-          const sourceSize = getElementDimensions(sourceElement);
-          const targetSize = getElementDimensions(targetElement);
-          const sourceRect = {
-            left: sourceElement.pos_x,
-            right: sourceElement.pos_x + sourceSize.width,
-            top: sourceElement.pos_y,
-            bottom: sourceElement.pos_y + sourceSize.height,
-          };
-          const targetRect = {
-            left: targetElement.pos_x,
-            right: targetElement.pos_x + targetSize.width,
-            top: targetElement.pos_y,
-            bottom: targetElement.pos_y + targetSize.height,
-          };
-          const sourceCenterX = sourceRect.left + sourceSize.width / 2;
-          const sourceCenterY = sourceRect.top + sourceSize.height / 2;
-          const targetCenterX = targetRect.left + targetSize.width / 2;
-          const targetCenterY = targetRect.top + targetSize.height / 2;
-          const sourceIsBowtie = isMethodologyElementType(sourceElement.element_type);
-          const targetIsBowtie = isMethodologyElementType(targetElement.element_type);
-          const horizontalOverlap = sourceRect.left < targetRect.right && sourceRect.right > targetRect.left;
-          const verticalOverlap = sourceRect.top < targetRect.bottom && sourceRect.bottom > targetRect.top;
-          const dxCenters = targetCenterX - sourceCenterX;
-          const dyCenters = targetCenterY - sourceCenterY;
-
-          if (sourceIsBowtie && targetIsBowtie) {
-            const absDx = Math.abs(dxCenters);
-            const absDy = Math.abs(dyCenters);
-            const preferVertical = horizontalOverlap || absDy >= absDx * 0.75;
-            if (preferVertical) {
-              sourceHandle = dyCenters < 0 ? "top-source" : "bottom";
-              targetHandle = dyCenters < 0 ? "bottom-target" : "top";
-            } else {
-              sourceHandle = dxCenters < 0 ? "left" : "right";
-              targetHandle = dxCenters < 0 ? "right-target" : "left-target";
-            }
-            // For Bow Tie component-to-component links, keep handles deterministic
-            // so edges attach to the nearest directional faces.
-          } else {
-          const preferredPair = horizontalOverlap
-            ? (sourceCenterY <= targetCenterY
-                ? ({ src: "bottom", dst: "top" } as const)
-                : ({ src: "top", dst: "bottom" } as const))
-            : verticalOverlap
-              ? (sourceCenterX <= targetCenterX
-                  ? ({ src: "right", dst: "left" } as const)
-                  : ({ src: "left", dst: "right" } as const))
-              : Math.abs(dxCenters) > Math.abs(dyCenters)
-                ? (sourceCenterX <= targetCenterX
-                    ? ({ src: "right", dst: "left" } as const)
-                    : ({ src: "left", dst: "right" } as const))
-                : sourceCenterY <= targetCenterY
-                  ? ({ src: "bottom", dst: "top" } as const)
-                  : ({ src: "top", dst: "bottom" } as const);
-          const sourceAnchors = {
-            top: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y },
-            bottom: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y + sourceSize.height },
-            left: { x: sourceElement.pos_x, y: sourceElement.pos_y + sourceSize.height / 2 },
-            right: { x: sourceElement.pos_x + sourceSize.width, y: sourceElement.pos_y + sourceSize.height / 2 },
-          };
-          const targetAnchors = {
-            top: { x: targetElement.pos_x + targetSize.width / 2, y: targetElement.pos_y },
-            bottom: { x: targetElement.pos_x + targetSize.width / 2, y: targetElement.pos_y + targetSize.height },
-            left: { x: targetElement.pos_x, y: targetElement.pos_y + targetSize.height / 2 },
-            right: { x: targetElement.pos_x + targetSize.width, y: targetElement.pos_y + targetSize.height / 2 },
-          };
-          const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top-source",
-            bottom: "bottom",
-            left: "left",
-            right: "right",
-          };
-          const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
-            top: "top",
-            bottom: "bottom-target",
-            left: "left-target",
-            right: "right-target",
-          };
-          const blockingRects = [
-            ...nodes.map((n) => {
-              const size = getNodeSize(n);
-              return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
-            }),
-            ...obstacleElementRects
-              .filter((rect) => rect.id !== sourceElement.id && rect.id !== targetElement.id)
-              .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
-          ];
-          const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
-          let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
-          for (const srcSide of sides) {
-            for (const dstSide of sides) {
-              const srcAnchor = sourceAnchors[srcSide];
-              const dstAnchor = targetAnchors[dstSide];
-              const dx = srcAnchor.x - dstAnchor.x;
-              const dy = srcAnchor.y - dstAnchor.y;
-              const dist2 = dx * dx + dy * dy;
-              const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
-              const preferredPenalty = srcSide === preferredPair.src && dstSide === preferredPair.dst ? 0 : 40_000;
-              const score = dist2 + preferredPenalty + (crosses ? 1_000_000_000 : 0);
-              if (!best || score < best.score) {
-                best = {
-                  sourceHandle: sourceSideToHandle[srcSide],
-                  targetHandle: targetSideToHandle[dstSide],
-                  score,
-                };
-              }
-            }
-          }
-          if (best) {
-            sourceHandle = best.sourceHandle;
-            targetHandle = best.targetHandle;
-          }
-          }
-        }
-        if (!source || !target) return null;
-
-        const relationLabel = getDisplayRelationType(r.relation_type);
-        const relationshipTypeLabel = getRelationshipCategoryLabel(r.relationship_category, r.relationship_custom_type);
-        const disciplinesLabel = getRelationshipDisciplineLetters(r.relationship_disciplines);
-        const edgeLabel = `${relationLabel} - [${relationshipTypeLabel}${disciplinesLabel ? ` - ${disciplinesLabel}` : ""}]`;
-        const pairKey = relationEndpointKey(r);
-        const totalForPair = pairTotals.get(pairKey) ?? 1;
-        const seenForPair = pairSeen.get(pairKey) ?? 0;
-        pairSeen.set(pairKey, seenForPair + 1);
-        const center = (totalForPair - 1) / 2;
-        const laneIndex = seenForPair - center;
-        const pairLaneOffset = Math.abs(laneIndex) * 16;
-        const globalLaneIndex = (hashString(`${r.id}:${pairKey}`) % 7) - 3; // -3..+3
-        const globalLaneOffset = Math.abs(globalLaneIndex) * 10;
-        const laneOffset = 28 + pairLaneOffset + globalLaneOffset;
-        const curveSeed = hashString(`curve:${r.id}:${pairKey}`);
-        const curveMagnitude = 0.22 + (curveSeed % 5) * 0.07; // 0.22..0.50
-        const curveDirection = curveSeed % 2 === 0 ? 1 : -1;
-        const pairDirection = laneIndex === 0 ? 1 : laneIndex > 0 ? 1 : -1;
-        const curvature = Math.max(0.12, Math.min(0.7, curveMagnitude + Math.abs(laneIndex) * 0.05)) * (curveDirection * pairDirection);
-
-        return {
-          id: r.id,
-          source,
-          target,
-          sourceHandle,
-          targetHandle,
-          type: "smartBezier",
-          zIndex: 5,
-          style: { stroke: "#0f766e", strokeWidth: 1.25 },
-          pathOptions: { curvature },
-          labelStyle: { fill: "#334155", fontSize: 11 },
-          data: {
-            displayLabel: edgeLabel,
-            obstacleRects: labelObstacleRects,
-          },
-        };
-      }).filter(Boolean) as Edge[];
-    },
-    [
-      relations,
-      nodes,
-      elements,
-      getNodeSize,
-      mapCategoryId,
-      minorGridSize,
-      orgChartPersonHeight,
-      orgChartPersonWidth,
-      personElementHeight,
-      personElementWidth,
-    ]
+    () =>
+      buildFlowEdgesBase({
+        relations,
+        nodes,
+        elements,
+        getNodeSize,
+        mapCategoryId,
+      }),
+    [relations, nodes, elements, getNodeSize, mapCategoryId]
   );
+
   const relationById = useMemo(() => new Map(relations.map((rel) => [rel.id, rel])), [relations]);
   const flowEdges = useMemo(() => {
     const hoveredNodeElementId = hoveredNodeId?.startsWith("process:") ? parseProcessFlowId(hoveredNodeId) : null;
@@ -3380,12 +1556,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setBowtieDraft((selectedBowtieElement.element_config as Record<string, string | boolean> | null) ?? {});
   }, [selectedBowtieElement]);
   useEffect(() => {
-    return () => {
-      if (imageUploadPreviewUrl) URL.revokeObjectURL(imageUploadPreviewUrl);
-    };
-  }, [imageUploadPreviewUrl]);
-
-  useEffect(() => {
     if (!map) return;
     setMapTitleDraft(map.title);
     setMapInfoNameDraft(map.title);
@@ -3849,6 +2019,25 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedTextBoxId,
   });
   const {
+    showImageUploadModal,
+    imageUploadFile,
+    imageUploadPreviewUrl,
+    imageUploadDescription,
+    setImageUploadDescription,
+    imageUploadSaving,
+    handleStartAddImageAsset,
+    handleSelectImageUploadFile,
+    handleCancelImageUpload,
+    handleConfirmImageUpload,
+  } = useCanvasImageUpload({
+    canWriteMap,
+    mapId,
+    userId,
+    setError,
+    setShowAddMenu,
+    handleAddImageAsset,
+  });
+  const {
     relatedRows,
     relatedGroupingRows,
     relatedSystemRows,
@@ -4033,76 +2222,6 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (!selectedImageId) return [];
     return relations.filter((r) => r.target_system_element_id === selectedImageId || r.source_system_element_id === selectedImageId);
   }, [relations, selectedImageId]);
-  const handleStartAddImageAsset = useCallback(() => {
-    if (!canWriteMap) {
-      setError("You have view access only for this map.");
-      return;
-    }
-    setShowAddMenu(false);
-    setImageUploadFile(null);
-    setImageUploadDescription("");
-    setImageUploadPreviewUrl(null);
-    setImageUploadWidth(imageDefaultWidth);
-    setImageUploadHeight(imageDefaultWidth);
-    setShowImageUploadModal(true);
-  }, [canWriteMap, setError, imageDefaultWidth]);
-  const handleSelectImageUploadFile = useCallback((file: File | null) => {
-    setImageUploadFile(file);
-    if (!file) {
-      setImageUploadPreviewUrl(null);
-      setImageUploadWidth(imageDefaultWidth);
-      setImageUploadHeight(imageDefaultWidth);
-      return;
-    }
-    const objectUrl = URL.createObjectURL(file);
-    setImageUploadPreviewUrl(objectUrl);
-    const img = new Image();
-    img.onload = () => {
-      const ratio = img.width > 0 ? img.height / img.width : 1;
-      const width = imageDefaultWidth;
-      const height = Math.max(imageMinHeight, Math.round(width * ratio));
-      setImageUploadWidth(width);
-      setImageUploadHeight(height);
-    };
-    img.src = objectUrl;
-  }, [imageDefaultWidth, imageMinHeight]);
-  const handleCancelImageUpload = useCallback(() => {
-    if (imageUploadPreviewUrl) URL.revokeObjectURL(imageUploadPreviewUrl);
-    setShowImageUploadModal(false);
-    setImageUploadFile(null);
-    setImageUploadPreviewUrl(null);
-    setImageUploadDescription("");
-    setImageUploadSaving(false);
-  }, [imageUploadPreviewUrl]);
-  const handleConfirmImageUpload = useCallback(async () => {
-    if (!canWriteMap || !imageUploadFile || !userId) return;
-    setImageUploadSaving(true);
-    const ext = imageUploadFile.name.includes(".") ? imageUploadFile.name.split(".").pop() : "bin";
-    const baseName = imageUploadFile.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9-_ ]/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "image";
-    const storagePath = `${mapId}/${Date.now()}-${crypto.randomUUID()}-${baseName}.${ext}`;
-    const { error: uploadError } = await supabaseBrowser.storage.from("systemmap").upload(storagePath, imageUploadFile, {
-      cacheControl: "3600",
-      upsert: false,
-    });
-    if (uploadError) {
-      setError(uploadError.message || "Unable to upload image.");
-      setImageUploadSaving(false);
-      return;
-    }
-    const inserted = await handleAddImageAsset({
-      storagePath,
-      description: imageUploadDescription.trim() || imageUploadFile.name.replace(/\.[^/.]+$/, ""),
-      width: imageUploadWidth,
-      height: imageUploadHeight,
-    });
-    if (!inserted) {
-      await supabaseBrowser.storage.from("systemmap").remove([storagePath]);
-      setImageUploadSaving(false);
-      return;
-    }
-    setImageUploadSaving(false);
-    handleCancelImageUpload();
-  }, [canWriteMap, imageUploadFile, userId, mapId, handleAddImageAsset, imageUploadDescription, imageUploadWidth, imageUploadHeight, setError, handleCancelImageUpload]);
   const startEditRelation = useCallback((r: NodeRelationRow) => {
     setEditingRelationId(r.id);
     setEditingRelationDescription(r.relationship_description ?? "");
@@ -4488,6 +2607,49 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     onPaneBlankClick: closeAllLeftAsides,
   });
 
+  const sharedRelationshipSectionProps = useMemo(
+    () => ({
+      editingRelationId,
+      editingRelationDescription,
+      setEditingRelationDescription,
+      editingRelationCategory,
+      setEditingRelationCategory,
+      relationshipCategoryOptions,
+      editingRelationCustomType,
+      setEditingRelationCustomType,
+      editingRelationDisciplines,
+      setEditingRelationDisciplines,
+      showEditingRelationDisciplineMenu,
+      setShowEditingRelationDisciplineMenu,
+      disciplineOptions,
+      getDisciplineLabel: (key: DisciplineKey) => disciplineLabelByKey.get(key),
+      onStartEdit: startEditRelation,
+      onDelete: handleDeleteRelation,
+      onSave: (id: string) => void handleUpdateRelation(id),
+      onCancelEdit: cancelEditRelation,
+    }),
+    [
+      cancelEditRelation,
+      disciplineLabelByKey,
+      disciplineOptions,
+      editingRelationCategory,
+      editingRelationCustomType,
+      editingRelationDescription,
+      editingRelationDisciplines,
+      editingRelationId,
+      handleDeleteRelation,
+      handleUpdateRelation,
+      relationshipCategoryOptions,
+      setEditingRelationCategory,
+      setEditingRelationCustomType,
+      setEditingRelationDescription,
+      setEditingRelationDisciplines,
+      setShowEditingRelationDisciplineMenu,
+      showEditingRelationDisciplineMenu,
+      startEditRelation,
+    ]
+  );
+
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center">Loading map...</div>;
   }
@@ -4616,340 +2778,29 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             edgesFocusable={false}
             onInit={(instance) => setRf({ fitView: instance.fitView, screenToFlowPosition: instance.screenToFlowPosition, setViewport: instance.setViewport })}
             onNodesChange={handleFlowNodesChange}
-            onNodeClick={(event, n) => {
-              setSelectedFlowIds((prev) => (prev.size ? new Set<string>() : prev));
-              if (mapRole === "read") {
-                if (n.data.entityKind === "sticky_note") {
-                  const stickyId = parseProcessFlowId(n.id);
-                  const sticky = elements.find((el) => el.id === stickyId && el.element_type === "sticky_note");
-                  if (sticky && canEditElement(sticky)) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedSystemId(null);
-                    setSelectedProcessComponentId(null);
-                    setSelectedPersonId(null);
-                    setSelectedGroupingId(null);
-                    setSelectedBowtieElementId(null);
-                    setSelectedImageId(null);
-                    setSelectedTextBoxId(null);
-                    setSelectedStickyId(stickyId);
-                    return;
-                  }
-                }
-                setSelectedStickyId(null);
-                setSelectedPersonId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                return;
-              }
-              const isBowtieKind =
-                n.data.entityKind === "bowtie_hazard" ||
-                n.data.entityKind === "bowtie_top_event" ||
-                n.data.entityKind === "bowtie_threat" ||
-                n.data.entityKind === "bowtie_consequence" ||
-                n.data.entityKind === "bowtie_control" ||
-                n.data.entityKind === "bowtie_escalation_factor" ||
-                n.data.entityKind === "bowtie_recovery_measure" ||
-                n.data.entityKind === "bowtie_degradation_indicator" ||
-                n.data.entityKind === "bowtie_risk_rating" ||
-                n.data.entityKind === "incident_sequence_step" ||
-                n.data.entityKind === "incident_outcome" ||
-                n.data.entityKind === "incident_task_condition" ||
-                n.data.entityKind === "incident_factor" ||
-                n.data.entityKind === "incident_system_factor" ||
-                n.data.entityKind === "incident_control_barrier" ||
-                n.data.entityKind === "incident_evidence" ||
-                n.data.entityKind === "incident_finding" ||
-                n.data.entityKind === "incident_recommendation";
-              if (!isBowtieKind) setSelectedBowtieElementId(null);
-              if (n.data.entityKind === "category") {
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedSystemId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedPersonId(null);
-                setSelectedGroupingId(null);
-                setSelectedStickyId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedProcessId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (n.data.entityKind === "process_component") {
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedSystemId(null);
-                    setSelectedGroupingId(null);
-                    setSelectedPersonId(null);
-                    setSelectedProcessComponentId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedSystemId(null);
-                setSelectedPersonId(null);
-                setSelectedGroupingId(null);
-                setSelectedStickyId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedProcessComponentId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (n.data.entityKind === "system_circle") {
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedPersonId(null);
-                    setSelectedSystemId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedPersonId(null);
-                setSelectedGroupingId(null);
-                setSelectedStickyId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedSystemId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (n.data.entityKind === "person") {
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedSystemId(null);
-                    setSelectedProcessComponentId(null);
-                    setSelectedGroupingId(null);
-                    setSelectedStickyId(null);
-                    setSelectedImageId(null);
-                    setSelectedTextBoxId(null);
-                    setSelectedPersonId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedSystemId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedGroupingId(null);
-                setSelectedStickyId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedPersonId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (n.data.entityKind === "grouping_container") {
-                const target = event.target as HTMLElement | null;
-                const clickedGroupingHandle = !!target?.closest(".grouping-drag-handle, .grouping-select-handle");
-                if (!clickedGroupingHandle) return;
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedSystemId(null);
-                    setSelectedPersonId(null);
-                    setSelectedGroupingId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedSystemId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedPersonId(null);
-                setSelectedStickyId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedGroupingId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (n.data.entityKind === "image_asset") {
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedSystemId(null);
-                    setSelectedProcessComponentId(null);
-                    setSelectedPersonId(null);
-                    setSelectedGroupingId(null);
-                    setSelectedStickyId(null);
-                    setSelectedTextBoxId(null);
-                    setSelectedBowtieElementId(null);
-                    setSelectedImageId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedSystemId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedPersonId(null);
-                setSelectedGroupingId(null);
-                setSelectedStickyId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedImageId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (n.data.entityKind === "text_box") {
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedSystemId(null);
-                    setSelectedProcessComponentId(null);
-                    setSelectedPersonId(null);
-                    setSelectedGroupingId(null);
-                    setSelectedStickyId(null);
-                    setSelectedImageId(null);
-                    setSelectedBowtieElementId(null);
-                    setSelectedTextBoxId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedSystemId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedPersonId(null);
-                setSelectedGroupingId(null);
-                setSelectedStickyId(null);
-                setSelectedImageId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedTextBoxId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (isBowtieKind) {
-                if (isMobile) {
-                  const now = Date.now();
-                  const lastTap = lastMobileTapRef.current;
-                  const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                  if (isDoubleTap) {
-                    setSelectedNodeId(null);
-                    setSelectedProcessId(null);
-                    setSelectedSystemId(null);
-                    setSelectedProcessComponentId(null);
-                    setSelectedPersonId(null);
-                    setSelectedGroupingId(null);
-                    setSelectedStickyId(null);
-                    setSelectedImageId(null);
-                    setSelectedTextBoxId(null);
-                    setSelectedBowtieElementId(parseProcessFlowId(n.id));
-                    lastMobileTapRef.current = null;
-                  } else {
-                    lastMobileTapRef.current = { id: n.id, ts: now };
-                  }
-                  return;
-                }
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedSystemId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedPersonId(null);
-                setSelectedGroupingId(null);
-                setSelectedStickyId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (n.data.entityKind === "sticky_note") {
-                setSelectedNodeId(null);
-                setSelectedProcessId(null);
-                setSelectedSystemId(null);
-                setSelectedProcessComponentId(null);
-                setSelectedPersonId(null);
-                setSelectedGroupingId(null);
-                setSelectedImageId(null);
-                setSelectedTextBoxId(null);
-                setSelectedBowtieElementId(null);
-                setSelectedStickyId(parseProcessFlowId(n.id));
-                return;
-              }
-              if (isMobile) {
-                const now = Date.now();
-                const lastTap = lastMobileTapRef.current;
-                const isDoubleTap = Boolean(lastTap && lastTap.id === n.id && now - lastTap.ts <= 500);
-                if (isDoubleTap) {
-                  setMobileNodeMenuId(n.id);
-                  lastMobileTapRef.current = null;
-                } else {
-                  lastMobileTapRef.current = { id: n.id, ts: now };
-                }
-                return;
-              }
-              setSelectedProcessId(null);
-              setSelectedSystemId(null);
-              setSelectedProcessComponentId(null);
-              setSelectedPersonId(null);
-              setSelectedGroupingId(null);
-              setSelectedStickyId(null);
-              setSelectedImageId(null);
-              setSelectedTextBoxId(null);
-              setSelectedBowtieElementId(null);
-              setSelectedNodeId(n.id);
-            }}
+            onNodeClick={(event, n) =>
+              handleCanvasNodeClick({
+                event,
+                node: n,
+                mapRole,
+                elements,
+                canEditElement,
+                isMobile,
+                lastMobileTapRef,
+                setSelectedFlowIds,
+                setSelectedNodeId,
+                setSelectedProcessId,
+                setSelectedSystemId,
+                setSelectedProcessComponentId,
+                setSelectedPersonId,
+                setSelectedGroupingId,
+                setSelectedStickyId,
+                setSelectedImageId,
+                setSelectedTextBoxId,
+                setSelectedBowtieElementId,
+                setMobileNodeMenuId,
+              })
+            }
             onNodeContextMenu={(e, n) => {
               if (!canUseContextMenu) return;
               e.preventDefault();
@@ -5049,1066 +2900,107 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           </ReactFlow>
         </div>
 
-        {printSelectionMode ? (
-          <div
-            className="print-hidden fixed inset-x-0 bottom-0 z-[90]"
-            style={{ top: `${PRINT_HEADER_HEIGHT_PX}px` }}
-            onPointerDown={handlePrintOverlayPointerDown}
-            onPointerMove={handlePrintOverlayPointerMove}
-            onPointerUp={handlePrintOverlayPointerUp}
-          >
-            <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-none border border-black bg-white px-3 py-2 text-xs text-slate-800 shadow-lg">
-              Drag to select area for print
-            </div>
-            {activePrintSelectionRect ? (
-              <>
-                <div className="absolute bg-slate-800/45" style={{ left: 0, top: 0, right: 0, height: Math.max(0, activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX) }} />
-                <div className="absolute bg-slate-800/45" style={{ left: 0, top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX, width: activePrintSelectionRect.left, height: activePrintSelectionRect.height }} />
-                <div
-                  className="absolute bg-slate-800/45"
-                  style={{
-                    left: activePrintSelectionRect.left + activePrintSelectionRect.width,
-                    top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX,
-                    right: 0,
-                    height: activePrintSelectionRect.height,
-                  }}
-                />
-                <div
-                  className="absolute bg-slate-800/45"
-                  style={{
-                    left: 0,
-                    top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX + activePrintSelectionRect.height,
-                    right: 0,
-                    bottom: 0,
-                  }}
-                />
-                <div
-                  className="absolute border-2 border-black bg-transparent"
-                  style={{
-                    left: activePrintSelectionRect.left,
-                    top: activePrintSelectionRect.top - PRINT_HEADER_HEIGHT_PX,
-                    width: activePrintSelectionRect.width,
-                    height: activePrintSelectionRect.height,
-                  }}
-                />
-              </>
-            ) : (
-              <div className="absolute inset-0 bg-slate-800/35" />
-            )}
-          </div>
-        ) : null}
-
-        {selectionMarquee.active && (
-          <div
-            className="pointer-events-none fixed z-[66] border border-[#0f172a] bg-[#0f172a]/10"
-            style={{
-              left: Math.min(selectionMarquee.startClientX, selectionMarquee.currentClientX),
-              top: Math.min(selectionMarquee.startClientY, selectionMarquee.currentClientY),
-              width: Math.abs(selectionMarquee.currentClientX - selectionMarquee.startClientX),
-              height: Math.abs(selectionMarquee.currentClientY - selectionMarquee.startClientY),
-            }}
-          />
-        )}
-
-        {showPrintSelectionConfirm ? (
-          <div className="fixed inset-0 z-[91] flex items-center justify-center bg-slate-900/45 p-4 print-hidden">
-            <div className="w-full max-w-md rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
-              <h2 className="text-lg font-semibold text-slate-900">Print selected area?</h2>
-              <p className="mt-2 text-sm text-slate-700">Use this selected area for the PDF export.</p>
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                  onClick={exitPrintSelectionMode}
-                >
-                  Cancel Print Selection
-                </button>
-                <button
-                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => void handleConfirmPrintArea()}
-                  disabled={isPreparingPrint}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    {isPreparingPrint ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-black border-r-transparent" /> : null}
-                    {isPreparingPrint ? "Preparing..." : "Print This Area"}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {showPrintPreview && printPreviewHtml ? (
-          <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-900/60 p-4 print-hidden">
-            <div className="flex h-[92vh] w-[92vw] max-w-[1280px] flex-col rounded-none border border-slate-300 bg-white shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                <h2 className="text-base font-semibold text-slate-900">PDF Preview</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    className={`rounded-none border border-black px-3 py-2 text-sm hover:bg-slate-100 ${
-                      printOrientation === "portrait" ? "bg-black text-white hover:bg-black" : "bg-white text-black"
-                    }`}
-                    onClick={() => setPrintOrientation("portrait")}
-                  >
-                    Vertical
-                  </button>
-                  <button
-                    className={`rounded-none border border-black px-3 py-2 text-sm hover:bg-slate-100 ${
-                      printOrientation === "landscape" ? "bg-black text-white hover:bg-black" : "bg-white text-black"
-                    }`}
-                    onClick={() => setPrintOrientation("landscape")}
-                  >
-                    Horizontal
-                  </button>
-                  <button
-                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                    onClick={() => {
-                      const w = printPreviewFrameRef.current?.contentWindow;
-                      if (!w) return;
-                      w.focus();
-                      w.print();
-                    }}
-                  >
-                    Save / Print
-                  </button>
-                  <button
-                    className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                    onClick={() => setShowPrintPreview(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-              <div className="min-h-0 flex-1 bg-slate-100 p-4">
-                <iframe
-                  ref={printPreviewFrameRef}
-                  title="Print Preview"
-                  srcDoc={printPreviewHtml}
-                  className="h-full w-full border border-slate-300 bg-white"
-                />
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {showDeleteSelectionConfirm && (
-          <div className="fixed inset-0 z-[92] flex items-center justify-center bg-slate-900/45 p-4">
-            <div className="w-full max-w-lg rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
-              <h2 className="text-lg font-semibold text-slate-900">Delete selected components?</h2>
-              <p className="mt-2 text-sm text-slate-700">
-                You are about to permanently delete {selectedFlowIds.size} selected component{selectedFlowIds.size === 1 ? "" : "s"} and associated data.
-                This action cannot be recovered.
-              </p>
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                  onClick={handleDeleteSelectedComponents}
-                >
-                  Delete selected
-                </button>
-                <button
-                  className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                  onClick={() => setShowDeleteSelectionConfirm(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showImageUploadModal && (
-          <div className="fixed inset-0 z-[93] flex items-center justify-center bg-slate-900/45 p-4">
-            <div className="w-full max-w-xl rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-slate-900">Upload Image</h2>
-                <button className="text-slate-500 hover:text-slate-800" onClick={handleCancelImageUpload}>x</button>
-              </div>
-              <div className="mt-4 rounded-none border border-dashed border-slate-300 p-6">
-                <label className="flex cursor-pointer flex-col items-center justify-center text-center">
-                  <div className="text-sm text-slate-700">Drag and drop image or click to browse</div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="mt-3 block text-sm text-slate-700"
-                    onChange={(e) => handleSelectImageUploadFile(e.target.files?.[0] ?? null)}
-                  />
-                </label>
-                {imageUploadPreviewUrl ? (
-                  <div className="mt-4 overflow-hidden rounded border border-slate-200 bg-slate-50 p-2">
-                    <img src={imageUploadPreviewUrl} alt="Upload preview" className="max-h-64 w-full object-contain" />
-                  </div>
-                ) : null}
-              </div>
-              <label className="mt-4 block text-sm text-slate-700">
-                Image Description
-                <textarea
-                  rows={3}
-                  className="mt-1 w-full rounded-none border border-slate-300 px-3 py-2 text-black"
-                  value={imageUploadDescription}
-                  onChange={(e) => setImageUploadDescription(e.target.value)}
-                  placeholder="Describe this image"
-                />
-              </label>
-              <div className="mt-5 flex justify-end gap-2">
-                <button className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100" onClick={handleCancelImageUpload}>
-                  Cancel image upload
-                </button>
-                <button
-                  className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => void handleConfirmImageUpload()}
-                  disabled={!imageUploadFile || imageUploadSaving}
-                >
-                  {imageUploadSaving ? "Uploading..." : "Save and close"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-
-        {isMobile && mobileNodeMenuId && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 p-0 sm:p-4">
-            <div className="w-full rounded-t-2xl bg-white p-4 shadow-2xl ring-1 ring-slate-200/70 sm:max-w-md sm:rounded-xl">
-              <div className="mb-2 text-sm font-semibold text-slate-900">
-                {nodes.find((n) => n.id === mobileNodeMenuId)?.title || "Document"}
-              </div>
-              <div className="grid gap-2">
-                <button className="btn btn-outline justify-start" onClick={() => {
-                  setSelectedProcessId(null);
-                  setSelectedNodeId(mobileNodeMenuId);
-                  setMobileNodeMenuId(null);
-                }}>Edit Properties</button>
-                <button className="btn btn-outline justify-start" onClick={() => {
-                  setRelationshipSourceNodeId(mobileNodeMenuId);
-                  setRelationshipSourceSystemId(null);
-                  setRelationshipSourceGroupingId(null);
-                  setRelationshipDocumentQuery("");
-                  setRelationshipSystemQuery("");
-                  setRelationshipGroupingQuery("");
-                  setRelationshipTargetDocumentId("");
-                  setRelationshipTargetSystemId("");
-                  setRelationshipTargetGroupingId("");
-                  setShowRelationshipDocumentOptions(false);
-                  setShowRelationshipSystemOptions(false);
-                  setShowRelationshipGroupingOptions(false);
-                  setRelationshipDescription("");
-                  setRelationshipDisciplineSelection([]);
-                  setShowRelationshipDisciplineMenu(false);
-                  setRelationshipCategory(getDefaultRelationshipCategoryForMap(mapCategoryId));
-                  setRelationshipCustomType("");
-                  setShowAddRelationship(true);
-                  setMobileNodeMenuId(null);
-                }}>Add Relationship</button>
-                <button className="btn btn-outline justify-start" onClick={async () => {
-                  setOutlineCreateMode(null);
-                  closeOutlineEditor();
-                  setConfirmDeleteOutlineItemId(null);
-                  setCollapsedHeadingIds(new Set());
-                  setOutlineNodeId(mobileNodeMenuId);
-                  setMobileNodeMenuId(null);
-                  await loadOutline(mobileNodeMenuId);
-                }}>Open Document Structure</button>
-                <button className="btn btn-outline justify-start text-rose-700" onClick={() => {
-                  setConfirmDeleteNodeId(mobileNodeMenuId);
-                  setMobileNodeMenuId(null);
-                }}>Delete Document</button>
-                <button className="btn btn-outline" onClick={() => setMobileNodeMenuId(null)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {relationshipPopup && (
-          <div
-            ref={relationshipPopupRef}
-            className="fixed z-[65] w-[320px] max-w-[90vw] rounded-md border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 shadow-lg"
-            style={{ left: relationshipPopup.x, top: relationshipPopup.y + 14, transform: "translateX(-50%)" }}
-          >
-            <div className="space-y-2">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">From</div>
-                <div className="text-xs text-slate-800">{relationshipPopup.fromLabel}</div>
-              </div>
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">To</div>
-                <div className="text-xs text-slate-800">{relationshipPopup.toLabel}</div>
-              </div>
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Mode</div>
-                <div className="text-xs text-slate-800">{relationshipPopup.relationLabel}</div>
-              </div>
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Type</div>
-                <div className="text-xs text-slate-800">{relationshipPopup.relationshipType}</div>
-              </div>
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Disciplines</div>
-                <div className="text-xs text-slate-800">{relationshipPopup.disciplines}</div>
-              </div>
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Relationship Definition</div>
-                <div className="text-xs text-slate-800">{relationshipPopup.description}</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showAddRelationship && isMobile && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-            <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200/70">
-              <h2 className="text-lg font-semibold">Add Relationship</h2>
-              <p className="mt-1 text-sm text-slate-600">From: {relationshipSourceNode?.title || relationshipSourceGrouping?.heading || "Unknown source"}</p>
-              <div className="mt-4 grid gap-3">
-                {relationshipModeGrouping ? (
-                  <div className="relative">
-                    <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Grouping Containers</div>
-                    <div className="relative flex">
-                      <input
-                        className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                        placeholder="Search grouping containers..."
-                        value={relationshipGroupingQuery}
-                        onChange={(e) => {
-                          const query = e.target.value;
-                          setRelationshipGroupingQuery(query);
-                          const candidateId = groupingRelationCandidateIdByLabel.get(query) ?? "";
-                          setRelationshipTargetGroupingId(candidateId && !alreadyRelatedGroupingTargetIds.has(candidateId) ? candidateId : "");
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                        onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
-                      >
-                        {showRelationshipGroupingOptions ? "▲" : "▼"}
-                      </button>
-                    </div>
-                    {showRelationshipGroupingOptions && (
-                      <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
-                        {groupingRelationCandidates.length > 0 ? groupingRelationCandidates.map((el) => {
-                          const optionLabel = groupingRelationCandidateLabelById.get(el.id) ?? (el.heading || "Group label");
-                          const isDisabled = alreadyRelatedGroupingTargetIds.has(el.id);
-                          return (
-                            <button
-                              key={el.id}
-                              type="button"
-                              className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
-                                isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
-                              }`}
-                              disabled={isDisabled}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                if (isDisabled) return;
-                                setRelationshipTargetGroupingId(el.id);
-                                setRelationshipGroupingQuery(optionLabel);
-                                setShowRelationshipGroupingOptions(false);
-                              }}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span>{optionLabel}</span>
-                                {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
-                              </div>
-                            </button>
-                          );
-                        }) : (
-                          <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                {allowDocumentTargets ? <div className="relative">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
-                  <div className="relative flex">
-                    <input
-                      className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                      placeholder="Search documents..."
-                      value={relationshipDocumentQuery}
-                      onChange={(e) => {
-                        const query = e.target.value;
-                        setRelationshipDocumentQuery(query);
-                        const candidateId = documentRelationCandidateIdByLabel.get(query) ?? "";
-                        setRelationshipTargetDocumentId(candidateId && !alreadyRelatedDocumentTargetIds.has(candidateId) ? candidateId : "");
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                      onClick={() => {
-                        setShowRelationshipDocumentOptions((prev) => !prev);
-                        setShowRelationshipSystemOptions(false);
-                      }}
-                    >
-                      {showRelationshipDocumentOptions ? "▲" : "▼"}
-                    </button>
-                  </div>
-                  {showRelationshipDocumentOptions && (
-                    <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
-                      {documentRelationCandidates.length > 0 ? documentRelationCandidates.map((n) => {
-                        const optionLabel = documentRelationCandidateLabelById.get(n.id) ?? n.title;
-                        const isDisabled = alreadyRelatedDocumentTargetIds.has(n.id);
-                        return (
-                          <button
-                            key={n.id}
-                            type="button"
-                            className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
-                              isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
-                            }`}
-                            disabled={isDisabled}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              if (isDisabled) return;
-                              setRelationshipTargetDocumentId(n.id);
-                              setRelationshipTargetSystemId("");
-                              setRelationshipDocumentQuery(optionLabel);
-                              setShowRelationshipDocumentOptions(false);
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{optionLabel}</span>
-                              {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
-                            </div>
-                          </button>
-                        );
-                      }) : (
-                        <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
-                      )}
-                    </div>
-                  )}
-                </div> : null}
-                {allowSystemTargets ? <div className="relative">
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Components (Systems, Processes, People)</div>
-                  <div className="relative flex">
-                    <input
-                      className="w-full rounded-l border border-slate-300 bg-white px-3 py-2"
-                      placeholder="Search components..."
-                      value={relationshipSystemQuery}
-                      onChange={(e) => {
-                        const query = e.target.value;
-                        setRelationshipSystemQuery(query);
-                        const candidateId = systemRelationCandidateIdByLabel.get(query) ?? "";
-                        setRelationshipTargetSystemId(candidateId && !alreadyRelatedSystemTargetIds.has(candidateId) ? candidateId : "");
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                      onClick={() => {
-                        setShowRelationshipSystemOptions((prev) => !prev);
-                        setShowRelationshipDocumentOptions(false);
-                      }}
-                    >
-                      {showRelationshipSystemOptions ? "▲" : "▼"}
-                    </button>
-                  </div>
-                  {showRelationshipSystemOptions && (
-                    <div className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded border border-slate-300 bg-white shadow-xl">
-                      {systemRelationCandidates.length > 0 ? systemRelationCandidates.map((el) => {
-                        const optionLabel = systemRelationCandidateLabelById.get(el.id) ?? getElementRelationshipDisplayLabel(el);
-                        const isDisabled = alreadyRelatedSystemTargetIds.has(el.id);
-                        return (
-                          <button
-                            key={el.id}
-                            type="button"
-                            className={`block w-full border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${
-                              isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
-                            }`}
-                            disabled={isDisabled}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              if (isDisabled) return;
-                              setRelationshipTargetSystemId(el.id);
-                              setRelationshipTargetDocumentId("");
-                              setRelationshipSystemQuery(optionLabel);
-                              setShowRelationshipSystemOptions(false);
-                            }}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{optionLabel}</span>
-                              {isDisabled && <span className="text-[10px] uppercase tracking-[0.06em]">Relationship already exists</span>}
-                            </div>
-                          </button>
-                        );
-                      }) : (
-                        <div className="px-3 py-2 text-sm text-slate-500">No search results found</div>
-                      )}
-                    </div>
-                  )}
-                </div> : null}
-                {!allowDocumentTargets && !allowSystemTargets ? (
-                  <div className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    No valid target component types are available for this source in Bow Tie mode.
-                  </div>
-                ) : null}
-                  </>
-                )}
-                <div>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Disciplines</div>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-left text-slate-700"
-                      onClick={() => setShowRelationshipDisciplineMenu((prev) => !prev)}
-                    >
-                      <span className="truncate text-sm">
-                        {relationshipDisciplineSelection.length
-                          ? relationshipDisciplineSelection.map((key) => disciplineLabelByKey.get(key)).filter(Boolean).join(", ")
-                          : "Select disciplines"}
-                      </span>
-                      <span className="text-xs text-slate-500">{showRelationshipDisciplineMenu ? "▲" : "▼"}</span>
-                    </button>
-                    {showRelationshipDisciplineMenu && (
-                      <div className="absolute z-20 mt-1 w-full rounded border border-slate-300 bg-white p-2 shadow-lg">
-                        {disciplineOptions.map((option) => {
-                          const checked = relationshipDisciplineSelection.includes(option.key);
-                          return (
-                            <label key={option.key} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm text-black hover:bg-slate-50">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  setRelationshipDisciplineSelection((prev) =>
-                                    prev.includes(option.key)
-                                      ? prev.filter((key) => key !== option.key)
-                                      : [...prev, option.key]
-                                  )
-                                }
-                              />
-                              <span className="text-black">{option.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <label className="text-sm">Relationship Type
-                  <div className="relative mt-1">
-                    <select
-                      className="w-full appearance-none rounded border border-slate-300 bg-white px-3 py-2 pr-9 text-black"
-                      value={relationshipCategory}
-                      onChange={(e) => setRelationshipCategory(e.target.value as RelationshipCategory)}
-                    >
-                      {relationshipCategoryOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">?</span>
-                  </div>
-                </label>
-                {relationshipCategory === "other" && (
-                  <label className="text-sm">Custom Relationship Type
-                    <input
-                      className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                      placeholder="Enter relationship type for this link only"
-                      value={relationshipCustomType}
-                      onChange={(e) => setRelationshipCustomType(e.target.value)}
-                    />
-                  </label>
-                )}
-                <textarea
-                  className="rounded border border-slate-300 px-3 py-2"
-                  rows={3}
-                  placeholder="Relationship description (optional)"
-                  value={relationshipDescription}
-                  onChange={(e) => setRelationshipDescription(e.target.value)}
-                />
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="btn btn-outline" onClick={closeAddRelationshipModal}>Cancel</button>
-                <button
-                  className="btn btn-primary"
-                  disabled={
-                    (!relationshipModeGrouping && (!allowDocumentTargets && !allowSystemTargets)) ||
-                    (!relationshipModeGrouping && !relationshipTargetDocumentId && !relationshipTargetSystemId) ||
-                    (relationshipModeGrouping && !relationshipTargetGroupingId) ||
-                    (relationshipCategory === "other" && !relationshipCustomType.trim())
-                  }
-                  onClick={handleAddRelation}
-                >
-                  Add relationship
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <ConfirmDialog
-          open={!!confirmDeleteNodeId && isMobile}
-          title="Delete document?"
-          message="This will permanently remove the document from the map."
-          confirmLabel="Delete"
-          onCancel={() => setConfirmDeleteNodeId(null)}
-          onConfirm={() => {
-            const id = confirmDeleteNodeId;
-            setConfirmDeleteNodeId(null);
-            if (!id) return;
-            void handleDeleteNode(id);
+        <CanvasPrintOverlay
+          printSelectionMode={printSelectionMode}
+          printHeaderHeightPx={PRINT_HEADER_HEIGHT_PX}
+          activePrintSelectionRect={activePrintSelectionRect}
+          onOverlayPointerDown={handlePrintOverlayPointerDown}
+          onOverlayPointerMove={handlePrintOverlayPointerMove}
+          onOverlayPointerUp={handlePrintOverlayPointerUp}
+          showPrintSelectionConfirm={showPrintSelectionConfirm}
+          onCancelPrintSelection={exitPrintSelectionMode}
+          onConfirmPrintArea={() => void handleConfirmPrintArea()}
+          isPreparingPrint={isPreparingPrint}
+          showPrintPreview={showPrintPreview}
+          printPreviewHtml={printPreviewHtml}
+          printOrientation={printOrientation}
+          onSetPortrait={() => setPrintOrientation("portrait")}
+          onSetLandscape={() => setPrintOrientation("landscape")}
+          onSavePrint={() => {
+            const w = printPreviewFrameRef.current?.contentWindow;
+            if (!w) return;
+            w.focus();
+            w.print();
           }}
+          onClosePreview={() => setShowPrintPreview(false)}
+          printPreviewFrameRef={printPreviewFrameRef}
         />
 
-        <ConfirmDialog
-          open={!!confirmDeleteOutlineItemId}
-          title="Delete outline item?"
-          message="This removes the selected heading/content and any dependent children defined by your data rules."
-          confirmLabel="Delete"
-          onCancel={() => setConfirmDeleteOutlineItemId(null)}
-          onConfirm={() => void handleDeleteOutlineItem()}
+        <CanvasFloatingOverlays
+          selectionMarquee={selectionMarquee}
+          showDeleteSelectionConfirm={showDeleteSelectionConfirm}
+          selectedFlowIdsSize={selectedFlowIds.size}
+          onDeleteSelected={handleDeleteSelectedComponents}
+          onCancelDeleteSelected={() => setShowDeleteSelectionConfirm(false)}
+          showImageUploadModal={showImageUploadModal}
+          onCancelImageUpload={handleCancelImageUpload}
+          onSelectImageUploadFile={handleSelectImageUploadFile}
+          imageUploadPreviewUrl={imageUploadPreviewUrl}
+          imageUploadDescription={imageUploadDescription}
+          setImageUploadDescription={setImageUploadDescription}
+          onConfirmImageUpload={() => {
+            void handleConfirmImageUpload();
+          }}
+          imageUploadFile={imageUploadFile}
+          imageUploadSaving={imageUploadSaving}
+          relationshipPopup={relationshipPopup}
+          relationshipPopupRef={relationshipPopupRef}
         />
 
-        <CategoryPropertiesAside
-          open={!!selectedProcess}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          processMinWidthSquares={processMinWidthSquares}
-          processMinHeightSquares={processMinHeightSquares}
-          processHeadingDraft={processHeadingDraft}
-          setProcessHeadingDraft={setProcessHeadingDraft}
-          processWidthDraft={processWidthDraft}
-          setProcessWidthDraft={setProcessWidthDraft}
-          processHeightDraft={processHeightDraft}
-          setProcessHeightDraft={setProcessHeightDraft}
-          categoryColorOptions={categoryColorOptions}
-          processColorDraft={processColorDraft}
-          setProcessColorDraft={setProcessColorDraft}
-          onDelete={async () => {
-            if (!selectedProcess) return;
-            await handleDeleteProcessElement(selectedProcess.id);
+
+        <MobileNodeActionSheet
+          open={Boolean(isMobile && mobileNodeMenuId)}
+          title={mobileNodeMenuId ? (nodes.find((n) => n.id === mobileNodeMenuId)?.title || "Document") : "Document"}
+          onEditProperties={() => {
+            if (!mobileNodeMenuId) return;
+            setSelectedProcessId(null);
+            setSelectedNodeId(mobileNodeMenuId);
+            setMobileNodeMenuId(null);
           }}
-          onSave={handleSaveProcessHeading}
-          onClose={() => setSelectedProcessId(null)}
-        />
-        <SystemPropertiesAside
-          open={!!selectedSystem}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          systemNameDraft={systemNameDraft}
-          setSystemNameDraft={setSystemNameDraft}
-          onDelete={async () => {
-            if (!selectedSystem) return;
-            await handleDeleteProcessElement(selectedSystem.id);
-          }}
-          onSave={handleSaveSystemName}
-          onClose={() => setSelectedSystemId(null)}
           onAddRelationship={() => {
-            if (!selectedSystem) return;
-            openAddRelationshipFromSource({ systemId: selectedSystem.id });
+            if (!mobileNodeMenuId) return;
+            setRelationshipSourceNodeId(mobileNodeMenuId);
+            setRelationshipSourceSystemId(null);
+            setRelationshipSourceGroupingId(null);
+            setRelationshipDocumentQuery("");
+            setRelationshipSystemQuery("");
+            setRelationshipGroupingQuery("");
+            setRelationshipTargetDocumentId("");
+            setRelationshipTargetSystemId("");
+            setRelationshipTargetGroupingId("");
+            setShowRelationshipDocumentOptions(false);
+            setShowRelationshipSystemOptions(false);
+            setShowRelationshipGroupingOptions(false);
+            setRelationshipDescription("");
+            setRelationshipDisciplineSelection([]);
+            setShowRelationshipDisciplineMenu(false);
+            setRelationshipCategory(getDefaultRelationshipCategoryForMap(mapCategoryId));
+            setRelationshipCustomType("");
+            setShowAddRelationship(true);
+            setMobileNodeMenuId(null);
           }}
-          relatedRows={relatedSystemRows}
-          resolveLabels={resolveDocumentRelationLabels}
-          relationshipSectionProps={{
-            editingRelationId,
-            editingRelationDescription,
-            setEditingRelationDescription,
-            editingRelationCategory,
-            setEditingRelationCategory,
-            relationshipCategoryOptions,
-            editingRelationCustomType,
-            setEditingRelationCustomType,
-            editingRelationDisciplines,
-            setEditingRelationDisciplines,
-            showEditingRelationDisciplineMenu,
-            setShowEditingRelationDisciplineMenu,
-            disciplineOptions,
-            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
-            onStartEdit: startEditRelation,
-            onDelete: handleDeleteRelation,
-            onSave: (id) => void handleUpdateRelation(id),
-            onCancelEdit: cancelEditRelation,
-          }}
-        />
-        <ProcessPropertiesAside
-          open={!!selectedProcessComponent}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          processComponentLabelDraft={processComponentLabelDraft}
-          setProcessComponentLabelDraft={setProcessComponentLabelDraft}
-          onDelete={async () => {
-            if (!selectedProcessComponent) return;
-            await handleDeleteProcessElement(selectedProcessComponent.id);
-          }}
-          onSave={handleSaveProcessComponent}
-          onClose={() => setSelectedProcessComponentId(null)}
-          onAddRelationship={() => {
-            if (!selectedProcessComponent) return;
-            openAddRelationshipFromSource({ systemId: selectedProcessComponent.id });
-          }}
-          relatedRows={relatedProcessComponentRows}
-          resolveLabels={resolveDocumentRelationLabels}
-          relationshipSectionProps={{
-            editingRelationId,
-            editingRelationDescription,
-            setEditingRelationDescription,
-            editingRelationCategory,
-            setEditingRelationCategory,
-            relationshipCategoryOptions,
-            editingRelationCustomType,
-            setEditingRelationCustomType,
-            editingRelationDisciplines,
-            setEditingRelationDisciplines,
-            showEditingRelationDisciplineMenu,
-            setShowEditingRelationDisciplineMenu,
-            disciplineOptions,
-            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
-            onStartEdit: startEditRelation,
-            onDelete: handleDeleteRelation,
-            onSave: (id) => void handleUpdateRelation(id),
-            onCancelEdit: cancelEditRelation,
-          }}
-        />
-        <PersonPropertiesAside
-          open={!!selectedPerson}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          mapCategoryId={mapCategoryId}
-          personRoleDraft={personRoleDraft}
-          setPersonRoleDraft={setPersonRoleDraft}
-          personRoleIdDraft={personRoleIdDraft}
-          setPersonRoleIdDraft={setPersonRoleIdDraft}
-          personDepartmentDraft={personDepartmentDraft}
-          setPersonDepartmentDraft={setPersonDepartmentDraft}
-          personOccupantNameDraft={personOccupantNameDraft}
-          setPersonOccupantNameDraft={setPersonOccupantNameDraft}
-          personStartDateDraft={personStartDateDraft}
-          setPersonStartDateDraft={setPersonStartDateDraft}
-          personEmploymentTypeDraft={personEmploymentTypeDraft}
-          setPersonEmploymentTypeDraft={setPersonEmploymentTypeDraft}
-          personActingNameDraft={personActingNameDraft}
-          setPersonActingNameDraft={setPersonActingNameDraft}
-          personActingStartDateDraft={personActingStartDateDraft}
-          setPersonActingStartDateDraft={setPersonActingStartDateDraft}
-          personRecruitingDraft={personRecruitingDraft}
-          setPersonRecruitingDraft={setPersonRecruitingDraft}
-          personProposedRoleDraft={personProposedRoleDraft}
-          setPersonProposedRoleDraft={setPersonProposedRoleDraft}
-          orgChartDepartmentOptions={orgChartDepartmentOptions}
-          onDelete={async () => {
-            if (!selectedPerson) return;
-            await handleDeleteProcessElement(selectedPerson.id);
-          }}
-          onSave={handleSavePerson}
-          onClose={() => setSelectedPersonId(null)}
-          onAddRelationship={() => {
-            if (!selectedPerson) return;
-            openAddRelationshipFromSource({ systemId: selectedPerson.id });
-          }}
-          relatedRows={relatedPersonRows}
-          resolveLabels={resolvePersonRelationLabels}
-          relationshipSectionProps={{
-            editingRelationId,
-            editingRelationDescription,
-            setEditingRelationDescription,
-            editingRelationCategory,
-            setEditingRelationCategory,
-            relationshipCategoryOptions,
-            editingRelationCustomType,
-            setEditingRelationCustomType,
-            editingRelationDisciplines,
-            setEditingRelationDisciplines,
-            showEditingRelationDisciplineMenu,
-            setShowEditingRelationDisciplineMenu,
-            disciplineOptions,
-            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
-            onStartEdit: startEditRelation,
-            onDelete: handleDeleteRelation,
-            onSave: (id) => void handleUpdateRelation(id),
-            onCancelEdit: cancelEditRelation,
-          }}
-        />
-        <BowtiePropertiesAside
-          open={!!selectedBowtieElement}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          bowtieElementType={
-            selectedBowtieElement?.element_type && isMethodologyElementType(selectedBowtieElement.element_type)
-              ? (selectedBowtieElement.element_type as
-                  | "bowtie_hazard"
-                  | "bowtie_top_event"
-                  | "bowtie_threat"
-                  | "bowtie_consequence"
-                  | "bowtie_control"
-                  | "bowtie_escalation_factor"
-                  | "bowtie_recovery_measure"
-                  | "bowtie_degradation_indicator"
-                  | "bowtie_risk_rating"
-                  | "incident_sequence_step"
-                  | "incident_outcome"
-                  | "incident_task_condition"
-                  | "incident_factor"
-                  | "incident_system_factor"
-                  | "incident_control_barrier"
-                  | "incident_evidence"
-                  | "incident_finding"
-                  | "incident_recommendation")
-              : null
-          }
-          bowtieHeadingDraft={bowtieHeadingDraft}
-          setBowtieHeadingDraft={setBowtieHeadingDraft}
-          bowtieDraft={bowtieDraft}
-          setBowtieDraft={setBowtieDraft}
-          onDelete={async () => {
-            if (!selectedBowtieElement) return;
-            await handleDeleteProcessElement(selectedBowtieElement.id);
-            setSelectedBowtieElementId(null);
-          }}
-          onSave={handleSaveBowtieElement}
-          onClose={() => setSelectedBowtieElementId(null)}
-          onAddRelationship={() => {
-            if (!selectedBowtieElement) return;
-            openAddRelationshipFromSource({ systemId: selectedBowtieElement.id });
-          }}
-          relatedRows={relatedBowtieRows}
-          resolveLabels={resolvePersonRelationLabels}
-          relationshipSectionProps={{
-            editingRelationId,
-            editingRelationDescription,
-            setEditingRelationDescription,
-            editingRelationCategory,
-            setEditingRelationCategory,
-            relationshipCategoryOptions,
-            editingRelationCustomType,
-            setEditingRelationCustomType,
-            editingRelationDisciplines,
-            setEditingRelationDisciplines,
-            showEditingRelationDisciplineMenu,
-            setShowEditingRelationDisciplineMenu,
-            disciplineOptions,
-            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
-            onStartEdit: startEditRelation,
-            onDelete: handleDeleteRelation,
-            onSave: (id) => void handleUpdateRelation(id),
-            onCancelEdit: cancelEditRelation,
-          }}
-        />
-        <GroupingContainerAside
-          open={!!selectedGrouping}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          groupingLabelDraft={groupingLabelDraft}
-          setGroupingLabelDraft={setGroupingLabelDraft}
-          groupingWidthDraft={groupingWidthDraft}
-          setGroupingWidthDraft={setGroupingWidthDraft}
-          groupingHeightDraft={groupingHeightDraft}
-          setGroupingHeightDraft={setGroupingHeightDraft}
-          onDelete={async () => {
-            if (!selectedGrouping) return;
-            await handleDeleteProcessElement(selectedGrouping.id);
-          }}
-          onSave={handleSaveGroupingContainer}
-          onClose={() => setSelectedGroupingId(null)}
-          onAddRelationship={() => {
-            if (!selectedGrouping) return;
-            openAddRelationshipFromSource({ groupingId: selectedGrouping.id });
-          }}
-          relatedRows={relatedGroupingRows}
-          resolveLabels={resolveGroupingRelationLabels}
-          relationshipSectionProps={{
-            editingRelationId,
-            editingRelationDescription,
-            setEditingRelationDescription,
-            editingRelationCategory,
-            setEditingRelationCategory,
-            relationshipCategoryOptions,
-            editingRelationCustomType,
-            setEditingRelationCustomType,
-            editingRelationDisciplines,
-            setEditingRelationDisciplines,
-            showEditingRelationDisciplineMenu,
-            setShowEditingRelationDisciplineMenu,
-            disciplineOptions,
-            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
-            onStartEdit: startEditRelation,
-            onDelete: handleDeleteRelation,
-            onSave: (id) => void handleUpdateRelation(id),
-            onCancelEdit: cancelEditRelation,
-          }}
-        />
-        <StickyNoteAside
-          open={!!selectedSticky}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          stickyTextDraft={stickyTextDraft}
-          setStickyTextDraft={setStickyTextDraft}
-          onDelete={async () => {
-            if (!selectedSticky) return;
-            await handleDeleteProcessElement(selectedSticky.id);
-          }}
-          onSave={handleSaveStickyNote}
-          onClose={() => setSelectedStickyId(null)}
-        />
-        <ImageAssetAside
-          open={!!selectedImage}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          imageDescriptionDraft={imageDescriptionDraft}
-          setImageDescriptionDraft={setImageDescriptionDraft}
-          onDelete={async () => {
-            if (!selectedImage) return;
-            const cfg = (selectedImage.element_config as Record<string, unknown> | null) ?? {};
-            const path = typeof cfg.storage_path === "string" ? cfg.storage_path : "";
-            if (path) {
-              await supabaseBrowser.storage.from("systemmap").remove([path]);
-            }
-            await handleDeleteProcessElement(selectedImage.id);
-            setSelectedImageId(null);
-          }}
-          onSave={handleSaveImageAsset}
-          onClose={() => setSelectedImageId(null)}
-          onAddRelationship={() => {
-            if (!selectedImage) return;
-            openAddRelationshipFromSource({ systemId: selectedImage.id });
-          }}
-          relatedRows={relatedImageRows}
-          resolveLabels={resolvePersonRelationLabels}
-          relationshipSectionProps={{
-            editingRelationId,
-            editingRelationDescription,
-            setEditingRelationDescription,
-            editingRelationCategory,
-            setEditingRelationCategory,
-            relationshipCategoryOptions,
-            editingRelationCustomType,
-            setEditingRelationCustomType,
-            editingRelationDisciplines,
-            setEditingRelationDisciplines,
-            showEditingRelationDisciplineMenu,
-            setShowEditingRelationDisciplineMenu,
-            disciplineOptions,
-            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
-            onStartEdit: startEditRelation,
-            onDelete: handleDeleteRelation,
-            onSave: (id) => void handleUpdateRelation(id),
-            onCancelEdit: cancelEditRelation,
-          }}
-        />
-        <TextBoxAside
-          open={!!selectedTextBox}
-          isMobile={isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          textBoxContentDraft={textBoxContentDraft}
-          setTextBoxContentDraft={setTextBoxContentDraft}
-          textBoxBoldDraft={textBoxBoldDraft}
-          setTextBoxBoldDraft={setTextBoxBoldDraft}
-          textBoxItalicDraft={textBoxItalicDraft}
-          setTextBoxItalicDraft={setTextBoxItalicDraft}
-          textBoxUnderlineDraft={textBoxUnderlineDraft}
-          setTextBoxUnderlineDraft={setTextBoxUnderlineDraft}
-          textBoxAlignDraft={textBoxAlignDraft}
-          setTextBoxAlignDraft={setTextBoxAlignDraft}
-          textBoxFontSizeDraft={textBoxFontSizeDraft}
-          setTextBoxFontSizeDraft={setTextBoxFontSizeDraft}
-          onDelete={async () => {
-            if (!selectedTextBox) return;
-            await handleDeleteProcessElement(selectedTextBox.id);
-            setSelectedTextBoxId(null);
-          }}
-          onSave={handleSaveTextBox}
-          onClose={() => setSelectedTextBoxId(null)}
-        />
-        <DocumentPropertiesAside
-          open={!!selectedNode && !isMobile}
-          leftAsideSlideIn={leftAsideSlideIn}
-          onClose={handleCloseDocumentPropertiesPanel}
-          onOpenRelationship={() => {
-            if (!selectedNode) return;
-            openAddRelationshipFromSource({ nodeId: selectedNode.id });
-          }}
-          onOpenStructure={async () => {
-            if (!selectedNode) return;
+          onOpenStructure={() => {
+            if (!mobileNodeMenuId) return;
             setOutlineCreateMode(null);
             closeOutlineEditor();
             setConfirmDeleteOutlineItemId(null);
             setCollapsedHeadingIds(new Set());
-            setOutlineNodeId(selectedNode.id);
-            await loadOutline(selectedNode.id);
-            setDesktopNodeAction("structure");
+            setOutlineNodeId(mobileNodeMenuId);
+            setMobileNodeMenuId(null);
+            void loadOutline(mobileNodeMenuId);
           }}
-          onOpenDelete={() => {
-            if (!selectedNode) return;
-            setConfirmDeleteNodeId(selectedNode.id);
-            setDesktopNodeAction("delete");
+          onDeleteDocument={() => {
+            if (!mobileNodeMenuId) return;
+            setConfirmDeleteNodeId(mobileNodeMenuId);
+            setMobileNodeMenuId(null);
           }}
-          selectedTypeId={selectedTypeId}
-          setSelectedTypeId={setSelectedTypeId}
-          showTypeSelectArrowUp={showTypeSelectArrowUp}
-          setShowTypeSelectArrowUp={setShowTypeSelectArrowUp}
-          addDocumentTypes={addDocumentTypes}
-          getDisplayTypeName={getDisplayTypeName}
-          title={title}
-          setTitle={setTitle}
-          documentNumber={documentNumber}
-          setDocumentNumber={setDocumentNumber}
-          disciplineMenuRef={disciplineMenuRef}
-          showDisciplineMenu={showDisciplineMenu}
-          setShowDisciplineMenu={setShowDisciplineMenu}
-          disciplineSelection={disciplineSelection}
-          setDisciplineSelection={setDisciplineSelection}
-          disciplineOptions={disciplineOptions}
-          getDisciplineLabel={(key) => disciplineLabelByKey.get(key)}
-          userGroup={userGroup}
-          setUserGroup={setUserGroup}
-          showUserGroupSelectArrowUp={showUserGroupSelectArrowUp}
-          setShowUserGroupSelectArrowUp={setShowUserGroupSelectArrowUp}
-          userGroupOptions={userGroupOptions}
-          ownerName={ownerName}
-          setOwnerName={setOwnerName}
-          onSaveNode={handleSaveNode}
-          relatedRows={relatedRows}
-          resolveLabels={resolveDocumentRelationLabels}
-          relationshipSectionProps={{
-            editingRelationId,
-            editingRelationDescription,
-            setEditingRelationDescription,
-            editingRelationCategory,
-            setEditingRelationCategory,
-            relationshipCategoryOptions,
-            editingRelationCustomType,
-            setEditingRelationCustomType,
-            editingRelationDisciplines,
-            setEditingRelationDisciplines,
-            showEditingRelationDisciplineMenu,
-            setShowEditingRelationDisciplineMenu,
-            disciplineOptions,
-            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
-            onStartEdit: startEditRelation,
-            onDelete: handleDeleteRelation,
-            onSave: (id) => void handleUpdateRelation(id),
-            onCancelEdit: cancelEditRelation,
-          }}
+          onClose={() => setMobileNodeMenuId(null)}
         />
-        <OrgChartDirectReportAside
-          open={Boolean(mapCategoryId === "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship)}
-          sourceLabel={orgDirectReportSourceLabel}
-          query={relationshipSystemQuery}
-          setQuery={setRelationshipSystemQuery}
-          showOptions={showRelationshipSystemOptions}
-          setShowOptions={setShowRelationshipSystemOptions}
-          candidates={orgDirectReportCandidates}
-          selectedTargetId={relationshipTargetSystemId}
-          setSelectedTargetId={setRelationshipTargetSystemId}
-          notes={relationshipDescription}
-          setNotes={setRelationshipDescription}
-          onAdd={handleAddOrgDirectReport}
-          onCancel={() => {
-            closeAddRelationshipModal();
-            setDesktopNodeAction(null);
-          }}
-        />
-        <AddRelationshipAside
-          open={Boolean(mapCategoryId !== "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship)}
+
+        <MobileAddRelationshipModal
+          open={Boolean(showAddRelationship && isMobile)}
+          sourceLabel={relationshipSourceNode?.title || relationshipSourceGrouping?.heading || "Unknown source"}
           relationshipModeGrouping={relationshipModeGrouping}
-          relationshipSourceLabel={
-            relationshipSourceNode?.title ||
-            (relationshipSourceSystem ? getElementDisplayName(relationshipSourceSystem) : "") ||
-            relationshipSourceGrouping?.heading ||
-            ""
-          }
-          relationshipSourceNodeTitle={relationshipSourceNode?.title || ""}
-          relationshipSourceGroupingHeading={relationshipSourceGrouping?.heading || ""}
-          allowDocumentTargets={allowDocumentTargets}
-          allowSystemTargets={allowSystemTargets}
           relationshipGroupingQuery={relationshipGroupingQuery}
           setRelationshipGroupingQuery={setRelationshipGroupingQuery}
           groupingRelationCandidateIdByLabel={groupingRelationCandidateIdByLabel}
@@ -6118,6 +3010,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           setShowRelationshipGroupingOptions={setShowRelationshipGroupingOptions}
           groupingRelationCandidates={groupingRelationCandidates}
           groupingRelationCandidateLabelById={groupingRelationCandidateLabelById}
+          allowDocumentTargets={allowDocumentTargets}
           relationshipDocumentQuery={relationshipDocumentQuery}
           setRelationshipDocumentQuery={setRelationshipDocumentQuery}
           documentRelationCandidateIdByLabel={documentRelationCandidateIdByLabel}
@@ -6127,6 +3020,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           setShowRelationshipDocumentOptions={setShowRelationshipDocumentOptions}
           documentRelationCandidates={documentRelationCandidates}
           documentRelationCandidateLabelById={documentRelationCandidateLabelById}
+          allowSystemTargets={allowSystemTargets}
           relationshipSystemQuery={relationshipSystemQuery}
           setRelationshipSystemQuery={setRelationshipSystemQuery}
           systemRelationCandidateIdByLabel={systemRelationCandidateIdByLabel}
@@ -6153,104 +3047,482 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           relationshipTargetDocumentId={relationshipTargetDocumentId}
           relationshipTargetSystemId={relationshipTargetSystemId}
           relationshipTargetGroupingId={relationshipTargetGroupingId}
-          onAdd={async () => {
-            await handleAddRelation();
-            setDesktopNodeAction(null);
-          }}
-          onCancel={() => {
-            closeAddRelationshipModal();
-            setDesktopNodeAction(null);
-          }}
+          onCancel={closeAddRelationshipModal}
+          onAdd={handleAddRelation}
         />
-        <DeleteDocumentAside
-          open={Boolean(selectedNode && !isMobile && desktopNodeAction === "delete" && !!confirmDeleteNodeId)}
-          onDelete={async () => {
-            const id = confirmDeleteNodeId;
-            setConfirmDeleteNodeId(null);
-            setDesktopNodeAction(null);
-            if (!id) return;
-            await handleDeleteNode(id);
-          }}
-          onCancel={() => {
-            setConfirmDeleteNodeId(null);
-            setDesktopNodeAction(null);
-          }}
-        />
-        <MobileDocumentPropertiesModal
-          open={Boolean(selectedNode && isMobile)}
-          onClose={() => setSelectedNodeId(null)}
-          selectedTypeId={selectedTypeId}
-          setSelectedTypeId={setSelectedTypeId}
-          addDocumentTypes={addDocumentTypes}
-          getDisplayTypeName={getDisplayTypeName}
-          title={title}
-          setTitle={setTitle}
-          documentNumber={documentNumber}
-          setDocumentNumber={setDocumentNumber}
-          showDisciplineMenu={showDisciplineMenu}
-          setShowDisciplineMenu={setShowDisciplineMenu}
-          disciplineMenuRef={disciplineMenuRef}
-          disciplineSelection={disciplineSelection}
-          setDisciplineSelection={setDisciplineSelection}
-          disciplineOptions={disciplineOptions}
-          getDisciplineLabel={(key) => disciplineLabelByKey.get(key)}
-          userGroup={userGroup}
-          setUserGroup={setUserGroup}
-          userGroupOptions={userGroupOptions}
-          ownerName={ownerName}
-          setOwnerName={setOwnerName}
-          onSaveNode={handleSaveNode}
-          relatedItems={mobileRelatedItems}
-          onDeleteRelation={handleDeleteRelation}
-        />
-        <DocumentStructureAside
-          open={Boolean(isMobile || shouldShowDesktopStructurePanel)}
+
+        <CanvasConfirmDialogs
+          confirmDeleteNodeId={confirmDeleteNodeId}
           isMobile={isMobile}
-          outlineNodeId={outlineNodeId}
-          shouldShowDesktopStructurePanel={shouldShowDesktopStructurePanel}
-          onClose={() => {
-            setOutlineNodeId(null);
-            setOutlineCreateMode(null);
-            closeOutlineEditor();
-            setConfirmDeleteOutlineItemId(null);
-            setDesktopNodeAction(null);
-          }}
-          setOutlineCreateMode={setOutlineCreateMode}
-          closeOutlineEditor={closeOutlineEditor}
-          setNewHeadingTitle={setNewHeadingTitle}
-          setNewHeadingLevel={setNewHeadingLevel}
-          setNewHeadingParentId={setNewHeadingParentId}
-          setNewContentText={setNewContentText}
-          setNewContentHeadingId={setNewContentHeadingId}
-          headingItems={headingItems}
-          outlineCreateMode={outlineCreateMode}
-          newHeadingTitle={newHeadingTitle}
-          newHeadingLevel={newHeadingLevel}
-          newHeadingParentId={newHeadingParentId}
-          level1Headings={level1Headings}
-          level2Headings={level2Headings}
-          handleCreateHeading={handleCreateHeading}
-          newContentHeadingId={newContentHeadingId}
-          newContentText={newContentText}
-          handleCreateContent={handleCreateContent}
-          outlineEditItem={outlineEditItem}
-          editHeadingTitle={editHeadingTitle}
-          setEditHeadingTitle={setEditHeadingTitle}
-          editHeadingLevel={editHeadingLevel}
-          setEditHeadingLevel={setEditHeadingLevel}
-          editHeadingParentId={editHeadingParentId}
-          setEditHeadingParentId={setEditHeadingParentId}
-          editContentHeadingId={editContentHeadingId}
-          setEditContentHeadingId={setEditContentHeadingId}
-          editContentText={editContentText}
-          setEditContentText={setEditContentText}
-          handleSaveOutlineEdit={handleSaveOutlineEdit}
-          visibleOutlineItems={visibleOutlineItems}
-          outlineItems={outlineItems}
-          collapsedHeadingIds={collapsedHeadingIds}
-          setCollapsedHeadingIds={setCollapsedHeadingIds}
-          openOutlineEditor={openOutlineEditor}
+          setConfirmDeleteNodeId={setConfirmDeleteNodeId}
+          handleDeleteNode={handleDeleteNode}
+          confirmDeleteOutlineItemId={confirmDeleteOutlineItemId}
           setConfirmDeleteOutlineItemId={setConfirmDeleteOutlineItemId}
+          handleDeleteOutlineItem={handleDeleteOutlineItem}
+        />
+
+        <CanvasElementPropertyOverlays
+          categoryProps={{
+            open: !!selectedProcess,
+            isMobile,
+            leftAsideSlideIn,
+            processMinWidthSquares,
+            processMinHeightSquares,
+            processHeadingDraft,
+            setProcessHeadingDraft,
+            processWidthDraft,
+            setProcessWidthDraft,
+            processHeightDraft,
+            setProcessHeightDraft,
+            categoryColorOptions,
+            processColorDraft,
+            setProcessColorDraft,
+            onDelete: async () => {
+              if (!selectedProcess) return;
+              await handleDeleteProcessElement(selectedProcess.id);
+            },
+            onSave: handleSaveProcessHeading,
+            onClose: () => setSelectedProcessId(null),
+          }}
+          systemProps={{
+            open: !!selectedSystem,
+            isMobile,
+            leftAsideSlideIn,
+            systemNameDraft,
+            setSystemNameDraft,
+            onDelete: async () => {
+              if (!selectedSystem) return;
+              await handleDeleteProcessElement(selectedSystem.id);
+            },
+            onSave: handleSaveSystemName,
+            onClose: () => setSelectedSystemId(null),
+            onAddRelationship: () => {
+              if (!selectedSystem) return;
+              openAddRelationshipFromSource({ systemId: selectedSystem.id });
+            },
+            relatedRows: relatedSystemRows,
+            resolveLabels: resolveDocumentRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+          }}
+          processProps={{
+            open: !!selectedProcessComponent,
+            isMobile,
+            leftAsideSlideIn,
+            processComponentLabelDraft,
+            setProcessComponentLabelDraft,
+            onDelete: async () => {
+              if (!selectedProcessComponent) return;
+              await handleDeleteProcessElement(selectedProcessComponent.id);
+            },
+            onSave: handleSaveProcessComponent,
+            onClose: () => setSelectedProcessComponentId(null),
+            onAddRelationship: () => {
+              if (!selectedProcessComponent) return;
+              openAddRelationshipFromSource({ systemId: selectedProcessComponent.id });
+            },
+            relatedRows: relatedProcessComponentRows,
+            resolveLabels: resolveDocumentRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+          }}
+          personProps={{
+            open: !!selectedPerson,
+            isMobile,
+            leftAsideSlideIn,
+            mapCategoryId,
+            personRoleDraft,
+            setPersonRoleDraft,
+            personRoleIdDraft,
+            setPersonRoleIdDraft,
+            personDepartmentDraft,
+            setPersonDepartmentDraft,
+            personOccupantNameDraft,
+            setPersonOccupantNameDraft,
+            personStartDateDraft,
+            setPersonStartDateDraft,
+            personEmploymentTypeDraft,
+            setPersonEmploymentTypeDraft,
+            personActingNameDraft,
+            setPersonActingNameDraft,
+            personActingStartDateDraft,
+            setPersonActingStartDateDraft,
+            personRecruitingDraft,
+            setPersonRecruitingDraft,
+            personProposedRoleDraft,
+            setPersonProposedRoleDraft,
+            orgChartDepartmentOptions,
+            onDelete: async () => {
+              if (!selectedPerson) return;
+              await handleDeleteProcessElement(selectedPerson.id);
+            },
+            onSave: handleSavePerson,
+            onClose: () => setSelectedPersonId(null),
+            onAddRelationship: () => {
+              if (!selectedPerson) return;
+              openAddRelationshipFromSource({ systemId: selectedPerson.id });
+            },
+            relatedRows: relatedPersonRows,
+            resolveLabels: resolvePersonRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+          }}
+          bowtieProps={{
+            open: !!selectedBowtieElement,
+            isMobile,
+            leftAsideSlideIn,
+            bowtieElementType:
+              selectedBowtieElement?.element_type && isMethodologyElementType(selectedBowtieElement.element_type)
+                ? (selectedBowtieElement.element_type as
+                    | "bowtie_hazard"
+                    | "bowtie_top_event"
+                    | "bowtie_threat"
+                    | "bowtie_consequence"
+                    | "bowtie_control"
+                    | "bowtie_escalation_factor"
+                    | "bowtie_recovery_measure"
+                    | "bowtie_degradation_indicator"
+                    | "bowtie_risk_rating"
+                    | "incident_sequence_step"
+                    | "incident_outcome"
+                    | "incident_task_condition"
+                    | "incident_factor"
+                    | "incident_system_factor"
+                    | "incident_control_barrier"
+                    | "incident_evidence"
+                    | "incident_finding"
+                    | "incident_recommendation")
+                : null,
+            bowtieHeadingDraft,
+            setBowtieHeadingDraft,
+            bowtieDraft,
+            setBowtieDraft,
+            onDelete: async () => {
+              if (!selectedBowtieElement) return;
+              await handleDeleteProcessElement(selectedBowtieElement.id);
+              setSelectedBowtieElementId(null);
+            },
+            onSave: handleSaveBowtieElement,
+            onClose: () => setSelectedBowtieElementId(null),
+            onAddRelationship: () => {
+              if (!selectedBowtieElement) return;
+              openAddRelationshipFromSource({ systemId: selectedBowtieElement.id });
+            },
+            relatedRows: relatedBowtieRows,
+            resolveLabels: resolvePersonRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+          }}
+          groupingProps={{
+            open: !!selectedGrouping,
+            isMobile,
+            leftAsideSlideIn,
+            groupingLabelDraft,
+            setGroupingLabelDraft,
+            groupingWidthDraft,
+            setGroupingWidthDraft,
+            groupingHeightDraft,
+            setGroupingHeightDraft,
+            onDelete: async () => {
+              if (!selectedGrouping) return;
+              await handleDeleteProcessElement(selectedGrouping.id);
+            },
+            onSave: handleSaveGroupingContainer,
+            onClose: () => setSelectedGroupingId(null),
+            onAddRelationship: () => {
+              if (!selectedGrouping) return;
+              openAddRelationshipFromSource({ groupingId: selectedGrouping.id });
+            },
+            relatedRows: relatedGroupingRows,
+            resolveLabels: resolveGroupingRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+          }}
+          stickyProps={{
+            open: !!selectedSticky,
+            isMobile,
+            leftAsideSlideIn,
+            stickyTextDraft,
+            setStickyTextDraft,
+            onDelete: async () => {
+              if (!selectedSticky) return;
+              await handleDeleteProcessElement(selectedSticky.id);
+            },
+            onSave: handleSaveStickyNote,
+            onClose: () => setSelectedStickyId(null),
+          }}
+          imageProps={{
+            open: !!selectedImage,
+            isMobile,
+            leftAsideSlideIn,
+            imageDescriptionDraft,
+            setImageDescriptionDraft,
+            onDelete: async () => {
+              if (!selectedImage) return;
+              const cfg = (selectedImage.element_config as Record<string, unknown> | null) ?? {};
+              const path = typeof cfg.storage_path === "string" ? cfg.storage_path : "";
+              if (path) {
+                await supabaseBrowser.storage.from("systemmap").remove([path]);
+              }
+              await handleDeleteProcessElement(selectedImage.id);
+              setSelectedImageId(null);
+            },
+            onSave: handleSaveImageAsset,
+            onClose: () => setSelectedImageId(null),
+            onAddRelationship: () => {
+              if (!selectedImage) return;
+              openAddRelationshipFromSource({ systemId: selectedImage.id });
+            },
+            relatedRows: relatedImageRows,
+            resolveLabels: resolvePersonRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+          }}
+          textBoxProps={{
+            open: !!selectedTextBox,
+            isMobile,
+            leftAsideSlideIn,
+            textBoxContentDraft,
+            setTextBoxContentDraft,
+            textBoxBoldDraft,
+            setTextBoxBoldDraft,
+            textBoxItalicDraft,
+            setTextBoxItalicDraft,
+            textBoxUnderlineDraft,
+            setTextBoxUnderlineDraft,
+            textBoxAlignDraft,
+            setTextBoxAlignDraft,
+            textBoxFontSizeDraft,
+            setTextBoxFontSizeDraft,
+            onDelete: async () => {
+              if (!selectedTextBox) return;
+              await handleDeleteProcessElement(selectedTextBox.id);
+              setSelectedTextBoxId(null);
+            },
+            onSave: handleSaveTextBox,
+            onClose: () => setSelectedTextBoxId(null),
+          }}
+          documentProps={{
+            open: !!selectedNode && !isMobile,
+            leftAsideSlideIn,
+            onClose: handleCloseDocumentPropertiesPanel,
+            onOpenRelationship: () => {
+              if (!selectedNode) return;
+              openAddRelationshipFromSource({ nodeId: selectedNode.id });
+            },
+            onOpenStructure: async () => {
+              if (!selectedNode) return;
+              setOutlineCreateMode(null);
+              closeOutlineEditor();
+              setConfirmDeleteOutlineItemId(null);
+              setCollapsedHeadingIds(new Set());
+              setOutlineNodeId(selectedNode.id);
+              await loadOutline(selectedNode.id);
+              setDesktopNodeAction("structure");
+            },
+            onOpenDelete: () => {
+              if (!selectedNode) return;
+              setConfirmDeleteNodeId(selectedNode.id);
+              setDesktopNodeAction("delete");
+            },
+            selectedTypeId,
+            setSelectedTypeId,
+            showTypeSelectArrowUp,
+            setShowTypeSelectArrowUp,
+            addDocumentTypes,
+            getDisplayTypeName,
+            title,
+            setTitle,
+            documentNumber,
+            setDocumentNumber,
+            disciplineMenuRef,
+            showDisciplineMenu,
+            setShowDisciplineMenu,
+            disciplineSelection,
+            setDisciplineSelection,
+            disciplineOptions,
+            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
+            userGroup,
+            setUserGroup,
+            showUserGroupSelectArrowUp,
+            setShowUserGroupSelectArrowUp,
+            userGroupOptions,
+            ownerName,
+            setOwnerName,
+            onSaveNode: handleSaveNode,
+            relatedRows,
+            resolveLabels: resolveDocumentRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+          }}
+        />
+        <CanvasDrilldownOverlays
+          orgChartDirectReportAsideProps={{
+            open: Boolean(mapCategoryId === "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship),
+            sourceLabel: orgDirectReportSourceLabel,
+            query: relationshipSystemQuery,
+            setQuery: setRelationshipSystemQuery,
+            showOptions: showRelationshipSystemOptions,
+            setShowOptions: setShowRelationshipSystemOptions,
+            candidates: orgDirectReportCandidates,
+            selectedTargetId: relationshipTargetSystemId,
+            setSelectedTargetId: setRelationshipTargetSystemId,
+            notes: relationshipDescription,
+            setNotes: setRelationshipDescription,
+            onAdd: handleAddOrgDirectReport,
+            onCancel: () => {
+              closeAddRelationshipModal();
+              setDesktopNodeAction(null);
+            },
+          }}
+          addRelationshipAsideProps={{
+            open: Boolean(mapCategoryId !== "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship),
+            relationshipModeGrouping,
+            relationshipSourceLabel:
+              relationshipSourceNode?.title ||
+              (relationshipSourceSystem ? getElementDisplayName(relationshipSourceSystem) : "") ||
+              relationshipSourceGrouping?.heading ||
+              "",
+            relationshipSourceNodeTitle: relationshipSourceNode?.title || "",
+            relationshipSourceGroupingHeading: relationshipSourceGrouping?.heading || "",
+            allowDocumentTargets,
+            allowSystemTargets,
+            relationshipGroupingQuery,
+            setRelationshipGroupingQuery,
+            groupingRelationCandidateIdByLabel,
+            setRelationshipTargetGroupingId,
+            alreadyRelatedGroupingTargetIds,
+            showRelationshipGroupingOptions,
+            setShowRelationshipGroupingOptions,
+            groupingRelationCandidates,
+            groupingRelationCandidateLabelById,
+            relationshipDocumentQuery,
+            setRelationshipDocumentQuery,
+            documentRelationCandidateIdByLabel,
+            setRelationshipTargetDocumentId,
+            alreadyRelatedDocumentTargetIds,
+            showRelationshipDocumentOptions,
+            setShowRelationshipDocumentOptions,
+            documentRelationCandidates,
+            documentRelationCandidateLabelById,
+            relationshipSystemQuery,
+            setRelationshipSystemQuery,
+            systemRelationCandidateIdByLabel,
+            setRelationshipTargetSystemId,
+            alreadyRelatedSystemTargetIds,
+            showRelationshipSystemOptions,
+            setShowRelationshipSystemOptions,
+            systemRelationCandidates,
+            systemRelationCandidateLabelById,
+            getElementRelationshipDisplayLabel,
+            relationshipDisciplineSelection,
+            disciplineLabelByKey,
+            showRelationshipDisciplineMenu,
+            setShowRelationshipDisciplineMenu,
+            disciplineOptions,
+            setRelationshipDisciplineSelection,
+            relationshipCategory,
+            setRelationshipCategory,
+            relationshipCategoryOptions,
+            relationshipCustomType,
+            setRelationshipCustomType,
+            relationshipDescription,
+            setRelationshipDescription,
+            relationshipTargetDocumentId,
+            relationshipTargetSystemId,
+            relationshipTargetGroupingId,
+            onAdd: async () => {
+              await handleAddRelation();
+              setDesktopNodeAction(null);
+            },
+            onCancel: () => {
+              closeAddRelationshipModal();
+              setDesktopNodeAction(null);
+            },
+          }}
+          deleteDocumentAsideProps={{
+            open: Boolean(selectedNode && !isMobile && desktopNodeAction === "delete" && !!confirmDeleteNodeId),
+            onDelete: async () => {
+              const id = confirmDeleteNodeId;
+              setConfirmDeleteNodeId(null);
+              setDesktopNodeAction(null);
+              if (!id) return;
+              await handleDeleteNode(id);
+            },
+            onCancel: () => {
+              setConfirmDeleteNodeId(null);
+              setDesktopNodeAction(null);
+            },
+          }}
+          mobileDocumentPropertiesModalProps={{
+            open: Boolean(selectedNode && isMobile),
+            onClose: () => setSelectedNodeId(null),
+            selectedTypeId,
+            setSelectedTypeId,
+            addDocumentTypes,
+            getDisplayTypeName,
+            title,
+            setTitle,
+            documentNumber,
+            setDocumentNumber,
+            showDisciplineMenu,
+            setShowDisciplineMenu,
+            disciplineMenuRef,
+            disciplineSelection,
+            setDisciplineSelection,
+            disciplineOptions,
+            getDisciplineLabel: (key) => disciplineLabelByKey.get(key),
+            userGroup,
+            setUserGroup,
+            userGroupOptions,
+            ownerName,
+            setOwnerName,
+            onSaveNode: handleSaveNode,
+            relatedItems: mobileRelatedItems,
+            onDeleteRelation: handleDeleteRelation,
+          }}
+          documentStructureAsideProps={{
+            open: Boolean(isMobile || shouldShowDesktopStructurePanel),
+            isMobile,
+            outlineNodeId,
+            shouldShowDesktopStructurePanel,
+            onClose: () => {
+              setOutlineNodeId(null);
+              setOutlineCreateMode(null);
+              closeOutlineEditor();
+              setConfirmDeleteOutlineItemId(null);
+              setDesktopNodeAction(null);
+            },
+            setOutlineCreateMode,
+            closeOutlineEditor,
+            setNewHeadingTitle,
+            setNewHeadingLevel,
+            setNewHeadingParentId,
+            setNewContentText,
+            setNewContentHeadingId,
+            headingItems,
+            outlineCreateMode,
+            newHeadingTitle,
+            newHeadingLevel,
+            newHeadingParentId,
+            level1Headings,
+            level2Headings,
+            handleCreateHeading,
+            newContentHeadingId,
+            newContentText,
+            handleCreateContent,
+            outlineEditItem,
+            editHeadingTitle,
+            setEditHeadingTitle,
+            editHeadingLevel,
+            setEditHeadingLevel,
+            editHeadingParentId,
+            setEditHeadingParentId,
+            editContentHeadingId,
+            setEditContentHeadingId,
+            editContentText,
+            setEditContentText,
+            handleSaveOutlineEdit,
+            visibleOutlineItems,
+            outlineItems,
+            collapsedHeadingIds,
+            setCollapsedHeadingIds,
+            openOutlineEditor,
+            setConfirmDeleteOutlineItemId,
+          }}
         />
 
       </main>
@@ -6265,3 +3537,4 @@ export default function SystemMapCanvasClient({ mapId }: { mapId: string }) {
     </ReactFlowProvider>
   );
 }
+

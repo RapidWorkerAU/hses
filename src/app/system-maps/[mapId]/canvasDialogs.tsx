@@ -32,3 +32,49 @@ export function ConfirmDialog({
   );
 }
 
+type CanvasConfirmDialogsProps = {
+  confirmDeleteNodeId: string | null;
+  isMobile: boolean;
+  setConfirmDeleteNodeId: (value: string | null) => void;
+  handleDeleteNode: (id: string) => Promise<void>;
+  confirmDeleteOutlineItemId: string | null;
+  setConfirmDeleteOutlineItemId: (value: string | null) => void;
+  handleDeleteOutlineItem: () => Promise<void>;
+};
+
+export function CanvasConfirmDialogs({
+  confirmDeleteNodeId,
+  isMobile,
+  setConfirmDeleteNodeId,
+  handleDeleteNode,
+  confirmDeleteOutlineItemId,
+  setConfirmDeleteOutlineItemId,
+  handleDeleteOutlineItem,
+}: CanvasConfirmDialogsProps) {
+  return (
+    <>
+      <ConfirmDialog
+        open={!!confirmDeleteNodeId && isMobile}
+        title="Delete document?"
+        message="This will permanently remove the document from the map."
+        confirmLabel="Delete"
+        onCancel={() => setConfirmDeleteNodeId(null)}
+        onConfirm={() => {
+          const id = confirmDeleteNodeId;
+          setConfirmDeleteNodeId(null);
+          if (!id) return;
+          void handleDeleteNode(id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteOutlineItemId}
+        title="Delete outline item?"
+        message="This removes the selected heading/content and any dependent children defined by your data rules."
+        confirmLabel="Delete"
+        onCancel={() => setConfirmDeleteOutlineItemId(null)}
+        onConfirm={() => void handleDeleteOutlineItem()}
+      />
+    </>
+  );
+}
