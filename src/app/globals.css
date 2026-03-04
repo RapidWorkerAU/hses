@@ -5736,6 +5736,41 @@ body.mobile-menu-open {
   box-shadow: 0 0 0 4px #000000;
 }
 
+.dashboard-portal--no-sidebar.dashboard-portal--admin-projects .header-inner,
+.dashboard-portal--no-sidebar.dashboard-portal--admin-project-detail .header-inner,
+.dashboard-portal--no-sidebar.dashboard-portal--admin-quotes .header-inner,
+.dashboard-portal--no-sidebar.dashboard-portal--quote-builder .header-inner {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.dashboard-portal--no-sidebar.dashboard-portal--admin-projects .dashboard-main,
+.dashboard-portal--no-sidebar.dashboard-portal--admin-project-detail .dashboard-main,
+.dashboard-portal--no-sidebar.dashboard-portal--admin-quotes .dashboard-main,
+.dashboard-portal--no-sidebar.dashboard-portal--quote-builder .dashboard-main {
+  display: block;
+  margin-left: 0;
+}
+
+.dashboard-portal--no-sidebar.dashboard-portal--admin-projects .dashboard-main > .diagnostic-container,
+.dashboard-portal--no-sidebar.dashboard-portal--admin-project-detail .dashboard-main > .diagnostic-container,
+.dashboard-portal--no-sidebar.dashboard-portal--admin-quotes .dashboard-main > .diagnostic-container,
+.dashboard-portal--no-sidebar.dashboard-portal--quote-builder .dashboard-main > .diagnostic-container {
+  width: 100%;
+  max-width: 1400px !important;
+  margin: 24px auto 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.dashboard-portal--no-sidebar.dashboard-portal--admin-project-detail .dashboard-main > .diagnostic-container > *,
+.dashboard-portal--no-sidebar.dashboard-portal--quote-builder .dashboard-main > .diagnostic-container > * {
+  width: 100%;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

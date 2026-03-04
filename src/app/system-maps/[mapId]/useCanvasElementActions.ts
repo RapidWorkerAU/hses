@@ -162,9 +162,6 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     bowtieControlHeight,
     bowtieRiskRatingHeight,
     incidentDefaultWidth,
-    incidentThreeTwoHeight,
-    incidentSquareSize,
-    incidentFourThreeHeight,
     incidentThreeOneHeight,
     selectedProcessId,
     processHeadingDraft,
@@ -699,12 +696,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentDefaultWidth,
-        height: incidentThreeTwoHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create sequence step."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentDefaultWidth, incidentThreeTwoHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentOutcome = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -723,12 +720,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentDefaultWidth,
-        height: incidentThreeTwoHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create outcome."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentDefaultWidth, incidentThreeTwoHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentTaskCondition = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -748,12 +745,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentDefaultWidth,
-        height: incidentThreeTwoHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create task/condition."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentDefaultWidth, incidentThreeTwoHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentFactor = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -774,12 +771,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentSquareSize,
-        height: incidentSquareSize,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create factor."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentSquareSize]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentSystemFactor = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -799,12 +796,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentSquareSize,
-        height: incidentSquareSize,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create system factor."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentSquareSize]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentControlBarrier = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -828,12 +825,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentDefaultWidth,
-        height: incidentFourThreeHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create control/barrier."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentDefaultWidth, incidentFourThreeHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentEvidence = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -853,12 +850,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentDefaultWidth,
-        height: incidentThreeTwoHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create evidence."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentDefaultWidth, incidentThreeTwoHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentFinding = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -877,12 +874,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentDefaultWidth,
-        height: incidentThreeOneHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create finding."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentDefaultWidth, incidentThreeOneHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddIncidentRecommendation = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -903,12 +900,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentDefaultWidth,
-        height: incidentThreeTwoHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create recommendation."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentDefaultWidth, incidentThreeTwoHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleSaveProcessHeading = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");

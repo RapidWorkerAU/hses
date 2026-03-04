@@ -5,6 +5,17 @@ import type { CanvasElementRow, DisciplineKey, NodeRelationRow, RelationshipCate
 import type { MapCategoryId } from "./mapCategories";
 import { getDisplayRelationType } from "./canvasShared";
 
+const formatBowtieOptionLabel = (value: string) =>
+  value
+    .split("_")
+    .map((part) => {
+      const normalized = part.trim();
+      if (!normalized) return "";
+      if (normalized.toLowerCase() === "ppe") return "PPE";
+      return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    })
+    .join(" ");
+
 type AsideShellProps = {
   isMobile: boolean;
   leftAsideSlideIn: boolean;
@@ -988,6 +999,7 @@ export function BowtiePropertiesAside({
 }: BowtiePropertiesAsideProps) {
   if (!open || !bowtieElementType) return null;
   const isRiskRating = bowtieElementType === "bowtie_risk_rating";
+  const isIncidentElement = bowtieElementType.startsWith("incident_");
   const title = ({
     bowtie_hazard: "Hazard",
     bowtie_top_event: "Top Event",
@@ -1026,13 +1038,19 @@ export function BowtiePropertiesAside({
         </button>
       </div>
       <div className="mt-4 space-y-3">
-        <label className="text-sm text-white">Label
-          <input
-            className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-            value={bowtieHeadingDraft}
-            onChange={(e) => setBowtieHeadingDraft(e.target.value)}
-          />
-        </label>
+        {!isIncidentElement ? (
+          <label className="text-sm text-white">Label
+            <input
+              className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+              value={bowtieHeadingDraft}
+              onChange={(e) => setBowtieHeadingDraft(e.target.value)}
+            />
+          </label>
+        ) : (
+          <div className="text-sm text-white">Label
+            <div className="mt-1 rounded border border-slate-300 bg-[#0f2942] px-3 py-2 text-white">{bowtieHeadingDraft || title}</div>
+          </div>
+        )}
         {!isRiskRating ? (
           <label className="text-sm text-white">Description
             <textarea
@@ -1049,7 +1067,7 @@ export function BowtiePropertiesAside({
             <label className="text-sm text-white">Energy / Source Type
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.energy_source_type ?? "")} onChange={(e) => setField("energy_source_type", e.target.value)}>
                 <option value="">Select type</option>
-                {["mechanical", "electrical", "pressure", "chemical", "biological", "human", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["mechanical", "electrical", "pressure", "chemical", "biological", "human", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Scope / Asset
@@ -1062,7 +1080,7 @@ export function BowtiePropertiesAside({
           <label className="text-sm text-white">Loss of Control Type
             <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.loss_of_control_type ?? "")} onChange={(e) => setField("loss_of_control_type", e.target.value)}>
               <option value="">Select type</option>
-              {["containment", "stability", "condition", "process", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+               {["containment", "stability", "condition", "process", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
             </select>
           </label>
         ) : null}
@@ -1071,7 +1089,7 @@ export function BowtiePropertiesAside({
           <label className="text-sm text-white">Threat Category
             <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.threat_category ?? "")} onChange={(e) => setField("threat_category", e.target.value)}>
               <option value="">Select category</option>
-              {["people", "process", "plant", "environment", "external", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+               {["people", "process", "plant", "environment", "external", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
             </select>
           </label>
         ) : null}
@@ -1080,7 +1098,7 @@ export function BowtiePropertiesAside({
           <label className="text-sm text-white">Impact Category
             <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.impact_category ?? "")} onChange={(e) => setField("impact_category", e.target.value)}>
               <option value="">Select category</option>
-              {["safety", "health", "environment", "community", "financial", "reputation", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+               {["safety", "health", "environment", "community", "financial", "reputation", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
             </select>
           </label>
         ) : null}
@@ -1089,13 +1107,13 @@ export function BowtiePropertiesAside({
           <>
             <label className="text-sm text-white">Control Category
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.control_category ?? "preventive")} onChange={(e) => setField("control_category", e.target.value)}>
-                {["preventive", "mitigative", "escalation", "recovery"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["preventive", "mitigative", "escalation", "recovery"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Control Type
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.control_type ?? "")} onChange={(e) => setField("control_type", e.target.value)}>
                 <option value="">Select type</option>
-                {["elimination", "substitution", "isolation", "engineering", "administrative", "procedural", "behavioural", "detection", "ppe"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["elimination", "substitution", "isolation", "engineering", "administrative", "procedural", "behavioural", "detection", "ppe"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Owner
@@ -1104,13 +1122,13 @@ export function BowtiePropertiesAside({
             <label className="text-sm text-white">Verification Method
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.verification_method ?? "")} onChange={(e) => setField("verification_method", e.target.value)}>
                 <option value="">Select method</option>
-                {["inspection", "test", "monitoring", "audit", "review", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["inspection", "test", "monitoring", "audit", "review", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Verification Frequency
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.verification_frequency ?? "")} onChange={(e) => setField("verification_frequency", e.target.value)}>
                 <option value="">Select frequency</option>
-                {["per_shift", "daily", "weekly", "monthly", "quarterly", "annual", "triggered"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["per_shift", "daily", "weekly", "monthly", "quarterly", "annual", "triggered"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="flex items-center gap-2 text-sm text-white">
@@ -1127,7 +1145,7 @@ export function BowtiePropertiesAside({
           <label className="text-sm text-white">Factor Type
             <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.factor_type ?? "")} onChange={(e) => setField("factor_type", e.target.value)}>
               <option value="">Select type</option>
-              {["human", "environmental", "equipment", "system", "process", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+              {["human", "environmental", "equipment", "system", "process", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
             </select>
           </label>
         ) : null}
@@ -1143,7 +1161,7 @@ export function BowtiePropertiesAside({
             <label className="text-sm text-white">Time Requirement
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.time_requirement ?? "")} onChange={(e) => setField("time_requirement", e.target.value)}>
                 <option value="">Select requirement</option>
-                {["immediate", "within_15m", "within_1h", "within_shift", "within_24h", "planned"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["immediate", "within_15m", "within_1h", "within_shift", "within_24h", "planned"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
           </>
@@ -1154,7 +1172,7 @@ export function BowtiePropertiesAside({
             <label className="text-sm text-white">Monitoring Method
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.monitoring_method ?? "")} onChange={(e) => setField("monitoring_method", e.target.value)}>
                 <option value="">Select method</option>
-                {["inspection", "sensor", "test", "observation", "audit", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["inspection", "sensor", "test", "observation", "audit", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Trigger Threshold
@@ -1167,16 +1185,16 @@ export function BowtiePropertiesAside({
           <>
             <label className="text-sm text-white">Likelihood
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.likelihood ?? "possible")} onChange={(e) => setField("likelihood", e.target.value)}>
-                {["rare", "unlikely", "possible", "likely", "almost_certain"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["rare", "unlikely", "possible", "likely", "almost_certain"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Consequence
               <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.consequence ?? "moderate")} onChange={(e) => setField("consequence", e.target.value)}>
-                {["insignificant", "minor", "moderate", "major", "severe"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["insignificant", "minor", "moderate", "major", "severe"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <div className="text-sm text-white">Risk Level
-              <div className="mt-1 rounded border border-slate-300 bg-white px-3 py-2 text-black">{String(bowtieDraft.risk_level ?? "medium")}</div>
+              <div className="mt-1 rounded border border-slate-300 bg-white px-3 py-2 text-black">{formatBowtieOptionLabel(String(bowtieDraft.risk_level ?? "medium"))}</div>
             </div>
           </>
         ) : null}
@@ -1209,7 +1227,7 @@ export function BowtiePropertiesAside({
               onChange={(e) => setField("impact_type", e.target.value)}
             >
               <option value="">Select impact type</option>
-              {["injury", "damage", "loss", "environmental_impact", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+              {["injury", "damage", "loss", "environmental_impact", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
             </select>
           </label>
         ) : null}
@@ -1227,8 +1245,9 @@ export function BowtiePropertiesAside({
               </select>
             </label>
             <label className="text-sm text-white">Environmental Context
-              <input
+              <textarea
                 className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+                rows={4}
                 value={String(bowtieDraft.environmental_context ?? "")}
                 onChange={(e) => setField("environmental_context", e.target.value)}
               />
@@ -1285,7 +1304,7 @@ export function BowtiePropertiesAside({
                 onChange={(e) => setField("category", e.target.value)}
               >
                 <option value="">Select category</option>
-                {["training", "supervision", "planning", "design", "culture", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["training", "supervision", "planning", "design", "culture", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Cause Level
@@ -1333,7 +1352,7 @@ export function BowtiePropertiesAside({
                 onChange={(e) => setField("control_type", e.target.value)}
               >
                 <option value="">Select control type</option>
-                {["engineering", "administrative", "ppe", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["engineering", "administrative", "ppe", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Owner
@@ -1357,7 +1376,7 @@ export function BowtiePropertiesAside({
                 onChange={(e) => setField("evidence_type", e.target.value)}
               >
                 <option value="">Select evidence type</option>
-                {["photo", "statement", "record", "other"].map((v) => <option key={v} value={v}>{v}</option>)}
+                {["photo", "statement", "record", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Source

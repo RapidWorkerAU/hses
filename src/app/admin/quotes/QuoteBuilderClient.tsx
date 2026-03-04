@@ -255,6 +255,10 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
 
   return (
     <div className="quote-builder">
+      <a className="dashboard-back-link" href="/admin/quotes">
+        <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
+        <span>Back</span>
+      </a>
       <div className="qb-topbar">
         <div>
           <div className="qb-title">Proposal Creator</div>

@@ -21,9 +21,6 @@ import {
   groupingMinWidth,
   incidentDefaultWidth,
   incidentFourThreeHeight,
-  incidentSquareSize,
-  incidentThreeOneHeight,
-  incidentThreeTwoHeight,
   imageDefaultWidth,
   imageMinHeight,
   imageMinWidth,
@@ -621,8 +618,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || bowtieHazardHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieHazardHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -653,8 +650,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieSquareHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -685,8 +682,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieSquareHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -717,8 +714,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || bowtieSquareHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieSquareHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -740,6 +737,19 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "bowtie_control") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const controlCategory = String(cfg.control_category ?? "preventive").trim().toLowerCase();
+    const controlCategoryLabel = controlCategory
+      ? `${controlCategory.charAt(0).toUpperCase()}${controlCategory.slice(1)} Control`
+      : "Control";
+    const controlBannerColor =
+      controlCategory === "mitigative"
+        ? "#0f766e"
+        : controlCategory === "escalation"
+        ? "#0284c7"
+        : controlCategory === "recovery"
+        ? "#0f766e"
+        : "#2563eb";
     return {
       id: flowId,
       type: "bowtieControl",
@@ -749,8 +759,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize, el.height || bowtieControlHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -760,11 +770,11 @@ export const buildSecondaryElementFlowNode = (params: {
       },
       data: {
         entityKind: "bowtie_control",
-        typeName: "Control",
+        typeName: controlCategoryLabel,
         title: el.heading ?? "Control",
         userGroup: "",
         disciplineKeys: [],
-        bannerBg: "#4ade80",
+        bannerBg: controlBannerColor,
         bannerText: "#111827",
         isLandscape: true,
         isUnconfigured: false,
@@ -781,8 +791,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize, el.height || bowtieControlHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -813,8 +823,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize, el.height || bowtieControlHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -845,8 +855,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize, el.height || bowtieControlHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -877,8 +887,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || bowtieDefaultWidth),
-        height: Math.max(minorGridSize, el.height || bowtieRiskRatingHeight),
+        width: bowtieDefaultWidth,
+        height: bowtieRiskRatingHeight,
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -900,6 +910,32 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_sequence_step") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const timestampRaw = String(cfg.timestamp ?? "").trim();
+    let timestampLabel = "";
+    let timestampSecondary = "";
+    if (timestampRaw) {
+      const parsed = new Date(timestampRaw);
+      if (!Number.isNaN(parsed.getTime())) {
+        const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const day = String(parsed.getDate()).padStart(2, "0");
+        const month = monthLabels[parsed.getMonth()] || "Jan";
+        const year = parsed.getFullYear();
+        timestampLabel = `${day}-${month}-${year}`;
+        timestampSecondary = parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+      } else {
+        const [datePart, timePart] = timestampRaw.split("T");
+        if (datePart) {
+          const [year, month, day] = datePart.split("-");
+          const monthIndex = Number(month) - 1;
+          const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const monthLabel = monthIndex >= 0 && monthIndex < monthLabels.length ? monthLabels[monthIndex] : month;
+          timestampLabel = day && monthLabel && year ? `${day}-${monthLabel}-${year}` : datePart;
+        }
+        timestampSecondary = (timePart || "").slice(0, 5);
+      }
+    }
+    const locationLabel = String(cfg.location ?? "").trim();
     return {
       id: flowId,
       type: "incidentSequenceStep",
@@ -909,8 +945,11 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height:
+          el.height === incidentDefaultWidth
+            ? bowtieControlHeight
+            : Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -922,6 +961,10 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_sequence_step",
         typeName: "Sequence Step",
         title: el.heading ?? "Sequence Step",
+        description: String(cfg.description ?? "").trim(),
+        metaLabel: timestampLabel || undefined,
+        metaSubLabel: locationLabel || undefined,
+        metaLabelSecondary: timestampSecondary || undefined,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#bfdbfe",
@@ -932,6 +975,14 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_outcome") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const impactType = String(cfg.impact_type ?? "").trim();
+    const impactLabel = impactType
+      ? `${impactType
+          .split("_")
+          .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+          .join(" ")} Impact`
+      : "";
     return {
       id: flowId,
       type: "incidentOutcome",
@@ -941,8 +992,11 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height:
+          el.height === incidentDefaultWidth
+            ? bowtieControlHeight
+            : Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -954,6 +1008,8 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_outcome",
         typeName: "Outcome",
         title: el.heading ?? "Outcome",
+        description: String(cfg.description ?? "").trim(),
+        metaLabel: impactLabel || undefined,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#ef4444",
@@ -964,6 +1020,9 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_task_condition") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const state = String(cfg.state ?? "normal").trim().toLowerCase();
+    const stateLabel = state ? `${state.charAt(0).toUpperCase()}${state.slice(1)}` : "";
     return {
       id: flowId,
       type: "incidentTaskCondition",
@@ -973,8 +1032,11 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height:
+          el.height === incidentFourThreeHeight
+            ? bowtieControlHeight
+            : Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -986,6 +1048,11 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_task_condition",
         typeName: "Task / Condition",
         title: el.heading ?? "Task / Condition",
+        description: String(cfg.description ?? "").trim(),
+        metaLabel: stateLabel || undefined,
+        metaLabelBg: state === "abnormal" ? "#fecaca" : "#dcfce7",
+        metaLabelText: "#111827",
+        metaLabelBorder: "transparent",
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#fb923c",
@@ -996,6 +1063,7 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_factor") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
     return {
       id: flowId,
       type: "incidentFactor",
@@ -1005,8 +1073,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentSquareSize),
-        height: Math.max(minorGridSize * 2, el.height || incidentSquareSize),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height: Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -1018,6 +1086,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_factor",
         typeName: "Factor",
         title: el.heading ?? "Factor",
+        description: String(cfg.description ?? "").trim(),
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#fde047",
@@ -1028,6 +1097,7 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_system_factor") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
     return {
       id: flowId,
       type: "incidentSystemFactor",
@@ -1037,8 +1107,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentSquareSize),
-        height: Math.max(minorGridSize * 2, el.height || incidentSquareSize),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height: Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -1050,6 +1120,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_system_factor",
         typeName: "System Factor",
         title: el.heading ?? "System Factor",
+        description: String(cfg.description ?? "").trim(),
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#a78bfa",
@@ -1060,6 +1131,7 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_control_barrier") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
     return {
       id: flowId,
       type: "incidentControlBarrier",
@@ -1069,8 +1141,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || incidentFourThreeHeight),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height: Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -1082,6 +1154,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_control_barrier",
         typeName: "Control / Barrier",
         title: el.heading ?? "Control / Barrier",
+        description: String(cfg.description ?? "").trim(),
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#4ade80",
@@ -1092,6 +1165,7 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_evidence") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
     return {
       id: flowId,
       type: "incidentEvidence",
@@ -1101,8 +1175,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height: Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -1114,6 +1188,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_evidence",
         typeName: "Evidence",
         title: el.heading ?? "Evidence",
+        description: String(cfg.description ?? "").trim(),
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#cbd5e1",
@@ -1124,6 +1199,13 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_finding") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const description = String(cfg.description ?? "").trim();
+    const lineCount = description
+      ? description.split(/\r?\n/).reduce((count, line) => count + Math.max(1, Math.ceil(line.length / 24)), 0)
+      : 1;
+    const descriptionHeight = Math.max(minorGridSize, lineCount * 14 + 10);
+    const autoHeight = minorGridSize * 2 + descriptionHeight + 8;
     return {
       id: flowId,
       type: "incidentFinding",
@@ -1133,8 +1215,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-        height: Math.max(minorGridSize, el.height || incidentThreeOneHeight),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height: Math.max(autoHeight, el.height || autoHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -1146,6 +1228,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_finding",
         typeName: "Finding",
         title: el.heading ?? "Finding",
+        description,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#1d4ed8",
@@ -1156,6 +1239,7 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "incident_recommendation") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
     return {
       id: flowId,
       type: "incidentRecommendation",
@@ -1165,8 +1249,8 @@ export const buildSecondaryElementFlowNode = (params: {
       draggable: canEditThis,
       selectable: canWriteMap,
       style: {
-        width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
-        height: Math.max(minorGridSize * 2, el.height || incidentThreeTwoHeight),
+        width: Math.max(bowtieDefaultWidth, el.width || bowtieDefaultWidth),
+        height: Math.max(bowtieControlHeight, el.height || bowtieControlHeight),
         borderRadius: 0,
         border: "none",
         background: "transparent",
@@ -1178,6 +1262,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "incident_recommendation",
         typeName: "Recommendation",
         title: el.heading ?? "Recommendation",
+        description: String(cfg.description ?? "").trim(),
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#14b8a6",

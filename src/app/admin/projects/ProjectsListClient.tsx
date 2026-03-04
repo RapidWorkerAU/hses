@@ -27,6 +27,12 @@ const formatDate = (value: string | null | undefined) => {
   return date.toLocaleDateString("en-AU");
 };
 
+const formatStatus = (value: string | null | undefined) => {
+  const status = (value ?? "active").trim();
+  if (!status) return "Active";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+};
+
 export default function ProjectsListClient() {
   const router = useRouter();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
@@ -118,13 +124,10 @@ export default function ProjectsListClient() {
   return (
     <div className="space-y-6">
       <div className="admin-projects-header">
-        <button
-          type="button"
-          className="admin-projects-back mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
-          onClick={() => router.push("/dashboard/business-admin")}
-        >
-          â† Back
-        </button>
+        <a className="dashboard-back-link" href="/dashboard/business-admin">
+          <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
+          <span>Back</span>
+        </a>
         <h1 className="text-2xl font-semibold text-slate-900">Project Schedule Builder</h1>
         <p className="mt-1 text-sm text-slate-600">
           Quotes accepted by clients are listed here as projects ready for scheduling.
@@ -195,7 +198,7 @@ export default function ProjectsListClient() {
                   </td>
                   <td className="px-4 py-3" data-label="Status">
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                      {project.status ?? "active"}
+                      {formatStatus(project.status)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-500" data-label="Accepted">

@@ -1,7 +1,24 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchAdmin } from "../lib/adminFetch";
+
+const TIME_ENTRIES_PER_PAGE = 10;
+const MONTH_OPTIONS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 type ProjectDetail = {
   id: string;
@@ -80,14 +97,40 @@ const getTodayIsoDate = () => {
     .slice(0, 10);
 };
 
+const getYearMonth = (value: string | null | undefined) => {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (match) {
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]) - 1,
+    };
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth(),
+  };
+};
+
 export default function ProjectDetailClient({ projectId }: { projectId: string }) {
+  const today = new Date();
+  const router = useRouter();
   const [payload, setPayload] = useState<ProjectPayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [logModalError, setLogModalError] = useState<string | null>(null);
+  const [editModalError, setEditModalError] = useState<string | null>(null);
   const [logState, setLogState] = useState<Record<string, { hours: string; note: string }>>({});
   const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
   const [showLogModal, setShowLogModal] = useState(false);
+  const [showTimesheetModal, setShowTimesheetModal] = useState(false);
   const [openDeliverableId, setOpenDeliverableId] = useState<string | null>(null);
+  const [openTimesheetDeliverableId, setOpenTimesheetDeliverableId] = useState<string | null>(null);
+  const [timeLogPage, setTimeLogPage] = useState(1);
+  const [timesheetMonth, setTimesheetMonth] = useState(today.getMonth());
+  const [timesheetYear, setTimesheetYear] = useState(today.getFullYear());
   const [overHoursWarning, setOverHoursWarning] = useState<{
     show: boolean;
     planned: number;
@@ -154,11 +197,37 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     load();
   }, [projectId]);
 
+  useEffect(() => {
+    const totalPages = Math.max(
+      1,
+      Math.ceil((payload?.time_entries?.length ?? 0) / TIME_ENTRIES_PER_PAGE)
+    );
+    setTimeLogPage((prev) => Math.min(prev, totalPages));
+  }, [payload]);
+
   const milestoneHours = useMemo(() => {
     const map: Record<string, number> = {};
     if (!payload) return map;
     payload.time_entries.forEach((entry) => {
       map[entry.project_milestone_id] = (map[entry.project_milestone_id] ?? 0) + entry.hours;
+    });
+    return map;
+  }, [payload]);
+
+  const deliverableById = useMemo(() => {
+    const map: Record<string, ProjectDeliverable> = {};
+    if (!payload) return map;
+    payload.deliverables.forEach((deliverable) => {
+      map[deliverable.id] = deliverable;
+    });
+    return map;
+  }, [payload]);
+
+  const milestoneById = useMemo(() => {
+    const map: Record<string, ProjectMilestone> = {};
+    if (!payload) return map;
+    payload.milestones.forEach((milestone) => {
+      map[milestone.id] = milestone;
     });
     return map;
   }, [payload]);
@@ -233,6 +302,90 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     const right = b.created_at ? new Date(b.created_at).getTime() : 0;
     return right - left;
   });
+  const totalTimeLogPages = Math.max(1, Math.ceil(timeEntries.length / TIME_ENTRIES_PER_PAGE));
+  const currentTimeLogPage = Math.min(timeLogPage, totalTimeLogPages);
+  const paginatedTimeEntries = timeEntries.slice(
+    (currentTimeLogPage - 1) * TIME_ENTRIES_PER_PAGE,
+    currentTimeLogPage * TIME_ENTRIES_PER_PAGE
+  );
+  const timeLogRangeStart =
+    timeEntries.length === 0 ? 0 : (currentTimeLogPage - 1) * TIME_ENTRIES_PER_PAGE + 1;
+  const timeLogRangeEnd = Math.min(currentTimeLogPage * TIME_ENTRIES_PER_PAGE, timeEntries.length);
+  const timesheetYears = Array.from(
+    new Set([
+      today.getFullYear(),
+      ...timeEntries
+        .map((entry) => getYearMonth(entry.entry_date ?? entry.created_at)?.year)
+        .filter((year): year is number => Boolean(year)),
+    ])
+  ).sort((left, right) => right - left);
+  const timesheetDeliverables = Array.from(
+    timeEntries.reduce<
+      Map<
+        string,
+        {
+          deliverableId: string;
+          deliverableName: string;
+          totalHours: number;
+          milestones: Array<{
+            key: string;
+            milestoneName: string;
+            hours: number;
+          }>;
+        }
+      >
+    >((map, entry) => {
+      const yearMonth = getYearMonth(entry.entry_date ?? entry.created_at);
+      if (!yearMonth || yearMonth.year !== timesheetYear || yearMonth.month !== timesheetMonth) {
+        return map;
+      }
+      const milestone = milestoneById[entry.project_milestone_id];
+      const deliverable = milestone
+        ? deliverableById[milestone.project_deliverable_id]
+        : undefined;
+      const deliverableId = deliverable?.id ?? "unknown";
+      const deliverableName = deliverable?.title ?? "Deliverable";
+      const milestoneKey = `${deliverableId}:${entry.project_milestone_id}`;
+      const milestoneName = milestone?.title ?? "Milestone";
+
+      let grouped = map.get(deliverableId);
+      if (!grouped) {
+        grouped = {
+          deliverableId,
+          deliverableName,
+          totalHours: 0,
+          milestones: [],
+        };
+        map.set(deliverableId, grouped);
+      }
+
+      grouped.totalHours += entry.hours;
+      const existingMilestone = grouped.milestones.find((item) => item.key === milestoneKey);
+      if (existingMilestone) {
+        existingMilestone.hours += entry.hours;
+      } else {
+        grouped.milestones.push({
+          key: milestoneKey,
+          milestoneName,
+          hours: entry.hours,
+        });
+      }
+
+      return map;
+    }, new Map())
+      .values()
+  )
+    .map((deliverable) => ({
+      ...deliverable,
+      milestones: [...deliverable.milestones].sort((left, right) =>
+        left.milestoneName.localeCompare(right.milestoneName)
+      ),
+    }))
+    .sort((left, right) => left.deliverableName.localeCompare(right.deliverableName));
+  const timesheetTotalHours = timesheetDeliverables.reduce(
+    (sum, deliverable) => sum + deliverable.totalHours,
+    0
+  );
   const projectPlannedHours = deliverables.reduce(
     (sum, deliverable) => sum + (deliverable.planned_hours ?? 0),
     0
@@ -249,26 +402,33 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     projectPlannedHours > 0
       ? Math.min(100, Math.round((projectLoggedHours / projectPlannedHours) * 100))
       : 0;
+  const selectedLogMilestone = logForm.milestoneId
+    ? milestoneById[logForm.milestoneId]
+    : undefined;
+  const selectedLogMilestoneRemaining = selectedLogMilestone
+    ? (selectedLogMilestone.planned_hours ?? 0) -
+      (milestoneHours[selectedLogMilestone.id] ?? 0)
+    : null;
 
   const handleLogSubmit = async () => {
     if (!logForm.milestoneId) {
-      setError("Please select a milestone.");
+      setLogModalError("Please select a milestone.");
       return;
     }
     if (!logForm.entryDate) {
-      setError("Please select a date.");
+      setLogModalError("Please select a date.");
       return;
     }
     const hoursValue = Number(logForm.hours ?? 0);
     if (!hoursValue || hoursValue <= 0) {
-      setError("Please enter hours greater than 0.");
+      setLogModalError("Please enter hours greater than 0.");
       return;
     }
     if (hoursValue > 12) {
-      setError("Hours cannot be greater than 12.");
+      setLogModalError("Hours cannot be greater than 12.");
       return;
     }
-    setError(null);
+    setLogModalError(null);
 
     if (!allowOverHours && logForm.deliverableId) {
       const deliverable = deliverables.find((item) => item.id === logForm.deliverableId);
@@ -308,7 +468,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     );
     if (!response.ok) {
       const message = await response.text();
-      setError(message || "Unable to log time.");
+      setLogModalError(message || "Unable to log time.");
     } else {
       const data = (await response.json()) as { entry?: TimeEntry };
       const entry = data.entry;
@@ -328,6 +488,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
         note: "",
         entryDate: getTodayIsoDate(),
       });
+      setLogModalError(null);
       setOverHoursWarning({ show: false, planned: 0, remaining: 0, requested: 0, overBy: 0 });
       setAllowOverHours(false);
       setShowLogModal(false);
@@ -338,22 +499,23 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   const handleEditSubmit = async () => {
     if (!editEntryId) return;
     if (!editForm.milestoneId) {
-      setError("Please select a milestone.");
+      setEditModalError("Please select a milestone.");
       return;
     }
     if (!editForm.entryDate) {
-      setError("Please select a date.");
+      setEditModalError("Please select a date.");
       return;
     }
     const hoursValue = Number(editForm.hours ?? 0);
     if (!hoursValue || hoursValue <= 0) {
-      setError("Please enter hours greater than 0.");
+      setEditModalError("Please enter hours greater than 0.");
       return;
     }
     if (hoursValue > 12) {
-      setError("Hours cannot be greater than 12.");
+      setEditModalError("Hours cannot be greater than 12.");
       return;
     }
+    setEditModalError(null);
 
     if (!allowOverHoursEdit && editForm.deliverableId) {
       const deliverable = deliverables.find((item) => item.id === editForm.deliverableId);
@@ -392,7 +554,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     });
     if (!response.ok) {
       const message = await response.text();
-      setError(message || "Unable to update time entry.");
+      setEditModalError(message || "Unable to update time entry.");
     } else {
       const data = (await response.json()) as { entry?: TimeEntry };
       if (data.entry) {
@@ -408,6 +570,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
       }
       setShowEditModal(false);
       setEditEntryId(null);
+      setEditModalError(null);
       setEditOverHoursWarning({ show: false, planned: 0, remaining: 0, requested: 0, overBy: 0 });
       setAllowOverHoursEdit(false);
     }
@@ -477,11 +640,19 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   return (
     <div className="space-y-6">
       <div>
+        <button
+          type="button"
+          className="dashboard-back-link border-0 bg-transparent p-0"
+          onClick={() => router.push("/admin/projects")}
+        >
+          <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
+          <span>Back</span>
+        </button>
         <h1 className="text-2xl font-semibold text-slate-900">
           {project.name ?? project.quotes?.title ?? "Project"}
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Quote {project.quotes?.quote_number ?? "-"} Â·{" "}
+          Quote {project.quotes?.quote_number ?? "-"} |{" "}
           {project.quotes?.organisations?.name ?? "Unknown organisation"}
         </p>
       </div>
@@ -606,9 +777,8 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 const deliverableOver = deliverablePlanned > 0 && deliverableLogged > deliverablePlanned;
 
                 return (
-                  <>
+                  <Fragment key={deliverable.id}>
                     <tr
-                      key={deliverable.id}
                       className="border-t border-slate-100 text-slate-900"
                       style={{ background: "#d8ebfb" }}
                     >
@@ -746,7 +916,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                         </tr>
                       );
                     })}
-                  </>
+                  </Fragment>
                 );
               })}
               <tr className="border-t border-slate-200 bg-slate-50">
@@ -786,32 +956,39 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
       <div className="rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Time log</h2>
-          <button
-            type="button"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-            onClick={() => setShowLogModal(true)}
-          >
-            Add time entry
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+              onClick={() => setShowTimesheetModal(true)}
+            >
+              View Timesheet Information
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+              onClick={() => {
+                setError(null);
+                setLogModalError(null);
+                setShowLogModal(true);
+              }}
+            >
+              Add time entry
+            </button>
+          </div>
         </div>
         <div className="mt-4 space-y-3 md:hidden">
-          {timeEntries.length === 0 ? (
+          {paginatedTimeEntries.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
               No time entries yet.
             </div>
           ) : (
-            timeEntries.map((entry) => {
-              const milestone = milestoneList.find(
-                (item) => item.id === entry.project_milestone_id
-              );
-              const deliverableId =
-                milestone?.project_deliverable_id ??
-                deliverables.find((item) =>
-                  milestonesByDeliverable[item.id]?.some(
-                    (m) => m.id === entry.project_milestone_id
-                  )
-                )?.id ??
-                "";
+            paginatedTimeEntries.map((entry) => {
+              const milestone = milestoneById[entry.project_milestone_id];
+              const deliverable = milestone
+                ? deliverableById[milestone.project_deliverable_id]
+                : undefined;
+              const deliverableId = deliverable?.id ?? "";
               return (
                 <div
                   key={entry.id}
@@ -836,6 +1013,12 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   <div className="mt-3 space-y-2 text-sm text-slate-700">
                     <div>
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                        Deliverable
+                      </span>
+                      <div className="mt-1">{deliverable?.title ?? "-"}</div>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                         Milestone
                       </span>
                       <div className="mt-1">{milestone?.title ?? "-"}</div>
@@ -852,6 +1035,8 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                       type="button"
                       className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
                       onClick={() => {
+                        setError(null);
+                        setEditModalError(null);
                         setEditEntryId(entry.id);
                         setEditForm({
                           deliverableId,
@@ -889,12 +1074,21 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
 
         <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 md:block">
           <table className="w-full text-left text-sm">
+            <colgroup>
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "15%" }} />
+              <col style={{ width: "25%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "25%" }} />
+              <col style={{ width: "10%" }} />
+            </colgroup>
             <thead
               className="text-xs uppercase tracking-wide text-white"
               style={{ background: "#0f4b66" }}
             >
               <tr>
                 <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Deliverable</th>
                 <th className="px-4 py-3">Milestone</th>
                 <th className="px-4 py-3">Hours</th>
                 <th className="px-4 py-3">Note</th>
@@ -904,39 +1098,38 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
             <tbody>
               {timeEntries.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
                     No time entries yet.
                   </td>
                 </tr>
               )}
-              {timeEntries.map((entry) => {
-                const milestone = milestoneList.find(
-                  (item) => item.id === entry.project_milestone_id
-                );
-                const deliverableId =
-                  milestone?.project_deliverable_id ??
-                  deliverables.find((item) =>
-                    milestonesByDeliverable[item.id]?.some(
-                      (m) => m.id === entry.project_milestone_id
-                    )
-                  )?.id ??
-                  "";
+              {paginatedTimeEntries.map((entry) => {
+                const milestone = milestoneById[entry.project_milestone_id];
+                const deliverable = milestone
+                  ? deliverableById[milestone.project_deliverable_id]
+                  : undefined;
+                const deliverableId = deliverable?.id ?? "";
                 return (
                   <tr key={entry.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 text-slate-600">
                       {formatDate(entry.entry_date)}
                     </td>
+                    <td className="px-4 py-3 text-slate-700">{deliverable?.title ?? "-"}</td>
                     <td className="px-4 py-3 text-slate-700">
                       {milestone?.title ?? "-"}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{entry.hours}</td>
-                    <td className="px-4 py-3 text-slate-600">{entry.note ?? "-"}</td>
+                    <td className="max-w-[12rem] px-4 py-3 text-slate-600">
+                      {entry.note ?? "-"}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
                           onClick={() => {
+                            setError(null);
+                            setEditModalError(null);
                             setEditEntryId(entry.id);
                             setEditForm({
                               deliverableId,
@@ -973,7 +1166,164 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
             </tbody>
           </table>
         </div>
+        {timeEntries.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
+            <div>
+              Showing {timeLogRangeStart}-{timeLogRangeEnd} of {timeEntries.length}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setTimeLogPage(Math.max(1, currentTimeLogPage - 1))}
+                disabled={currentTimeLogPage === 1}
+              >
+                Previous
+              </button>
+              <span className="text-xs font-semibold text-slate-500">
+                Page {currentTimeLogPage} of {totalTimeLogPages}
+              </span>
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setTimeLogPage(Math.min(totalTimeLogPages, currentTimeLogPage + 1))}
+                disabled={currentTimeLogPage === totalTimeLogPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {showTimesheetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-4xl rounded-2xl bg-white p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Timesheet Information
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  Review billed hours by deliverable and milestone for the selected month.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
+                onClick={() => setShowTimesheetModal(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="block text-sm text-slate-600">
+                Month
+                <select
+                  className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={timesheetMonth}
+                  onChange={(event) => setTimesheetMonth(Number(event.target.value))}
+                >
+                  {MONTH_OPTIONS.map((label, index) => (
+                    <option key={label} value={index}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm text-slate-600">
+                Year
+                <select
+                  className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={timesheetYear}
+                  onChange={(event) => setTimesheetYear(Number(event.target.value))}
+                >
+                  {timesheetYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+              <table className="w-full text-left text-sm">
+                <thead
+                  className="text-xs uppercase tracking-wide text-white"
+                  style={{ background: "#0f4b66" }}
+                >
+                  <tr>
+                    <th className="px-4 py-3">Deliverable</th>
+                    <th className="px-4 py-3">Total hours</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timesheetDeliverables.length === 0 ? (
+                    <tr>
+                      <td colSpan={2} className="px-4 py-6 text-center text-slate-500">
+                        No hours logged for {MONTH_OPTIONS[timesheetMonth]} {timesheetYear}.
+                      </td>
+                    </tr>
+                  ) : (
+                    <>
+                      {timesheetDeliverables.map((deliverable) => {
+                        const isOpen =
+                          openTimesheetDeliverableId === deliverable.deliverableId;
+                        return (
+                          <Fragment key={deliverable.deliverableId}>
+                            <tr
+                              className="border-t border-slate-100 bg-slate-50"
+                            >
+                              <td className="px-4 py-3 font-semibold text-slate-900">
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-2 text-left"
+                                  onClick={() =>
+                                    setOpenTimesheetDeliverableId((prev) =>
+                                      prev === deliverable.deliverableId
+                                        ? null
+                                        : deliverable.deliverableId
+                                    )
+                                  }
+                                >
+                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-xs font-semibold text-slate-600">
+                                    {isOpen ? "-" : "+"}
+                                  </span>
+                                  <span>{deliverable.deliverableName}</span>
+                                </button>
+                              </td>
+                              <td className="px-4 py-3 font-semibold text-slate-900">
+                                {deliverable.totalHours}
+                              </td>
+                            </tr>
+                            {isOpen &&
+                              deliverable.milestones.map((milestone) => (
+                                <tr key={milestone.key} className="border-t border-slate-100">
+                                  <td className="px-4 py-3 pl-14 text-slate-700">
+                                    {milestone.milestoneName}
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-700">
+                                    {milestone.hours}
+                                  </td>
+                                </tr>
+                              ))}
+                          </Fragment>
+                        );
+                      })}
+                      <tr className="border-t border-slate-200 bg-slate-50">
+                        <td className="px-4 py-3 font-semibold text-slate-900">Total</td>
+                        <td className="px-4 py-3 font-semibold text-slate-900">
+                          {timesheetTotalHours}
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLogModal && (
         <div className="admin-log-modal fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -989,11 +1339,14 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={logForm.deliverableId}
                   onChange={(event) =>
-                    setLogForm((prev) => ({
-                      ...prev,
-                      deliverableId: event.target.value,
-                      milestoneId: "",
-                    }))
+                    {
+                      setLogModalError(null);
+                      setLogForm((prev) => ({
+                        ...prev,
+                        deliverableId: event.target.value,
+                        milestoneId: "",
+                      }));
+                    }
                   }
                 >
                   <option value="">Select deliverable</option>
@@ -1009,9 +1362,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 <select
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={logForm.milestoneId}
-                  onChange={(event) =>
-                    setLogForm((prev) => ({ ...prev, milestoneId: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setLogModalError(null);
+                    setLogForm((prev) => ({ ...prev, milestoneId: event.target.value }));
+                  }}
                   disabled={!logForm.deliverableId}
                 >
                   <option value="">
@@ -1037,10 +1391,22 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   max="12"
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={logForm.hours}
-                  onChange={(event) =>
-                    setLogForm((prev) => ({ ...prev, hours: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setLogModalError(null);
+                    setLogForm((prev) => ({ ...prev, hours: event.target.value }));
+                  }}
                 />
+                {selectedLogMilestoneRemaining !== null && (
+                  <div
+                    className={`mt-2 text-xs ${
+                      selectedLogMilestoneRemaining < 0
+                        ? "font-semibold text-rose-600"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    Hours Remaining ({selectedLogMilestoneRemaining} Hours)
+                  </div>
+                )}
               </label>
               <label className="block text-sm text-slate-600">
                 Date
@@ -1049,9 +1415,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   required
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={logForm.entryDate}
-                  onChange={(event) =>
-                    setLogForm((prev) => ({ ...prev, entryDate: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setLogModalError(null);
+                    setLogForm((prev) => ({ ...prev, entryDate: event.target.value }));
+                  }}
                 />
               </label>
               <label className="block text-sm text-slate-600">
@@ -1060,12 +1427,18 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   rows={4}
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={logForm.note}
-                  onChange={(event) =>
-                    setLogForm((prev) => ({ ...prev, note: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setLogModalError(null);
+                    setLogForm((prev) => ({ ...prev, note: event.target.value }));
+                  }}
                 />
               </label>
             </div>
+            {logModalError && (
+              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {logModalError}
+              </div>
+            )}
             {overHoursWarning.show && (
               <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 <div className="font-semibold">Over hours allocation</div>
@@ -1079,7 +1452,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
               <button
                 type="button"
                 className="rounded-full border border-slate-200 px-4 py-2 text-xs"
-                onClick={() => setShowLogModal(false)}
+                onClick={() => {
+                  setLogModalError(null);
+                  setShowLogModal(false);
+                }}
               >
                 Cancel
               </button>
@@ -1122,13 +1498,14 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 <select
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={editForm.deliverableId}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setEditModalError(null);
                     setEditForm((prev) => ({
                       ...prev,
                       deliverableId: event.target.value,
                       milestoneId: "",
-                    }))
-                  }
+                    }));
+                  }}
                 >
                   <option value="">Select deliverable</option>
                   {deliverables.map((deliverable) => (
@@ -1143,9 +1520,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 <select
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={editForm.milestoneId}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, milestoneId: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setEditModalError(null);
+                    setEditForm((prev) => ({ ...prev, milestoneId: event.target.value }));
+                  }}
                   disabled={!editForm.deliverableId}
                 >
                   <option value="">
@@ -1172,9 +1550,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   max="12"
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={editForm.hours}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, hours: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setEditModalError(null);
+                    setEditForm((prev) => ({ ...prev, hours: event.target.value }));
+                  }}
                 />
               </label>
               <label className="block text-sm text-slate-600">
@@ -1184,9 +1563,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   required
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={editForm.entryDate}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, entryDate: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setEditModalError(null);
+                    setEditForm((prev) => ({ ...prev, entryDate: event.target.value }));
+                  }}
                 />
               </label>
               <label className="block text-sm text-slate-600">
@@ -1195,12 +1575,18 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                   rows={4}
                   className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   value={editForm.note}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, note: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setEditModalError(null);
+                    setEditForm((prev) => ({ ...prev, note: event.target.value }));
+                  }}
                 />
               </label>
             </div>
+            {editModalError && (
+              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {editModalError}
+              </div>
+            )}
             {editOverHoursWarning.show && (
               <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 <div className="font-semibold">Over hours allocation</div>
@@ -1215,7 +1601,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
               <button
                 type="button"
                 className="rounded-full border border-slate-200 px-4 py-2 text-xs"
-                onClick={() => setShowEditModal(false)}
+                onClick={() => {
+                  setEditModalError(null);
+                  setShowEditModal(false);
+                }}
               >
                 Cancel
               </button>

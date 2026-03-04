@@ -1,8 +1,6 @@
 ﻿import "../quote-builder.css";
 import QuoteBuilderClient from "../QuoteBuilderClient";
-import DashboardLogoutLink from "@/app/sms-diagnostic/dashboard/DashboardLogoutLink";
 import DashboardSessionText from "@/app/sms-diagnostic/dashboard/DashboardSessionText";
-import BusinessAdminLink from "@/app/sms-diagnostic/dashboard/BusinessAdminLink";
 
 export default async function QuoteBuilderPage({
   params,
@@ -11,7 +9,7 @@ export default async function QuoteBuilderPage({
 }) {
   const { id } = await params;
   return (
-    <div className="diagnostic-body page-stack dashboard-portal quote-builder dashboard-portal--quote-builder">
+    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--no-sidebar quote-builder dashboard-portal--quote-builder">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">
@@ -36,37 +34,11 @@ export default async function QuoteBuilderPage({
       </div>
 
       <main>
-        <div className="dashboard-shell">
-          <aside className="dashboard-sidebar" aria-label="Dashboard navigation">
-            <div className="dashboard-sidebar-inner">
-              <div className="dashboard-sidebar-title">Client portal</div>
-              <nav className="dashboard-sidebar-nav">
-                <a className="dashboard-sidebar-link" href="/dashboard">
-                  Overview
-                </a>
-                <a className="dashboard-sidebar-link" href="/dashboard/diagnostics">
-                  Diagnostics
-                </a>
-                <a className="dashboard-sidebar-link" href="/dashboard/codes">
-                  Code register
-                </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/access">
-                  Access landing
-                </a>
-              </nav>
-              <div className="dashboard-sidebar-footer">
-                <BusinessAdminLink className="dashboard-sidebar-link is-active" />
-                <DashboardLogoutLink className="dashboard-sidebar-link dashboard-sidebar-link--logout" />
-              </div>
-            </div>
-          </aside>
-
-          <section className="dashboard-section dashboard-main">
-            <div className="diagnostic-container">
-              <QuoteBuilderClient quoteId={id} />
-            </div>
-          </section>
-        </div>
+        <section className="dashboard-section dashboard-main">
+          <div className="diagnostic-container">
+            <QuoteBuilderClient quoteId={id} />
+          </div>
+        </section>
       </main>
 
       <footer className="site-footer">

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { RefObject } from "react";
 import type { MapMemberProfileRow, SystemMap } from "./canvasShared";
 import type { NodePaletteKind } from "./mapCategories";
@@ -111,18 +112,18 @@ export function CanvasActionButtons({
   const allowed = new Set<NodePaletteKind>(allowedNodeKinds);
   return (
     <>
-      <a
+      <Link
         href="/system-maps"
         aria-label="Back to all system maps"
         title="All system maps"
-        className="fixed left-[20px] top-[82px] z-[88] group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
+        className="fixed left-[20px] top-[82px] z-[74] group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
       >
         <span
           aria-hidden="true"
           className="h-7 w-7 bg-current"
           style={{ WebkitMaskImage: "url('/icons/back.svg')", maskImage: "url('/icons/back.svg')", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskPosition: "center", maskPosition: "center", WebkitMaskSize: "contain", maskSize: "contain" }}
         />
-      </a>
+      </Link>
       <div
         className="fixed top-[82px] z-[88] transition-[right] duration-300 ease-out"
         style={{ right: showMapInfoAside ? "315px" : "20px" }}

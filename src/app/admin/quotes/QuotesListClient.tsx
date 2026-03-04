@@ -45,6 +45,26 @@ const formatMoney = (value: number | null | undefined) => {
   }).format(value);
 };
 
+const formatStatus = (value: string | null | undefined) => {
+  const status = (value ?? "draft").trim();
+  if (!status) return "Draft";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+};
+
+const getStatusPillClassName = (value: string | null | undefined) => {
+  const status = (value ?? "draft").trim().toLowerCase();
+  if (status === "approved") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+  if (status === "published") {
+    return "bg-sky-100 text-sky-700";
+  }
+  if (status === "rejected") {
+    return "bg-rose-100 text-rose-700";
+  }
+  return "bg-amber-100 text-amber-700";
+};
+
 export default function QuotesListClient() {
   const router = useRouter();
   const [quotes, setQuotes] = useState<QuoteRow[]>([]);
@@ -189,13 +209,10 @@ export default function QuotesListClient() {
     <div className="space-y-6">
       <div className="admin-quotes-header flex flex-wrap items-center justify-between gap-4">
         <div className="admin-quotes-header-copy">
-          <button
-            type="button"
-            className="admin-quotes-back mb-2 inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
-            onClick={() => router.push("/dashboard/business-admin")}
-          >
-            ← Back
-          </button>
+          <a className="dashboard-back-link" href="/dashboard/business-admin">
+            <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
+            <span>Back</span>
+          </a>
           <h1 className="text-2xl font-semibold text-slate-900">Quotes &amp; Proposals</h1>
           <p className="mt-1 text-sm text-slate-600">
             Manage client proposals and share access codes.
@@ -306,8 +323,12 @@ export default function QuotesListClient() {
                       {latestCode}
                     </td>
                     <td className="px-4 py-3" data-label="Status">
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                        {quote.status ?? "draft"}
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusPillClassName(
+                          quote.status
+                        )}`}
+                      >
+                        {formatStatus(quote.status)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700" data-label="Total">

@@ -53,6 +53,10 @@ export default function DiagnosticsListPage() {
 
           <section className="dashboard-section dashboard-main">
             <div className="diagnostic-container">
+              <a className="dashboard-back-link" href="/dashboard">
+                <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
+                <span>Back</span>
+              </a>
               <div className="dashboard-page-header">
                 <img
                   src="/images/SELF-Original-Logo.png"

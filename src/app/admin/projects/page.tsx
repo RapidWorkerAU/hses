@@ -1,7 +1,5 @@
 ﻿import type { Metadata } from "next";
-import DashboardLogoutLink from "@/app/sms-diagnostic/dashboard/DashboardLogoutLink";
 import DashboardSessionText from "@/app/sms-diagnostic/dashboard/DashboardSessionText";
-import BusinessAdminLink from "@/app/sms-diagnostic/dashboard/BusinessAdminLink";
 import ProjectsListClient from "./ProjectsListClient";
 
 export const metadata: Metadata = {
@@ -10,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function ProjectSchedulePage() {
   return (
-    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--admin-projects">
+    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--no-sidebar dashboard-portal--admin-projects">
       <header className="site-header">
         <div className="header-inner">
           <div className="header-left">
@@ -31,37 +29,11 @@ export default function ProjectSchedulePage() {
       </header>
 
       <main>
-        <div className="dashboard-shell">
-          <aside className="dashboard-sidebar" aria-label="Dashboard navigation">
-            <div className="dashboard-sidebar-inner">
-              <div className="dashboard-sidebar-title">Client portal</div>
-              <nav className="dashboard-sidebar-nav">
-                <a className="dashboard-sidebar-link" href="/dashboard">
-                  Overview
-                </a>
-                <a className="dashboard-sidebar-link" href="/dashboard/diagnostics">
-                  Diagnostics
-                </a>
-                <a className="dashboard-sidebar-link" href="/dashboard/codes">
-                  Code register
-                </a>
-                <a className="dashboard-sidebar-link" href="/sms-diagnostic/access">
-                  Access landing
-                </a>
-              </nav>
-              <div className="dashboard-sidebar-footer">
-                <BusinessAdminLink className="dashboard-sidebar-link is-active" />
-                <DashboardLogoutLink className="dashboard-sidebar-link dashboard-sidebar-link--logout" />
-              </div>
-            </div>
-          </aside>
-
-          <section className="dashboard-section dashboard-main">
-            <div className="diagnostic-container">
-              <ProjectsListClient />
-            </div>
-          </section>
-        </div>
+        <section className="dashboard-section dashboard-main">
+          <div className="diagnostic-container">
+            <ProjectsListClient />
+          </div>
+        </section>
       </main>
 
       <footer className="site-footer">

@@ -39,16 +39,14 @@ export default function BusinessAdminClient() {
             Admin
           </span>
         </div>
-        <h3 className="mt-4 text-lg font-semibold text-slate-900">
-          Proposal Builder
-        </h3>
+        <h3 className="mt-4 text-lg font-semibold text-slate-900">Proposal Builder</h3>
         <p className="mt-2 text-sm text-slate-600">
           Create, price, and publish client proposals with milestone breakdowns and
           approval tracking.
         </p>
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 group-hover:border-ocean group-hover:text-ocean">
+        <div className="dashboard-portal-tile-cta mt-4 inline-flex items-center gap-2 text-xs font-semibold">
           Open builder
-          <span aria-hidden="true">→</span>
+          <span aria-hidden="true">-&gt;</span>
         </div>
       </a>
       <a
@@ -57,8 +55,8 @@ export default function BusinessAdminClient() {
       >
         <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
           <span>Project Schedule</span>
-          <span className="rounded-full border border-indigo-200 px-2 py-1 text-[10px] text-indigo-600">
-            Coming soon
+          <span className="rounded-full border border-emerald-200 px-2 py-1 text-[10px] text-emerald-600">
+            Available
           </span>
         </div>
         <h3 className="mt-4 text-lg font-semibold text-slate-900">Schedule Builder</h3>
@@ -66,9 +64,9 @@ export default function BusinessAdminClient() {
           Track accepted deliverables, allocate hours to milestones, and monitor
           progress over time.
         </p>
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 group-hover:border-ocean group-hover:text-ocean">
+        <div className="dashboard-portal-tile-cta mt-4 inline-flex items-center gap-2 text-xs font-semibold">
           Open schedule
-          <span aria-hidden="true">â†’</span>
+          <span aria-hidden="true">-&gt;</span>
         </div>
       </a>
     </div>

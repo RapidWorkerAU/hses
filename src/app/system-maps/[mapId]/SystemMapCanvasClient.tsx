@@ -878,6 +878,33 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           nextSizes.set(elementId, { width, height });
           if (change.resizing === false) completedResizeIds.add(elementId);
         }
+        return;
+      }
+      if (isMethodologyElementType(current.element_type)) {
+        let minWidth = bowtieDefaultWidth;
+        let minHeight = bowtieControlHeight;
+        if (current.element_type === "bowtie_hazard") {
+          minHeight = bowtieHazardHeight;
+        } else if (
+          current.element_type === "bowtie_top_event" ||
+          current.element_type === "bowtie_threat" ||
+          current.element_type === "bowtie_consequence"
+        ) {
+          minHeight = bowtieSquareHeight;
+        } else if (current.element_type === "bowtie_risk_rating") {
+          minHeight = bowtieRiskRatingHeight;
+        } else if (current.element_type === "incident_finding") {
+          minWidth = incidentDefaultWidth;
+          minHeight = incidentThreeOneHeight;
+        }
+        const width = Math.max(minWidth, snapToMinorGrid(change.dimensions.width));
+        const height = Math.max(minHeight, snapToMinorGrid(change.dimensions.height));
+        const currentWidth = Math.max(minWidth, snapToMinorGrid(current.width || minWidth));
+        const currentHeight = Math.max(minHeight, snapToMinorGrid(current.height || minHeight));
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
       }
     });
     if (!nextSizes.size) return;
@@ -2293,7 +2320,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       incident_recommendation: "Recommendation",
     };
     const nextConfig: Record<string, unknown> = { ...bowtieDraft };
-    let nextHeading = bowtieHeadingDraft.trim() || defaultLabelByType[elementType] || "Bow Tie Node";
+    const isIncidentElement = elementType.startsWith("incident_");
+    let nextHeading = isIncidentElement
+      ? selectedBowtieElement.heading || defaultLabelByType[elementType] || "Node"
+      : bowtieHeadingDraft.trim() || defaultLabelByType[elementType] || "Bow Tie Node";
     if (elementType === "bowtie_risk_rating") {
       const likelihood = String(nextConfig.likelihood || "possible");
       const consequence = String(nextConfig.consequence || "moderate");
