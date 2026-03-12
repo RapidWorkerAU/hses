@@ -44,6 +44,7 @@ export function MapCanvasHeader({
     if (category === "bow_tie") return "Bow Tie Builder";
     if (category === "incident_investigation") return "Investigation Board";
     if (category === "org_chart") return "Org Chart Builder";
+    if (category === "process_flow") return "Process Flow Builder";
     return "System Map";
   })();
 

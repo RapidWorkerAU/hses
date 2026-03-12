@@ -232,7 +232,13 @@ export function useCanvasRelationshipDerived({
           : new Set(bowtieAllowedTargetsBySource[relationshipSourceKind] ?? [])
         : null;
     return elements
-      .filter((el) => el.element_type !== "grouping_container" && el.element_type !== "sticky_note" && el.element_type !== "text_box")
+      .filter(
+        (el) =>
+          el.element_type !== "grouping_container" &&
+          el.element_type !== "sticky_note" &&
+          el.element_type !== "text_box" &&
+          el.element_type !== "table"
+      )
       .filter((el) => el.id !== relationshipSourceSystemId)
       .filter((el) => {
         if (mapCategoryId === "org_chart") {

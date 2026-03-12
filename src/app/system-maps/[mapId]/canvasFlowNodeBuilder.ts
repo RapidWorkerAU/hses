@@ -39,11 +39,35 @@ import {
   processHeadingWidth,
   processMinHeight,
   processMinWidth,
+  shapeArrowDefaultHeight,
+  shapeArrowDefaultWidth,
+  shapeArrowMinHeight,
+  shapeArrowMinWidth,
+  shapeCircleDefaultSize,
+  shapeDefaultFillColor,
+  shapeMinHeight,
+  shapeMinWidth,
+  shapePentagonDefaultHeight,
+  shapePentagonDefaultWidth,
+  shapePillDefaultHeight,
+  shapePillDefaultWidth,
+  shapeRectangleDefaultHeight,
+  shapeRectangleDefaultWidth,
   processFlowId,
   stickyDefaultSize,
   stickyMinSize,
   systemCircleDiameter,
   systemCircleElementHeight,
+  tableCellDefaultHeightSquares,
+  tableCellDefaultWidthSquares,
+  tableDefaultColumns,
+  tableDefaultHeight,
+  tableDefaultRows,
+  tableDefaultWidth,
+  tableMinColumns,
+  tableMinHeight,
+  tableMinRows,
+  tableMinWidth,
   textBoxDefaultHeight,
   textBoxDefaultWidth,
   textBoxMinHeight,
@@ -57,6 +81,12 @@ export const normalizeElementRef = (value: string | null | undefined) => {
   const uuidMatch = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
   return uuidMatch ? uuidMatch[0].toLowerCase() : trimmed;
 };
+
+const formatBowtieConfigLabel = (value: string) =>
+  value
+    .split("_")
+    .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
+    .join(" ");
 
 const normalizeFlowRef = (value: string | null | undefined) => {
   if (!value) return "";
@@ -291,8 +321,11 @@ export const buildDocumentFlowNodes = (params: {
 export const buildPrimaryElementFlowNode = (params: {
   element: CanvasElementRow;
   selectedFlowIds: Set<string>;
+  selectedTableId: string | null;
   canEditElement: (element: CanvasElementRow) => boolean;
   canWriteMap: boolean;
+  selectedFlowShapeId: string | null;
+  hasUnsavedFlowShapeDraftChanges: boolean;
   mapCategoryId: MapCategoryId;
   userId: string | null;
   userEmail: string;
@@ -301,12 +334,29 @@ export const buildPrimaryElementFlowNode = (params: {
   imageUrlsByElementId: Record<string, string | undefined>;
   directReportCountByPersonNormalizedId: Map<string, number>;
   orgDirectReportCountByPersonId: Map<string, number>;
+  onTableCellCommit?: (elementId: string, rowIndex: number, columnIndex: number, value: string) => void;
+  onTableCellStyleCommit?: (
+    elementId: string,
+    rowIndex: number,
+    columnIndex: number,
+    style: {
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      align?: "left" | "center" | "right";
+      vAlign?: "top" | "middle" | "bottom";
+      fontSize?: number;
+    }
+  ) => void;
 }): Node<FlowData> | null | undefined => {
   const {
     element: el,
     selectedFlowIds,
+    selectedTableId,
     canEditElement,
     canWriteMap,
+    selectedFlowShapeId,
+    hasUnsavedFlowShapeDraftChanges,
     mapCategoryId,
     userId,
     userEmail,
@@ -315,6 +365,8 @@ export const buildPrimaryElementFlowNode = (params: {
     imageUrlsByElementId,
     directReportCountByPersonNormalizedId,
     orgDirectReportCountByPersonId,
+    onTableCellCommit,
+    onTableCellStyleCommit,
   } = params;
 
   if (el.element_type === "grouping_container") return null;
@@ -439,6 +491,209 @@ export const buildPrimaryElementFlowNode = (params: {
         bannerBg: "#ffffff",
         bannerText: "#111827",
         isLandscape: false,
+        isUnconfigured: false,
+      },
+    };
+  }
+
+  if (el.element_type === "table") {
+    const flowId = processFlowId(el.id);
+    const isContextMarked = selectedFlowIds.has(flowId);
+    const isPrimarySelected = selectedTableId === el.id;
+    const isMarked = isContextMarked || isPrimarySelected;
+    const canEditThis = canEditElement(el);
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const parsedRows = Number(cfg.rows ?? tableDefaultRows);
+    const parsedColumns = Number(cfg.columns ?? tableDefaultColumns);
+    const rows = Number.isFinite(parsedRows) ? Math.max(tableMinRows, Math.floor(parsedRows)) : tableDefaultRows;
+    const columns = Number.isFinite(parsedColumns) ? Math.max(tableMinColumns, Math.floor(parsedColumns)) : tableDefaultColumns;
+    const headerRowBg = typeof cfg.header_bg_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.header_bg_color)
+      ? cfg.header_bg_color.toUpperCase()
+      : null;
+    const alignRaw = String(cfg.align ?? "center");
+    const fontSizeRaw = Number(cfg.font_size ?? 10);
+    const fontSize = Number.isFinite(fontSizeRaw) ? Math.max(10, Math.min(72, Math.round(fontSizeRaw))) : 10;
+    const cellTexts = Array.isArray(cfg.cell_texts)
+      ? (cfg.cell_texts as unknown[])
+          .map((row) => (Array.isArray(row) ? row.map((cell) => (cell == null ? "" : String(cell))) : []))
+      : [];
+    const cellStyles = Array.isArray(cfg.cell_styles)
+      ? (cfg.cell_styles as unknown[]).map((row) =>
+          Array.isArray(row)
+            ? row.map((cellStyle) => {
+                const styleObj = (cellStyle as Record<string, unknown> | null) ?? {};
+                const cellAlignRaw = String(styleObj.align ?? "center");
+                const cellVAlignRaw = String(styleObj.v_align ?? styleObj.vAlign ?? "middle");
+                const cellFontSizeRaw = Number(styleObj.font_size ?? styleObj.fontSize ?? 10);
+                const cellAlign: "left" | "center" | "right" =
+                  cellAlignRaw === "left" || cellAlignRaw === "right" ? cellAlignRaw : "center";
+                const cellVAlign: "top" | "middle" | "bottom" =
+                  cellVAlignRaw === "top" || cellVAlignRaw === "bottom" ? cellVAlignRaw : "middle";
+                return {
+                  bold: Boolean(styleObj.bold),
+                  italic: Boolean(styleObj.italic),
+                  underline: Boolean(styleObj.underline),
+                  align: cellAlign,
+                  vAlign: cellVAlign,
+                  fontSize: Number.isFinite(cellFontSizeRaw) ? Math.max(10, Math.min(72, Math.round(cellFontSizeRaw))) : 10,
+                };
+              })
+            : []
+        )
+      : [];
+    const computedWidth = columns * tableCellDefaultWidthSquares * minorGridSize;
+    const computedHeight = rows * tableCellDefaultHeightSquares * minorGridSize;
+    return {
+      id: flowId,
+      type: "flowTable",
+      position: { x: el.pos_x, y: el.pos_y },
+      zIndex: 40,
+      selected: isMarked,
+      draggable: canEditThis,
+      selectable: canWriteMap,
+      style: {
+        width: Math.max(tableMinWidth, el.width || computedWidth || tableDefaultWidth),
+        height: Math.max(tableMinHeight, el.height || computedHeight || tableDefaultHeight),
+        borderRadius: 0,
+        border: "none",
+        background: "transparent",
+        boxShadow: isContextMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
+        padding: 0,
+        overflow: "visible",
+      },
+      data: {
+        entityKind: "table",
+        typeName: "Table",
+        title: el.heading ?? "Table",
+        tableConfig: {
+          rows,
+          columns,
+          headerRowBg,
+          cellTexts,
+          cellStyles,
+        },
+        textStyle: {
+          bold: Boolean(cfg.bold),
+          italic: Boolean(cfg.italic),
+          underline: Boolean(cfg.underline),
+          align: alignRaw === "left" || alignRaw === "right" ? alignRaw : "center",
+          fontSize,
+        },
+        onTableCellCommit: onTableCellCommit ? (rowIndex, columnIndex, value) => onTableCellCommit(el.id, rowIndex, columnIndex, value) : undefined,
+        onTableCellStyleCommit: onTableCellStyleCommit
+          ? (rowIndex, columnIndex, style) => onTableCellStyleCommit(el.id, rowIndex, columnIndex, style)
+          : undefined,
+        canEdit: canEditThis,
+        userGroup: "",
+        disciplineKeys: [],
+        bannerBg: "#ffffff",
+        bannerText: "#111827",
+        isLandscape: false,
+        isUnconfigured: false,
+      },
+    };
+  }
+
+  if (
+    el.element_type === "shape_rectangle" ||
+    el.element_type === "shape_circle" ||
+    el.element_type === "shape_pill" ||
+    el.element_type === "shape_pentagon" ||
+    el.element_type === "shape_chevron_left" ||
+    el.element_type === "shape_arrow"
+  ) {
+    const flowId = processFlowId(el.id);
+    const isMarked = selectedFlowIds.has(flowId);
+    const canEditThis = canEditElement(el);
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const alignRaw = String(cfg.align ?? "center");
+    const directionRaw = String(cfg.direction ?? "right");
+    const fillModeRaw = String(cfg.fill_mode ?? "fill");
+    const defaultWidth =
+      el.element_type === "shape_circle"
+        ? shapeCircleDefaultSize
+        : el.element_type === "shape_pill"
+        ? shapePillDefaultWidth
+        : el.element_type === "shape_arrow"
+        ? shapeArrowDefaultWidth
+        : el.element_type === "shape_pentagon" || el.element_type === "shape_chevron_left"
+        ? shapePentagonDefaultWidth
+        : shapeRectangleDefaultWidth;
+    const defaultHeight =
+      el.element_type === "shape_circle"
+        ? shapeCircleDefaultSize
+        : el.element_type === "shape_pill"
+        ? shapePillDefaultHeight
+        : el.element_type === "shape_arrow"
+        ? shapeArrowDefaultHeight
+        : el.element_type === "shape_pentagon" || el.element_type === "shape_chevron_left"
+        ? shapePentagonDefaultHeight
+        : shapeRectangleDefaultHeight;
+    return {
+      id: flowId,
+      type:
+        el.element_type === "shape_circle"
+          ? "flowShapeCircle"
+          : el.element_type === "shape_pill"
+          ? "flowShapePill"
+          : el.element_type === "shape_pentagon"
+          ? "flowShapePentagon"
+          : el.element_type === "shape_chevron_left"
+          ? "flowShapeChevronLeft"
+          : el.element_type === "shape_arrow"
+          ? "flowShapeArrow"
+          : "flowShapeRectangle",
+      position: { x: el.pos_x, y: el.pos_y },
+      zIndex: 40,
+      selected: isMarked,
+      draggable: canEditThis,
+      selectable: canWriteMap,
+      style: {
+        width: Math.max(el.element_type === "shape_arrow" ? shapeArrowMinWidth : shapeMinWidth, el.width || defaultWidth),
+        height: Math.max(el.element_type === "shape_arrow" ? shapeArrowMinHeight : shapeMinHeight, el.height || defaultHeight),
+        borderRadius: 0,
+        border: "none",
+        background: "transparent",
+        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
+        padding: 0,
+        overflow: "visible",
+      },
+      data: {
+        entityKind: el.element_type,
+        typeName:
+          el.element_type === "shape_circle"
+            ? "Circle"
+            : el.element_type === "shape_pill"
+            ? "Pill"
+            : el.element_type === "shape_pentagon"
+            ? "Pentagon"
+            : el.element_type === "shape_chevron_left"
+            ? "Chevron"
+            : el.element_type === "shape_arrow"
+            ? "Arrow"
+            : "Rectangle",
+        title: el.heading ?? "Shape text",
+        categoryColor: el.color_hex ?? shapeDefaultFillColor,
+        canResize: !(el.id === selectedFlowShapeId && hasUnsavedFlowShapeDraftChanges),
+        textStyle: {
+          bold: Boolean(cfg.bold),
+          italic: Boolean(cfg.italic),
+          underline: Boolean(cfg.underline),
+          align: alignRaw === "left" || alignRaw === "right" ? alignRaw : "center",
+          fontSize: Math.max(12, Math.min(168, Number(cfg.font_size ?? 24))),
+        },
+        shapeStyle: {
+          direction: directionRaw === "left" ? "left" : "right",
+          fillMode: fillModeRaw === "outline" ? "outline" : "fill",
+          rotationDeg: [0, 90, 180, 270].includes(Number(cfg.rotation_deg))
+            ? (Number(cfg.rotation_deg) as 0 | 90 | 180 | 270)
+            : 0,
+        },
+        userGroup: "",
+        disciplineKeys: [],
+        bannerBg: "#ffffff",
+        bannerText: "#111827",
+        isLandscape: true,
         isUnconfigured: false,
       },
     };
@@ -602,13 +857,18 @@ export const buildSecondaryElementFlowNode = (params: {
   selectedFlowIds: Set<string>;
   canEditElement: (element: CanvasElementRow) => boolean;
   canWriteMap: boolean;
+  imageUrlsByElementId: Record<string, string | undefined>;
+  onOpenEvidenceMedia?: (elementId: string) => void;
 }): Node<FlowData> => {
-  const { element: el, selectedFlowIds, canEditElement, canWriteMap } = params;
+  const { element: el, selectedFlowIds, canEditElement, canWriteMap, imageUrlsByElementId, onOpenEvidenceMedia } = params;
   const flowId = processFlowId(el.id);
   const isMarked = selectedFlowIds.has(flowId);
   const canEditThis = canEditElement(el);
 
   if (el.element_type === "bowtie_hazard") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const energySourceTypeRaw = String(cfg.energy_source_type ?? "").trim();
+    const energySourceType = energySourceTypeRaw ? `(${formatBowtieConfigLabel(energySourceTypeRaw)})` : "";
     return {
       id: flowId,
       type: "bowtieHazard",
@@ -631,6 +891,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "bowtie_hazard",
         typeName: "Hazard",
         title: el.heading ?? "Hazard",
+        description: energySourceType,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#374151",
@@ -641,6 +902,9 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "bowtie_top_event") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const lossOfControlTypeRaw = String(cfg.loss_of_control_type ?? "").trim();
+    const lossOfControlType = lossOfControlTypeRaw ? `Loss of ${formatBowtieConfigLabel(lossOfControlTypeRaw)}` : "";
     return {
       id: flowId,
       type: "bowtieTopEvent",
@@ -663,6 +927,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "bowtie_top_event",
         typeName: "Top Event",
         title: el.heading ?? "Top Event",
+        description: lossOfControlType,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#dc2626",
@@ -673,6 +938,9 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "bowtie_threat") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const threatCategoryRaw = String(cfg.threat_category ?? "").trim();
+    const threatCategory = threatCategoryRaw ? `(${formatBowtieConfigLabel(threatCategoryRaw)})` : "";
     return {
       id: flowId,
       type: "bowtieThreat",
@@ -695,6 +963,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "bowtie_threat",
         typeName: "Threat",
         title: el.heading ?? "Threat",
+        description: threatCategory,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#f59e0b",
@@ -705,6 +974,9 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "bowtie_consequence") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const impactCategoryRaw = String(cfg.impact_category ?? "").trim();
+    const impactCategory = impactCategoryRaw ? `Impact to ${formatBowtieConfigLabel(impactCategoryRaw)}` : "";
     return {
       id: flowId,
       type: "bowtieConsequence",
@@ -727,6 +999,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "bowtie_consequence",
         typeName: "Consequence",
         title: el.heading ?? "Consequence",
+        metaSubLabel: impactCategory,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#0ea5e9",
@@ -739,6 +1012,8 @@ export const buildSecondaryElementFlowNode = (params: {
   if (el.element_type === "bowtie_control") {
     const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
     const controlCategory = String(cfg.control_category ?? "preventive").trim().toLowerCase();
+    const controlTypeKey = String(cfg.control_type ?? "").trim().toLowerCase();
+    const isCriticalControl = Boolean(cfg.is_critical_control);
     const controlCategoryLabel = controlCategory
       ? `${controlCategory.charAt(0).toUpperCase()}${controlCategory.slice(1)} Control`
       : "Control";
@@ -772,6 +1047,8 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "bowtie_control",
         typeName: controlCategoryLabel,
         title: el.heading ?? "Control",
+        metaSubLabel: controlTypeKey,
+        isCritical: isCriticalControl,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: controlBannerColor,
@@ -782,6 +1059,10 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "bowtie_escalation_factor") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const factorTypeRaw = String(cfg.factor_type ?? cfg.factorType ?? cfg.description ?? "").trim();
+    const formattedFactorType = factorTypeRaw ? formatBowtieConfigLabel(factorTypeRaw.replace(/^\((.*)\)$/, "$1")) : "";
+    const factorType = formattedFactorType ? `(${formattedFactorType})` : "";
     return {
       id: flowId,
       type: "bowtieEscalationFactor",
@@ -804,6 +1085,7 @@ export const buildSecondaryElementFlowNode = (params: {
         entityKind: "bowtie_escalation_factor",
         typeName: "Escalation Factor",
         title: el.heading ?? "Escalation Factor",
+        description: factorType,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#a78bfa",
@@ -878,6 +1160,9 @@ export const buildSecondaryElementFlowNode = (params: {
     };
   }
   if (el.element_type === "bowtie_risk_rating") {
+    const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const riskLevelRaw = String(cfg.risk_level ?? "").trim().toLowerCase();
+    const riskLevelLabel = formatBowtieConfigLabel(riskLevelRaw || "medium");
     return {
       id: flowId,
       type: "bowtieRiskRating",
@@ -899,7 +1184,7 @@ export const buildSecondaryElementFlowNode = (params: {
       data: {
         entityKind: "bowtie_risk_rating",
         typeName: "Risk Rating",
-        title: el.heading ?? "Risk Level: Medium",
+        title: riskLevelLabel,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#111827",
@@ -1064,6 +1349,18 @@ export const buildSecondaryElementFlowNode = (params: {
   }
   if (el.element_type === "incident_factor") {
     const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const factorPresence = String(cfg.factor_presence ?? "present").trim().toLowerCase();
+    const factorPresenceLabel = factorPresence ? `${factorPresence.charAt(0).toUpperCase()}${factorPresence.slice(1)}` : "";
+    const factorPresenceBg = factorPresence === "absent" ? "#fecaca" : "#dcfce7";
+    const factorClassification = String(cfg.factor_classification ?? "contributing").trim().toLowerCase();
+    const factorClassificationLabel = factorClassification ? `${factorClassification.charAt(0).toUpperCase()}${factorClassification.slice(1)}` : "";
+    const influenceTypeRaw = String(cfg.influence_type ?? "human").trim();
+    const influenceTypeLabel = influenceTypeRaw
+      ? `(${influenceTypeRaw
+          .split("_")
+          .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+          .join(" ")})`
+      : "";
     return {
       id: flowId,
       type: "incidentFactor",
@@ -1087,6 +1384,12 @@ export const buildSecondaryElementFlowNode = (params: {
         typeName: "Factor",
         title: el.heading ?? "Factor",
         description: String(cfg.description ?? "").trim(),
+        metaSubLabel: influenceTypeLabel || undefined,
+        metaLabel: factorPresenceLabel || undefined,
+        metaLabelSecondary: factorClassificationLabel || undefined,
+        metaLabelBg: factorPresenceBg,
+        metaLabelText: "#111827",
+        metaLabelBorder: "transparent",
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#fde047",
@@ -1098,6 +1401,18 @@ export const buildSecondaryElementFlowNode = (params: {
   }
   if (el.element_type === "incident_system_factor") {
     const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const factorPresence = String(cfg.factor_presence ?? "present").trim().toLowerCase();
+    const factorPresenceLabel = factorPresence ? `${factorPresence.charAt(0).toUpperCase()}${factorPresence.slice(1)}` : "";
+    const factorPresenceBg = factorPresence === "absent" ? "#fecaca" : "#dcfce7";
+    const factorClassification = String(cfg.factor_classification ?? "contributing").trim().toLowerCase();
+    const factorClassificationLabel = factorClassification ? `${factorClassification.charAt(0).toUpperCase()}${factorClassification.slice(1)}` : "";
+    const categoryRaw = String(cfg.category ?? "").trim();
+    const categoryLabel = categoryRaw
+      ? `(${categoryRaw
+          .split("_")
+          .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+          .join(" ")})`
+      : "";
     return {
       id: flowId,
       type: "incidentSystemFactor",
@@ -1121,6 +1436,12 @@ export const buildSecondaryElementFlowNode = (params: {
         typeName: "System Factor",
         title: el.heading ?? "System Factor",
         description: String(cfg.description ?? "").trim(),
+        metaSubLabel: categoryLabel || undefined,
+        metaLabel: factorPresenceLabel || undefined,
+        metaLabelSecondary: factorClassificationLabel || undefined,
+        metaLabelBg: factorPresenceBg,
+        metaLabelText: "#111827",
+        metaLabelBorder: "transparent",
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#a78bfa",
@@ -1132,6 +1453,17 @@ export const buildSecondaryElementFlowNode = (params: {
   }
   if (el.element_type === "incident_control_barrier") {
     const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const barrierState = String(cfg.barrier_state ?? "effective").trim().toLowerCase();
+    const barrierStateLabel = barrierState ? `${barrierState.charAt(0).toUpperCase()}${barrierState.slice(1)}` : "";
+    const barrierRole = String(cfg.barrier_role ?? "preventive").trim().toLowerCase();
+    const barrierRoleLabel = barrierRole ? `${barrierRole.charAt(0).toUpperCase()}${barrierRole.slice(1)}` : "";
+    const controlTypeRaw = String(cfg.control_type ?? "").trim();
+    const controlTypeLabel = controlTypeRaw
+      ? `(${controlTypeRaw
+          .split("_")
+          .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+          .join(" ")})`
+      : "";
     return {
       id: flowId,
       type: "incidentControlBarrier",
@@ -1155,6 +1487,11 @@ export const buildSecondaryElementFlowNode = (params: {
         typeName: "Control / Barrier",
         title: el.heading ?? "Control / Barrier",
         description: String(cfg.description ?? "").trim(),
+        metaSubLabel: controlTypeLabel || undefined,
+        metaLabel: barrierStateLabel ? `${barrierRoleLabel} -> ${barrierStateLabel}` : undefined,
+        metaLabelBg: barrierState === "failed" ? "#fee2e2" : barrierState === "missing" ? "#f3f4f6" : "#dcfce7",
+        metaLabelText: "#111827",
+        metaLabelBorder: "transparent",
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#4ade80",
@@ -1166,6 +1503,19 @@ export const buildSecondaryElementFlowNode = (params: {
   }
   if (el.element_type === "incident_evidence") {
     const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+    const evidenceTypeRaw = String(cfg.evidence_type ?? "").trim();
+    const evidenceTypeLabel = evidenceTypeRaw
+      ? `(${evidenceTypeRaw
+          .split("_")
+          .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+          .join(" ")})`
+      : "";
+    const mediaMime = String(cfg.media_mime ?? "").trim();
+    const mediaName = String(cfg.media_name ?? "").trim();
+    const showCanvasPreview = Boolean(cfg.show_canvas_preview);
+    const mediaRotationRaw = Number(cfg.media_rotation_deg ?? 0);
+    const mediaRotationDeg: 0 | 90 | 180 | 270 =
+      mediaRotationRaw === 90 || mediaRotationRaw === 180 || mediaRotationRaw === 270 ? mediaRotationRaw : 0;
     return {
       id: flowId,
       type: "incidentEvidence",
@@ -1189,6 +1539,13 @@ export const buildSecondaryElementFlowNode = (params: {
         typeName: "Evidence",
         title: el.heading ?? "Evidence",
         description: String(cfg.description ?? "").trim(),
+        metaSubLabel: evidenceTypeLabel || undefined,
+        evidenceMediaUrl: imageUrlsByElementId[el.id],
+        evidenceMediaMime: mediaMime || undefined,
+        evidenceMediaName: mediaName || undefined,
+        evidenceShowPreview: showCanvasPreview,
+        evidenceMediaRotationDeg: mediaRotationDeg,
+        onOpenEvidenceMedia: onOpenEvidenceMedia ? () => onOpenEvidenceMedia(el.id) : undefined,
         userGroup: "",
         disciplineKeys: [],
         bannerBg: "#cbd5e1",

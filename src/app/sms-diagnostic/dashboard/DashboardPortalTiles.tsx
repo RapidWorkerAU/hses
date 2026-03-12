@@ -34,6 +34,13 @@ const PORTAL_TILES: PortalTile[] = [
     href: "/system-maps",
     requiresAdmin: false,
   },
+  {
+    key: "risk-assessments",
+    title: "Risk Assessment Tool",
+    description: "Review and manage your risk assessments and related records.",
+    href: "/risk-assessments",
+    requiresAdmin: false,
+  },
 ];
 
 export default function DashboardPortalTiles() {

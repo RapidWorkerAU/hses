@@ -105,6 +105,26 @@ import {
   textBoxDefaultHeight,
   textBoxMinWidth,
   textBoxMinHeight,
+  tableDefaultHeight,
+  tableDefaultWidth,
+  tableMinHeight,
+  tableMinColumns,
+  tableMinWidth,
+  tableMinRows,
+  shapeRectangleDefaultWidth,
+  shapeRectangleDefaultHeight,
+  shapeCircleDefaultSize,
+  shapePillDefaultWidth,
+  shapePillDefaultHeight,
+  shapePentagonDefaultWidth,
+  shapePentagonDefaultHeight,
+  shapeArrowDefaultWidth,
+  shapeArrowDefaultHeight,
+  shapeArrowMinWidth,
+  shapeArrowMinHeight,
+  shapeMinWidth,
+  shapeMinHeight,
+  shapeDefaultFillColor,
   systemCircleDiameter,
   systemCircleElementHeight,
   systemCircleLabelHeight,
@@ -180,6 +200,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const resizePersistTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const resizePersistValuesRef = useRef<Map<string, { width: number; height: number }>>(new Map());
   const savedPos = useRef<Record<string, { x: number; y: number }>>({});
+  const convertedMediaObjectUrlsRef = useRef<Set<string>>(new Set());
   const lastMobileTapRef = useRef<{ id: string; ts: number } | null>(null);
   const clipboardPasteCountRef = useRef(1);
   const isNodeDragActiveRef = useRef(false);
@@ -227,6 +248,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [printPreviewImageDataUrl, setPrintPreviewImageDataUrl] = useState<string | null>(null);
   const [printOrientation, setPrintOrientation] = useState<"portrait" | "landscape">("portrait");
   const [printSelectionMode, setPrintSelectionMode] = useState(false);
+  const [isCopyingPrintImage, setIsCopyingPrintImage] = useState(false);
+  const [printSelectionCopyMessage, setPrintSelectionCopyMessage] = useState<string | null>(null);
   const [printSelectionDraft, setPrintSelectionDraft] = useState<{
     active: boolean;
     startX: number;
@@ -304,6 +327,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setPrintSelectionDraft(null);
     setPrintSelectionRect(null);
     setShowPrintSelectionConfirm(false);
+    setPrintSelectionCopyMessage(null);
   }, []);
   const openPrintPreviewFromDataUrl = useCallback(
     (imageDataUrl: string) => {
@@ -313,11 +337,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     []
   );
   const capturePrintImage = useCallback(
-    async (mode: "current" | "area") => {
+    async (mode: "current" | "area", options?: { openPreview?: boolean }) => {
       const root = canvasRef.current as HTMLElement | null;
       if (!root) {
         setError("Unable to capture canvas for print.");
-        return;
+        return null;
       }
       const target = (root.querySelector(".react-flow") as HTMLElement | null) ?? root;
       const targetBounds = target.getBoundingClientRect();
@@ -327,7 +351,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       if (mode === "area") {
         if (!printSelectionRect || printSelectionRect.width < 12 || printSelectionRect.height < 12) {
           setError("Please select a larger area to print.");
-          return;
+          return null;
         }
         const x = clamp(printSelectionRect.left - targetBounds.left, 0, targetBounds.width);
         const y = clamp(printSelectionRect.top - targetBounds.top, 0, targetBounds.height);
@@ -338,6 +362,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         crop = { x: 0, y: 0, width: captureWidth, height: captureHeight };
       }
       setIsPreparingPrint(true);
+      const previousTargetBackgroundColor = target.style.backgroundColor;
+      target.style.backgroundColor = "#ffffff";
       try {
         let dataUrl = "";
         try {
@@ -345,7 +371,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           const fullDataUrl = await htmlToImage.toPng(target, {
             cacheBust: true,
             pixelRatio: 2,
-            backgroundColor: "#fafaf9",
+            backgroundColor: "#ffffff",
             width: captureWidth,
             height: captureHeight,
             filter: (node: Node) => {
@@ -369,7 +395,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         } catch {
           const html2canvas = await loadHtml2Canvas();
           const canvas = await html2canvas(target, {
-            backgroundColor: "#fafaf9",
+            backgroundColor: "#ffffff",
             useCORS: true,
             logging: false,
             scale: 2,
@@ -388,10 +414,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           });
           dataUrl = canvas.toDataURL("image/png");
         }
-        openPrintPreviewFromDataUrl(dataUrl);
+        if (options?.openPreview !== false) {
+          openPrintPreviewFromDataUrl(dataUrl);
+        }
+        return dataUrl;
       } catch (e) {
         setError((e as Error)?.message || "Unable to prepare print preview.");
+        return null;
       } finally {
+        target.style.backgroundColor = previousTargetBackgroundColor;
         setIsPreparingPrint(false);
       }
     },
@@ -410,15 +441,39 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setShowPrintSelectionConfirm(false);
     setPrintSelectionDraft(null);
     setPrintSelectionRect(null);
+    setPrintSelectionCopyMessage(null);
     setPrintSelectionMode(true);
   }, []);
   const handleConfirmPrintArea = useCallback(async () => {
+    setPrintSelectionCopyMessage(null);
     setShowPrintSelectionConfirm(false);
     await capturePrintImage("area");
     setPrintSelectionMode(false);
   }, [capturePrintImage]);
+  const handleCopyPrintAreaImageToClipboard = useCallback(async () => {
+    setPrintSelectionCopyMessage(null);
+    const dataUrl = await capturePrintImage("area", { openPreview: false });
+    if (!dataUrl) return;
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      setPrintSelectionCopyMessage("Clipboard image copy is not supported in this browser.");
+      return;
+    }
+    setIsCopyingPrintImage(true);
+    try {
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+      setPrintSelectionCopyMessage("Image copied to clipboard. You can paste it elsewhere.");
+    } catch (e) {
+      const message = (e as Error)?.message?.trim();
+      setPrintSelectionCopyMessage(message ? `Unable to copy image: ${message}` : "Unable to copy image to clipboard.");
+    } finally {
+      setIsCopyingPrintImage(false);
+    }
+  }, [capturePrintImage]);
   const handlePrintOverlayPointerDown = useCallback((event: { clientX: number; clientY: number }) => {
     if (showPrintSelectionConfirm) return;
+    setPrintSelectionCopyMessage(null);
     setPrintSelectionDraft({
       active: true,
       startX: event.clientX,
@@ -506,6 +561,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [selectedStickyId, setSelectedStickyId] = useState<string | null>(null);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [selectedTextBoxId, setSelectedTextBoxId] = useState<string | null>(null);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [selectedFlowShapeId, setSelectedFlowShapeId] = useState<string | null>(null);
   const [selectedBowtieElementId, setSelectedBowtieElementId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState("");
@@ -543,9 +600,30 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [textBoxUnderlineDraft, setTextBoxUnderlineDraft] = useState(false);
   const [textBoxAlignDraft, setTextBoxAlignDraft] = useState<"left" | "center" | "right">("left");
   const [textBoxFontSizeDraft, setTextBoxFontSizeDraft] = useState("24");
+  const [tableRowsDraft, setTableRowsDraft] = useState("2");
+  const [tableColumnsDraft, setTableColumnsDraft] = useState("2");
+  const [tableHeaderBgDraft, setTableHeaderBgDraft] = useState("");
+  const [tableBoldDraft, setTableBoldDraft] = useState(false);
+  const [tableItalicDraft, setTableItalicDraft] = useState(false);
+  const [tableUnderlineDraft, setTableUnderlineDraft] = useState(false);
+  const [tableAlignDraft, setTableAlignDraft] = useState<"left" | "center" | "right">("center");
+  const [tableFontSizeDraft, setTableFontSizeDraft] = useState("10");
+  const [flowShapeTextDraft, setFlowShapeTextDraft] = useState("");
+  const [flowShapeAlignDraft, setFlowShapeAlignDraft] = useState<"left" | "center" | "right">("center");
+  const [flowShapeBoldDraft, setFlowShapeBoldDraft] = useState(false);
+  const [flowShapeItalicDraft, setFlowShapeItalicDraft] = useState(false);
+  const [flowShapeUnderlineDraft, setFlowShapeUnderlineDraft] = useState(false);
+  const [flowShapeFontSizeDraft, setFlowShapeFontSizeDraft] = useState("24");
+  const [flowShapeColorDraft, setFlowShapeColorDraft] = useState(shapeDefaultFillColor);
+  const [flowShapeFillModeDraft, setFlowShapeFillModeDraft] = useState<"fill" | "outline">("fill");
+  const [flowShapeDirectionDraft, setFlowShapeDirectionDraft] = useState<"left" | "right">("right");
+  const [flowShapeRotationDraft, setFlowShapeRotationDraft] = useState<0 | 90 | 180 | 270>(0);
+  const hydratedFlowShapeDraftIdRef = useRef<string | null>(null);
   const [bowtieHeadingDraft, setBowtieHeadingDraft] = useState("");
   const [bowtieDraft, setBowtieDraft] = useState<Record<string, string | boolean>>({});
   const [imageUrlsByElementId, setImageUrlsByElementId] = useState<Record<string, string>>({});
+  const [evidenceUploadFile, setEvidenceUploadFile] = useState<File | null>(null);
+  const [evidenceUploadPreviewUrl, setEvidenceUploadPreviewUrl] = useState<string | null>(null);
 
   const [desktopNodeAction, setDesktopNodeAction] = useState<"relationship" | "structure" | "delete" | null>(null);
   const [mobileNodeMenuId, setMobileNodeMenuId] = useState<string | null>(null);
@@ -593,6 +671,14 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     disciplines: string;
     description: string;
   } | null>(null);
+  const [evidenceMediaOverlay, setEvidenceMediaOverlay] = useState<{
+    elementId: string;
+    fileName: string;
+    description: string;
+    mediaUrl: string;
+    mediaMime: string;
+    rotationDeg: 0 | 90 | 180 | 270;
+  } | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [selectedFlowIds, setSelectedFlowIds] = useState<Set<string>>(new Set());
   const hoveredNodeFrameRef = useRef<number | null>(null);
@@ -620,6 +706,269 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [editHeadingParentId, setEditHeadingParentId] = useState("");
   const [editContentHeadingId, setEditContentHeadingId] = useState("");
   const [editContentText, setEditContentText] = useState("");
+  useEffect(() => {
+    return () => {
+      if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
+    };
+  }, [evidenceUploadPreviewUrl]);
+  useEffect(() => {
+    return () => {
+      convertedMediaObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      convertedMediaObjectUrlsRef.current.clear();
+    };
+  }, []);
+  const normalizePreviewHex = useCallback((value: string | null | undefined): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) return null;
+    return trimmed.toUpperCase();
+  }, []);
+  const isHeicLike = useCallback((mimeRaw: string | null | undefined, nameRaw: string | null | undefined) => {
+    const mime = String(mimeRaw ?? "").toLowerCase();
+    const name = String(nameRaw ?? "").toLowerCase();
+    return mime.includes("heic") || mime.includes("heif") || name.endsWith(".heic") || name.endsWith(".heif");
+  }, []);
+  const convertHeicBlobToJpegBlob = useCallback(async (blob: Blob): Promise<Blob | null> => {
+    try {
+      const mod = await import("heic2any");
+      const heic2anyFn = (mod.default ?? mod) as (opts: { blob: Blob; toType: string; quality?: number }) => Promise<Blob | Blob[]>;
+      const converted = await heic2anyFn({ blob, toType: "image/jpeg", quality: 0.9 });
+      if (Array.isArray(converted)) return converted[0] ?? null;
+      return converted ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+  const blobLooksLikeHeif = useCallback(async (blob: Blob): Promise<boolean> => {
+    try {
+      const buffer = await blob.slice(0, 64).arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length < 12) return false;
+      const ascii = String.fromCharCode(...bytes);
+      if (!ascii.includes("ftyp")) return false;
+      const brands = ["heic", "heix", "hevc", "hevx", "mif1", "msf1"];
+      return brands.some((brand) => ascii.includes(brand));
+    } catch {
+      return false;
+    }
+  }, []);
+  const hasUnsavedFlowShapeDraftChanges = useMemo(() => {
+    if (!selectedFlowShapeId) return false;
+    const selectedShape = elements.find(
+      (el) =>
+        el.id === selectedFlowShapeId &&
+        (el.element_type === "shape_rectangle" ||
+          el.element_type === "shape_circle" ||
+          el.element_type === "shape_pill" ||
+          el.element_type === "shape_pentagon" ||
+          el.element_type === "shape_chevron_left" ||
+          el.element_type === "shape_arrow")
+    );
+    if (!selectedShape) return false;
+    const cfg = (selectedShape.element_config as Record<string, unknown> | null) ?? {};
+    const isArrow = selectedShape.element_type === "shape_arrow";
+    const canFlipDirection = selectedShape.element_type === "shape_pentagon" || selectedShape.element_type === "shape_chevron_left";
+    const persistedHeading = isArrow ? "" : selectedShape.heading ?? "Shape text";
+    const persistedAlignRaw = String(cfg.align ?? "center");
+    const persistedAlign = persistedAlignRaw === "left" || persistedAlignRaw === "right" ? persistedAlignRaw : "center";
+    const persistedFontSizeRaw = Number(cfg.font_size ?? 24);
+    const persistedFontSize = Number.isFinite(persistedFontSizeRaw) ? Math.max(12, Math.min(168, Math.round(persistedFontSizeRaw))) : 24;
+    const draftFontSizeRaw = Number(flowShapeFontSizeDraft.trim());
+    const draftFontSize = Number.isFinite(draftFontSizeRaw) ? Math.max(12, Math.min(168, Math.round(draftFontSizeRaw))) : 24;
+    const persistedColor = normalizePreviewHex(selectedShape.color_hex ?? shapeDefaultFillColor) ?? shapeDefaultFillColor;
+    const draftColor = normalizePreviewHex(flowShapeColorDraft) ?? persistedColor;
+    const persistedFillMode = String(cfg.fill_mode ?? "fill") === "outline" ? "outline" : "fill";
+    const persistedDirection = String(cfg.direction ?? "right") === "left" ? "left" : "right";
+    const persistedRotationRaw = Number(cfg.rotation_deg ?? 0);
+    const persistedRotation = persistedRotationRaw === 90 || persistedRotationRaw === 180 || persistedRotationRaw === 270 ? persistedRotationRaw : 0;
+    return (
+      flowShapeTextDraft !== persistedHeading ||
+      flowShapeBoldDraft !== Boolean(cfg.bold) ||
+      flowShapeItalicDraft !== Boolean(cfg.italic) ||
+      flowShapeUnderlineDraft !== Boolean(cfg.underline) ||
+      flowShapeAlignDraft !== persistedAlign ||
+      draftFontSize !== persistedFontSize ||
+      draftColor !== persistedColor ||
+      flowShapeFillModeDraft !== persistedFillMode ||
+      (canFlipDirection && flowShapeDirectionDraft !== persistedDirection) ||
+      (isArrow && flowShapeRotationDraft !== persistedRotation)
+    );
+  }, [
+    selectedFlowShapeId,
+    elements,
+    flowShapeTextDraft,
+    flowShapeBoldDraft,
+    flowShapeItalicDraft,
+    flowShapeUnderlineDraft,
+    flowShapeAlignDraft,
+    flowShapeFontSizeDraft,
+    flowShapeColorDraft,
+    flowShapeFillModeDraft,
+    flowShapeDirectionDraft,
+    flowShapeRotationDraft,
+    shapeDefaultFillColor,
+    normalizePreviewHex,
+  ]);
+  const canvasPreviewElements = useMemo(() => {
+    if (!selectedProcessId && !selectedTextBoxId && !selectedTableId && !selectedFlowShapeId) return elements;
+    let changed = false;
+    const next = elements.map((el) => {
+      if (selectedProcessId && el.id === selectedProcessId && el.element_type === "category") {
+        changed = true;
+        return {
+          ...el,
+          heading: processHeadingDraft,
+          color_hex: processColorDraft ? normalizePreviewHex(processColorDraft) : el.color_hex,
+        };
+      }
+      if (selectedTextBoxId && el.id === selectedTextBoxId && el.element_type === "text_box") {
+        changed = true;
+        const parsedTextSize = Number(textBoxFontSizeDraft.trim());
+        const previewTextSize = Number.isFinite(parsedTextSize) ? Math.max(16, Math.min(168, Math.round(parsedTextSize))) : 16;
+        return {
+          ...el,
+          heading: textBoxContentDraft,
+          element_config: {
+            ...((el.element_config as Record<string, unknown> | null) ?? {}),
+            bold: textBoxBoldDraft,
+            italic: textBoxItalicDraft,
+            underline: textBoxUnderlineDraft,
+            align: textBoxAlignDraft,
+            font_size: previewTextSize,
+          },
+        };
+      }
+      if (selectedTableId && el.id === selectedTableId && el.element_type === "table") {
+        changed = true;
+        const currentCfg = (el.element_config as Record<string, unknown> | null) ?? {};
+        const currentRowsRaw = Number(currentCfg.rows ?? tableMinRows);
+        const currentColumnsRaw = Number(currentCfg.columns ?? tableMinColumns);
+        const currentRows = Number.isFinite(currentRowsRaw) ? Math.max(tableMinRows, Math.floor(currentRowsRaw)) : tableMinRows;
+        const currentColumns = Number.isFinite(currentColumnsRaw) ? Math.max(tableMinColumns, Math.floor(currentColumnsRaw)) : tableMinColumns;
+        const currentWidth = Math.max(tableMinWidth, Number(el.width ?? tableDefaultWidth));
+        const currentHeight = Math.max(tableMinHeight, Number(el.height ?? tableDefaultHeight));
+        const cellWidth = currentWidth / Math.max(1, currentColumns);
+        const cellHeight = currentHeight / Math.max(1, currentRows);
+        const parsedRows = Number(tableRowsDraft.trim());
+        const parsedColumns = Number(tableColumnsDraft.trim());
+        const rows = Number.isFinite(parsedRows) ? Math.max(tableMinRows, Math.floor(parsedRows)) : tableMinRows;
+        const columns = Number.isFinite(parsedColumns) ? Math.max(tableMinColumns, Math.floor(parsedColumns)) : tableMinColumns;
+        const nextHeaderColor = normalizePreviewHex(tableHeaderBgDraft);
+        const parsedTableSize = Number(tableFontSizeDraft.trim());
+        const previewTableSize = Number.isFinite(parsedTableSize) ? Math.max(10, Math.min(72, Math.round(parsedTableSize))) : 10;
+        return {
+          ...el,
+          width: Math.max(tableMinWidth, cellWidth * columns),
+          height: Math.max(tableMinHeight, cellHeight * rows),
+          element_config: {
+            ...((el.element_config as Record<string, unknown> | null) ?? {}),
+            rows,
+            columns,
+            header_bg_color: nextHeaderColor,
+            bold: tableBoldDraft,
+            italic: tableItalicDraft,
+            underline: tableUnderlineDraft,
+            align: tableAlignDraft,
+            font_size: previewTableSize,
+          },
+        };
+      }
+      if (
+        selectedFlowShapeId &&
+        el.id === selectedFlowShapeId &&
+        (el.element_type === "shape_rectangle" ||
+          el.element_type === "shape_circle" ||
+          el.element_type === "shape_pill" ||
+          el.element_type === "shape_pentagon" ||
+          el.element_type === "shape_chevron_left" ||
+          el.element_type === "shape_arrow")
+      ) {
+        changed = true;
+        const parsedTextSize = Number(flowShapeFontSizeDraft.trim());
+        const previewTextSize = Number.isFinite(parsedTextSize) ? Math.max(16, Math.min(168, Math.round(parsedTextSize))) : 16;
+        const previewColor = normalizePreviewHex(flowShapeColorDraft) ?? el.color_hex;
+        const canFlipDirection = el.element_type === "shape_pentagon" || el.element_type === "shape_chevron_left";
+        const isArrow = el.element_type === "shape_arrow";
+        const currentRotationRaw = Number(((el.element_config as Record<string, unknown> | null) ?? {}).rotation_deg ?? 0);
+        const currentRotation = currentRotationRaw === 90 || currentRotationRaw === 180 || currentRotationRaw === 270 ? currentRotationRaw : 0;
+        const currentIsVertical = currentRotation === 90 || currentRotation === 270;
+        const nextIsVertical = flowShapeRotationDraft === 90 || flowShapeRotationDraft === 270;
+        const nextWidth =
+          isArrow && currentIsVertical !== nextIsVertical
+            ? Math.max(shapeArrowMinWidth, el.height || shapeArrowDefaultHeight)
+            : el.width;
+        const nextHeight =
+          isArrow && currentIsVertical !== nextIsVertical
+            ? Math.max(shapeArrowMinHeight, el.width || shapeArrowDefaultWidth)
+            : el.height;
+        return {
+          ...el,
+          heading: isArrow ? "" : flowShapeTextDraft,
+          color_hex: previewColor,
+          width: nextWidth,
+          height: nextHeight,
+          element_config: {
+            ...((el.element_config as Record<string, unknown> | null) ?? {}),
+            bold: flowShapeBoldDraft,
+            italic: flowShapeItalicDraft,
+            underline: flowShapeUnderlineDraft,
+            align: flowShapeAlignDraft,
+            font_size: previewTextSize,
+            fill_mode: flowShapeFillModeDraft,
+            ...(canFlipDirection ? { direction: flowShapeDirectionDraft } : {}),
+            ...(isArrow ? { rotation_deg: flowShapeRotationDraft } : {}),
+          },
+        };
+      }
+      return el;
+    });
+    return changed ? next : elements;
+  }, [
+    elements,
+    selectedProcessId,
+    selectedTextBoxId,
+    selectedTableId,
+    selectedFlowShapeId,
+    processHeadingDraft,
+    processColorDraft,
+    textBoxContentDraft,
+    textBoxBoldDraft,
+    textBoxItalicDraft,
+    textBoxUnderlineDraft,
+    textBoxAlignDraft,
+    textBoxFontSizeDraft,
+    tableRowsDraft,
+    tableColumnsDraft,
+    tableHeaderBgDraft,
+    tableBoldDraft,
+    tableItalicDraft,
+    tableUnderlineDraft,
+    tableAlignDraft,
+    tableFontSizeDraft,
+    flowShapeTextDraft,
+    flowShapeBoldDraft,
+    flowShapeItalicDraft,
+    flowShapeUnderlineDraft,
+    flowShapeAlignDraft,
+    flowShapeFontSizeDraft,
+    flowShapeColorDraft,
+    flowShapeFillModeDraft,
+    flowShapeDirectionDraft,
+    flowShapeRotationDraft,
+    shapeArrowDefaultWidth,
+    shapeArrowDefaultHeight,
+    shapeArrowMinWidth,
+    shapeArrowMinHeight,
+    tableMinRows,
+    tableMinColumns,
+    tableMinWidth,
+    tableMinHeight,
+    tableDefaultWidth,
+    tableDefaultHeight,
+    shapeMinWidth,
+    shapeMinHeight,
+    normalizePreviewHex,
+  ]);
 
   const typesById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
   const elementsById = useMemo(() => new Map(elements.map((el) => [el.id, el])), [elements]);
@@ -717,7 +1066,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const getFlowNodeBounds = useCallback((flowId: string) => {
     if (flowId.startsWith("process:")) {
       const elementId = parseProcessFlowId(flowId);
-      const el = elements.find((item) => item.id === elementId);
+      const el = canvasPreviewElements.find((item) => item.id === elementId);
       if (!el) return null;
       if (el.element_type === "grouping_container") {
         return {
@@ -762,6 +1111,62 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           height: Math.max(textBoxMinHeight, el.height || textBoxDefaultHeight),
         };
       }
+      if (el.element_type === "table") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(tableMinWidth, el.width || tableDefaultWidth),
+          height: Math.max(tableMinHeight, el.height || tableDefaultHeight),
+        };
+      }
+      if (el.element_type === "shape_rectangle") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(shapeMinWidth, el.width || shapeRectangleDefaultWidth),
+          height: Math.max(shapeMinHeight, el.height || shapeRectangleDefaultHeight),
+        };
+      }
+      if (el.element_type === "shape_circle") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(shapeMinWidth, el.width || shapeCircleDefaultSize),
+          height: Math.max(shapeMinHeight, el.height || shapeCircleDefaultSize),
+        };
+      }
+      if (el.element_type === "shape_pill") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(shapeMinWidth, el.width || shapePillDefaultWidth),
+          height: Math.max(shapeMinHeight, el.height || shapePillDefaultHeight),
+        };
+      }
+      if (el.element_type === "shape_pentagon") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(shapeMinWidth, el.width || shapePentagonDefaultWidth),
+          height: Math.max(shapeMinHeight, el.height || shapePentagonDefaultHeight),
+        };
+      }
+      if (el.element_type === "shape_chevron_left") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(shapeMinWidth, el.width || shapePentagonDefaultWidth),
+          height: Math.max(shapeMinHeight, el.height || shapePentagonDefaultHeight),
+        };
+      }
+      if (el.element_type === "shape_arrow") {
+        return {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: Math.max(shapeArrowMinWidth, el.width || shapeArrowDefaultWidth),
+          height: Math.max(shapeArrowMinHeight, el.height || shapeArrowDefaultHeight),
+        };
+      }
       if (isMethodologyElementType(el.element_type)) {
         return {
           x: el.pos_x,
@@ -781,7 +1186,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (!node) return null;
     const size = getNodeSize(node);
     return { x: node.pos_x, y: node.pos_y, width: size.width, height: size.height };
-  }, [elements, nodes, getNodeSize, mapCategoryId, minorGridSize, orgChartPersonHeight, orgChartPersonWidth, personElementHeight, personElementWidth]);
+  }, [canvasPreviewElements, nodes, getNodeSize, mapCategoryId, minorGridSize, orgChartPersonHeight, orgChartPersonWidth, personElementHeight, personElementWidth, shapeArrowDefaultHeight, shapeArrowDefaultWidth, shapeArrowMinHeight, shapeArrowMinWidth, shapeCircleDefaultSize, shapeMinHeight, shapeMinWidth, shapePentagonDefaultHeight, shapePentagonDefaultWidth, shapePillDefaultHeight, shapePillDefaultWidth, shapeRectangleDefaultHeight, shapeRectangleDefaultWidth, tableDefaultWidth, tableDefaultHeight, tableMinWidth, tableMinHeight]);
 
   const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState<Node<FlowData>>([]);
   const scheduleHoveredNodeId = useCallback((value: string | null) => {
@@ -814,7 +1219,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     onFlowNodesChange(changes);
     const dimensionChanges = changes.filter((c) => {
       const change = c as { type?: string; id?: string; dimensions?: { width: number; height: number } };
-      return change.type === "dimensions" && typeof change.id === "string" && change.id.startsWith("process:") && !!change.dimensions;
+      return (
+        change.type === "dimensions" &&
+        typeof change.id === "string" &&
+        change.id.startsWith("process:") &&
+        !!change.dimensions &&
+        typeof (change as { resizing?: boolean }).resizing === "boolean"
+      );
     }) as Array<{ id: string; dimensions: { width: number; height: number }; resizing?: boolean }>;
     if (!dimensionChanges.length) return;
 
@@ -874,6 +1285,148 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const height = Math.max(textBoxMinHeight, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(textBoxMinWidth, snapToMinorGrid(current.width || textBoxDefaultWidth));
         const currentHeight = Math.max(textBoxMinHeight, snapToMinorGrid(current.height || textBoxDefaultHeight));
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
+        return;
+      }
+      if (current.element_type === "table") {
+        const width = Math.max(tableMinWidth, snapToMinorGrid(change.dimensions.width));
+        const height = Math.max(tableMinHeight, snapToMinorGrid(change.dimensions.height));
+        const currentWidth = Math.max(tableMinWidth, snapToMinorGrid(current.width || tableDefaultWidth));
+        const currentHeight = Math.max(tableMinHeight, snapToMinorGrid(current.height || tableDefaultHeight));
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
+        return;
+      }
+      if (
+        current.element_type === "shape_rectangle" ||
+        current.element_type === "shape_circle" ||
+        current.element_type === "shape_pill" ||
+        current.element_type === "shape_pentagon" ||
+        current.element_type === "shape_chevron_left" ||
+        current.element_type === "shape_arrow"
+      ) {
+        if (current.id === selectedFlowShapeId && hasUnsavedFlowShapeDraftChanges) return;
+        const getShapeSize = (element: CanvasElementRow, override?: { width?: number; height?: number }) => {
+          const baseWidth =
+            element.element_type === "shape_circle"
+              ? shapeCircleDefaultSize
+              : element.element_type === "shape_pill"
+              ? shapePillDefaultWidth
+              : element.element_type === "shape_arrow"
+              ? shapeArrowDefaultWidth
+              : element.element_type === "shape_pentagon" || element.element_type === "shape_chevron_left"
+              ? shapePentagonDefaultWidth
+              : shapeRectangleDefaultWidth;
+          const baseHeight =
+            element.element_type === "shape_circle"
+              ? shapeCircleDefaultSize
+              : element.element_type === "shape_pill"
+              ? shapePillDefaultHeight
+              : element.element_type === "shape_arrow"
+              ? shapeArrowDefaultHeight
+              : element.element_type === "shape_pentagon" || element.element_type === "shape_chevron_left"
+              ? shapePentagonDefaultHeight
+              : shapeRectangleDefaultHeight;
+          const minWidth = element.element_type === "shape_arrow" ? shapeArrowMinWidth : shapeMinWidth;
+          const minHeight = element.element_type === "shape_arrow" ? shapeArrowMinHeight : shapeMinHeight;
+          let nextWidth = Math.max(minWidth, snapToMinorGrid(override?.width ?? element.width ?? baseWidth));
+          let nextHeight = Math.max(minHeight, snapToMinorGrid(override?.height ?? element.height ?? baseHeight));
+          if (element.element_type === "shape_circle") {
+            const side = Math.max(nextWidth, nextHeight, shapeMinWidth);
+            nextWidth = side;
+            nextHeight = side;
+          }
+          return { width: nextWidth, height: nextHeight };
+        };
+        const minWidth = current.element_type === "shape_arrow" ? shapeArrowMinWidth : shapeMinWidth;
+        const minHeight = current.element_type === "shape_arrow" ? shapeArrowMinHeight : shapeMinHeight;
+        let width = Math.max(minWidth, snapToMinorGrid(change.dimensions.width));
+        let height = Math.max(minHeight, snapToMinorGrid(change.dimensions.height));
+        const fallbackWidth =
+          current.element_type === "shape_circle"
+            ? shapeCircleDefaultSize
+            : current.element_type === "shape_pill"
+            ? shapePillDefaultWidth
+            : current.element_type === "shape_arrow"
+            ? shapeArrowDefaultWidth
+            : current.element_type === "shape_pentagon" || current.element_type === "shape_chevron_left"
+            ? shapePentagonDefaultWidth
+            : shapeRectangleDefaultWidth;
+        const fallbackHeight =
+          current.element_type === "shape_circle"
+            ? shapeCircleDefaultSize
+            : current.element_type === "shape_pill"
+            ? shapePillDefaultHeight
+            : current.element_type === "shape_arrow"
+            ? shapeArrowDefaultHeight
+            : current.element_type === "shape_pentagon" || current.element_type === "shape_chevron_left"
+            ? shapePentagonDefaultHeight
+            : shapeRectangleDefaultHeight;
+        let currentWidth = Math.max(minWidth, snapToMinorGrid(current.width || fallbackWidth));
+        let currentHeight = Math.max(minHeight, snapToMinorGrid(current.height || fallbackHeight));
+        if (current.element_type === "shape_circle") {
+          const side = Math.max(width, height, shapeMinWidth);
+          width = side;
+          height = side;
+          const currentSide = Math.max(currentWidth, currentHeight, shapeMinWidth);
+          currentWidth = currentSide;
+          currentHeight = currentSide;
+        }
+        const candidateRect = { x: current.pos_x, y: current.pos_y, width, height };
+        const isPentagonChevronPair = (a: CanvasElementRow["element_type"], b: CanvasElementRow["element_type"]) =>
+          (a === "shape_pentagon" && b === "shape_chevron_left") || (a === "shape_chevron_left" && b === "shape_pentagon");
+        const exceedsAllowedOverlap = (
+          a: { x: number; y: number; width: number; height: number },
+          b: { x: number; y: number; width: number; height: number },
+          allowed: number
+        ) => {
+          if (!boxesOverlap(a, b, 0)) return false;
+          const overlapWidth = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+          const overlapHeight = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+          return overlapWidth > allowed && overlapHeight > allowed;
+        };
+        const overlapsOtherShape = elements
+          .filter(
+            (el) =>
+              el.id !== elementId &&
+              (el.element_type === "shape_rectangle" ||
+                el.element_type === "shape_circle" ||
+                el.element_type === "shape_pill" ||
+                el.element_type === "shape_pentagon" ||
+                el.element_type === "shape_chevron_left" ||
+                el.element_type === "shape_arrow")
+          )
+          .some((el) => {
+            const pending = nextSizes.get(el.id);
+            const size = getShapeSize(el, pending ? { width: pending.width, height: pending.height } : undefined);
+            const otherRect = { x: el.pos_x, y: el.pos_y, width: size.width, height: size.height };
+            if (!boxesOverlap(candidateRect, otherRect, 0)) return false;
+            if (isPentagonChevronPair(current.element_type, el.element_type)) {
+              return exceedsAllowedOverlap(candidateRect, otherRect, minorGridSize * 2);
+            }
+            return true;
+          });
+        if (overlapsOtherShape) return;
+        if (current.element_type === "shape_arrow") {
+          const overlapsDocumentNode = nodes.some((doc) => {
+            const size = getNodeSize(doc);
+            return boxesOverlap(candidateRect, { x: doc.pos_x, y: doc.pos_y, width: size.width, height: size.height }, 0);
+          });
+          if (overlapsDocumentNode) return;
+          const overlapsAnyElement = elements
+            .filter((el) => el.id !== elementId)
+            .some((el) => {
+              const rect = getFlowNodeBounds(processFlowId(el.id));
+              if (!rect) return false;
+              return boxesOverlap(candidateRect, rect, 0);
+            });
+          if (overlapsAnyElement) return;
+        }
         if (width !== currentWidth || height !== currentHeight) {
           nextSizes.set(elementId, { width, height });
           if (change.resizing === false) completedResizeIds.add(elementId);
@@ -943,7 +1496,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       }, completedResizeIds.has(elementId) ? 0 : 220);
       resizePersistTimersRef.current.set(elementId, timer);
     });
-  }, [onFlowNodesChange, elementsById, mapId, snapToMinorGrid, canEditElement]);
+  }, [onFlowNodesChange, elementsById, elements, mapId, snapToMinorGrid, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, tableDefaultWidth, tableDefaultHeight, tableMinWidth, tableMinHeight]);
 
   useEffect(() => {
     return () => {
@@ -953,15 +1506,127 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     };
   }, []);
 
+  const handleTableCellCommit = useCallback(
+    async (elementId: string, rowIndex: number, columnIndex: number, value: string) => {
+      const current = elements.find((el) => el.id === elementId && el.element_type === "table");
+      if (!current || !canEditElement(current)) return;
+      const cfg = (current.element_config as Record<string, unknown> | null) ?? {};
+      const existingRows = Array.isArray(cfg.cell_texts)
+        ? (cfg.cell_texts as unknown[]).map((row) => (Array.isArray(row) ? row.map((cell) => (cell == null ? "" : String(cell))) : []))
+        : [];
+      while (existingRows.length <= rowIndex) existingRows.push([]);
+      while (existingRows[rowIndex].length <= columnIndex) existingRows[rowIndex].push("");
+      existingRows[rowIndex][columnIndex] = value;
+      const nextConfig = {
+        ...cfg,
+        cell_texts: existingRows,
+      };
+      setElements((prev) =>
+        prev.map((el) => (el.id === elementId ? { ...el, element_config: nextConfig } : el))
+      );
+      if (!canWriteMap) return;
+      const { error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .update({ element_config: nextConfig })
+        .eq("id", elementId)
+        .eq("map_id", mapId);
+      if (e) setError(e.message || "Unable to save table cell.");
+    },
+    [elements, canEditElement, canWriteMap, mapId, setElements, setError]
+  );
+
+  const handleTableCellStyleCommit = useCallback(
+    async (
+      elementId: string,
+      rowIndex: number,
+      columnIndex: number,
+      style: {
+        bold?: boolean;
+        italic?: boolean;
+        underline?: boolean;
+        align?: "left" | "center" | "right";
+        vAlign?: "top" | "middle" | "bottom";
+        fontSize?: number;
+      }
+    ) => {
+      let nextConfig: Record<string, unknown> | null = null;
+      let canPersist = false;
+      setElements((prev) => {
+        const current = prev.find((el) => el.id === elementId && el.element_type === "table");
+        if (!current || !canEditElement(current)) return prev;
+        canPersist = canWriteMap;
+        const cfg = (current.element_config as Record<string, unknown> | null) ?? {};
+        const existingRows = Array.isArray(cfg.cell_styles)
+          ? (cfg.cell_styles as unknown[]).map((row) =>
+              Array.isArray(row)
+                ? row.map((cellStyle) => ((cellStyle && typeof cellStyle === "object" ? cellStyle : {}) as Record<string, unknown>))
+                : []
+            )
+          : [];
+        while (existingRows.length <= rowIndex) existingRows.push([]);
+        while (existingRows[rowIndex].length <= columnIndex) existingRows[rowIndex].push({});
+        const align = style.align === "left" || style.align === "right" ? style.align : "center";
+        const vAlign = style.vAlign === "top" || style.vAlign === "bottom" ? style.vAlign : "middle";
+        const fontSizeRaw = Number(style.fontSize ?? 10);
+        const fontSize = Number.isFinite(fontSizeRaw) ? Math.max(10, Math.min(72, Math.round(fontSizeRaw))) : 10;
+        existingRows[rowIndex][columnIndex] = {
+          ...existingRows[rowIndex][columnIndex],
+          bold: Boolean(style.bold),
+          italic: Boolean(style.italic),
+          underline: Boolean(style.underline),
+          align,
+          v_align: vAlign,
+          font_size: fontSize,
+        };
+        nextConfig = {
+          ...cfg,
+          cell_styles: existingRows,
+        };
+        return prev.map((el) => (el.id === elementId ? { ...el, element_config: nextConfig } : el));
+      });
+      if (!nextConfig || !canPersist) return;
+      const { error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .update({ element_config: nextConfig })
+        .eq("id", elementId)
+        .eq("map_id", mapId);
+      if (e) setError(e.message || "Unable to save table cell style.");
+    },
+    [canEditElement, canWriteMap, mapId, setElements, setError]
+  );
+  const handleOpenEvidenceMediaOverlay = useCallback(
+    (elementId: string) => {
+      const element = elements.find((el) => el.id === elementId && el.element_type === "incident_evidence");
+      if (!element) return;
+      const cfg = (element.element_config as Record<string, unknown> | null) ?? {};
+      const mediaUrl = imageUrlsByElementId[element.id];
+      if (!mediaUrl) return;
+      const rotationRaw = Number(cfg.media_rotation_deg ?? 0);
+      const rotationDeg: 0 | 90 | 180 | 270 =
+        rotationRaw === 90 || rotationRaw === 180 || rotationRaw === 270 ? rotationRaw : 0;
+      setEvidenceMediaOverlay({
+        elementId: element.id,
+        fileName: String(cfg.media_name ?? "").trim() || "Evidence",
+        description: String(cfg.description ?? "").trim(),
+        mediaUrl,
+        mediaMime: String(cfg.media_mime ?? "").trim(),
+        rotationDeg,
+      });
+    },
+    [elements, imageUrlsByElementId]
+  );
+
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
     const directReportCountByPersonNormalizedId = buildOrgDirectReportCountByPersonNormalizedId({
-      elements,
+      elements: canvasPreviewElements,
       relations,
       mapCategoryId,
     });
     const groupingElements = sortGroupingElementsForRender({
-      elements,
+      elements: canvasPreviewElements,
       minWidth: groupingMinWidth,
       minHeight: groupingMinHeight,
       defaultWidth: groupingDefaultWidth,
@@ -982,12 +1647,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           getNodeSize,
           unconfiguredDocumentTitle,
         }),
-        ...elements.map((el) => {
+        ...canvasPreviewElements.map((el) => {
           const primaryElementNode = buildPrimaryElementFlowNode({
             element: el,
             selectedFlowIds,
+            selectedTableId,
             canEditElement,
             canWriteMap,
+            selectedFlowShapeId,
+            hasUnsavedFlowShapeDraftChanges,
             mapCategoryId,
             userId,
             userEmail,
@@ -996,6 +1664,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             imageUrlsByElementId,
             directReportCountByPersonNormalizedId,
             orgDirectReportCountByPersonId,
+            onTableCellCommit: handleTableCellCommit,
+            onTableCellStyleCommit: handleTableCellStyleCommit,
           });
           if (primaryElementNode !== undefined) return primaryElementNode;
           return buildSecondaryElementFlowNode({
@@ -1003,11 +1673,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             selectedFlowIds,
             canEditElement,
             canWriteMap,
+            imageUrlsByElementId,
+            onOpenEvidenceMedia: handleOpenEvidenceMediaOverlay,
           });
         }).filter(Boolean) as Node<FlowData>[],
       ];
     setFlowNodes(nextNodes);
-  }, [nodes, elements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, canWriteMap, canEditElement, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive]);
+  }, [nodes, canvasPreviewElements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, selectedTableId, canWriteMap, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, mapCategoryId, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive, handleTableCellCommit, handleTableCellStyleCommit, handleOpenEvidenceMediaOverlay]);
 
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
@@ -1058,11 +1730,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       buildFlowEdgesBase({
         relations,
         nodes,
-        elements,
+        elements: canvasPreviewElements,
         getNodeSize,
         mapCategoryId,
       }),
-    [relations, nodes, elements, getNodeSize, mapCategoryId]
+    [relations, nodes, canvasPreviewElements, getNodeSize, mapCategoryId]
   );
 
   const relationById = useMemo(() => new Map(relations.map((rel) => [rel.id, rel])), [relations]);
@@ -1133,6 +1805,26 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     () => (selectedTextBoxId ? elements.find((el) => el.id === selectedTextBoxId && el.element_type === "text_box") ?? null : null),
     [selectedTextBoxId, elements]
   );
+  const selectedTable = useMemo(
+    () => (selectedTableId ? elements.find((el) => el.id === selectedTableId && el.element_type === "table") ?? null : null),
+    [selectedTableId, elements]
+  );
+  const selectedFlowShape = useMemo(
+    () =>
+      selectedFlowShapeId
+        ? elements.find(
+            (el) =>
+              el.id === selectedFlowShapeId &&
+              (el.element_type === "shape_rectangle" ||
+                el.element_type === "shape_circle" ||
+                el.element_type === "shape_pill" ||
+                el.element_type === "shape_pentagon" ||
+                el.element_type === "shape_chevron_left" ||
+                el.element_type === "shape_arrow")
+          ) ?? null
+        : null,
+    [selectedFlowShapeId, elements]
+  );
   const selectedBowtieElement = useMemo(
     () =>
       selectedBowtieElementId
@@ -1185,6 +1877,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (selectedSticky) return `sticky:${selectedSticky.id}`;
     if (selectedImage) return `image:${selectedImage.id}`;
     if (selectedTextBox) return `textbox:${selectedTextBox.id}`;
+    if (selectedTable) return `table:${selectedTable.id}`;
+    if (selectedFlowShape) return `shape:${selectedFlowShape.id}`;
     if (selectedProcess) return `category:${selectedProcess.id}`;
     if (selectedSystem) return `system:${selectedSystem.id}`;
     if (selectedProcessComponent) return `process:${selectedProcessComponent.id}`;
@@ -1193,7 +1887,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (selectedGrouping) return `grouping:${selectedGrouping.id}`;
     if (selectedNode) return `document:${selectedNode.id}`;
     return null;
-  }, [isMobile, selectedSticky, selectedImage, selectedTextBox, selectedProcess, selectedSystem, selectedProcessComponent, selectedPerson, selectedBowtieElement, selectedGrouping, selectedNode]);
+  }, [isMobile, selectedSticky, selectedImage, selectedTextBox, selectedTable, selectedFlowShape, selectedProcess, selectedSystem, selectedProcessComponent, selectedPerson, selectedBowtieElement, selectedGrouping, selectedNode]);
   const shouldShowDesktopStructurePanel =
     !isMobile && !!selectedNodeId && desktopNodeAction === "structure" && !!outlineNodeId && outlineNodeId === selectedNodeId;
   const searchCatalog = useMemo(() => {
@@ -1524,15 +2218,61 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     const size = Number(cfg.font_size ?? 16);
     setTextBoxFontSizeDraft(String(Number.isFinite(size) ? Math.max(16, Math.min(168, Math.round(size))) : 16));
   }, [selectedTextBox]);
+  useEffect(() => {
+    if (!selectedTable) return;
+    const cfg = (selectedTable.element_config as Record<string, unknown> | null) ?? {};
+    const parsedRows = Number(cfg.rows ?? 2);
+    const parsedColumns = Number(cfg.columns ?? 2);
+    const rows = Number.isFinite(parsedRows) ? Math.max(tableMinRows, Math.floor(parsedRows)) : tableMinRows;
+    const columns = Number.isFinite(parsedColumns) ? Math.max(tableMinColumns, Math.floor(parsedColumns)) : tableMinColumns;
+    const headerBg = typeof cfg.header_bg_color === "string" ? cfg.header_bg_color : "";
+    setTableRowsDraft(String(rows));
+    setTableColumnsDraft(String(columns));
+    setTableHeaderBgDraft(headerBg.toUpperCase());
+    setTableBoldDraft(Boolean(cfg.bold));
+    setTableItalicDraft(Boolean(cfg.italic));
+    setTableUnderlineDraft(Boolean(cfg.underline));
+    const align = String(cfg.align ?? "center");
+    setTableAlignDraft(align === "left" || align === "right" ? align : "center");
+    const size = Number(cfg.font_size ?? 10);
+    setTableFontSizeDraft(String(Number.isFinite(size) ? Math.max(10, Math.min(72, Math.round(size))) : 10));
+  }, [selectedTable, tableMinRows, tableMinColumns]);
+  useEffect(() => {
+    if (!selectedFlowShape) {
+      hydratedFlowShapeDraftIdRef.current = null;
+      return;
+    }
+    if (hydratedFlowShapeDraftIdRef.current === selectedFlowShape.id) return;
+    const cfg = (selectedFlowShape.element_config as Record<string, unknown> | null) ?? {};
+    setFlowShapeTextDraft(selectedFlowShape.heading ?? "Shape text");
+    setFlowShapeBoldDraft(Boolean(cfg.bold));
+    setFlowShapeItalicDraft(Boolean(cfg.italic));
+    setFlowShapeUnderlineDraft(Boolean(cfg.underline));
+    const align = String(cfg.align ?? "center");
+    setFlowShapeAlignDraft(align === "left" || align === "right" ? align : "center");
+    const size = Number(cfg.font_size ?? 24);
+    setFlowShapeFontSizeDraft(String(Number.isFinite(size) ? Math.max(12, Math.min(168, Math.round(size))) : 24));
+    setFlowShapeColorDraft(selectedFlowShape.color_hex ?? shapeDefaultFillColor);
+    const fillModeRaw = String(cfg.fill_mode ?? "fill");
+    setFlowShapeFillModeDraft(fillModeRaw === "outline" ? "outline" : "fill");
+    const directionRaw = String(cfg.direction ?? "right");
+    setFlowShapeDirectionDraft(directionRaw === "left" ? "left" : "right");
+    const rotationRaw = Number(cfg.rotation_deg ?? 0);
+    setFlowShapeRotationDraft(
+      rotationRaw === 90 || rotationRaw === 180 || rotationRaw === 270 ? rotationRaw : 0
+    );
+    hydratedFlowShapeDraftIdRef.current = selectedFlowShape.id;
+  }, [selectedFlowShape]);
   const imagePathPairs = useMemo(
     () =>
       elements
-        .filter((el) => el.element_type === "image_asset")
+        .filter((el) => el.element_type === "image_asset" || el.element_type === "incident_evidence")
         .map((el) => {
           const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+          const key = el.element_type === "incident_evidence" ? "media_storage_path" : "storage_path";
           return {
             id: el.id,
-            path: typeof cfg.storage_path === "string" ? cfg.storage_path : "",
+            path: typeof cfg[key] === "string" ? String(cfg[key]) : "",
           };
         })
         .filter((pair) => pair.path)
@@ -1550,6 +2290,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     let cancelled = false;
     const pairs = imagePathPairsRef.current;
     if (!pairs.length) {
+      convertedMediaObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      convertedMediaObjectUrlsRef.current.clear();
       setImageUrlsByElementId({});
       return;
     }
@@ -1570,18 +2312,174 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const signedUrl = urlByPath.get(pair.path);
         if (signedUrl) next[pair.id] = signedUrl;
       });
+      const incidentEvidenceIds = new Set(
+        elements.filter((el) => el.element_type === "incident_evidence").map((el) => el.id)
+      );
+      if (incidentEvidenceIds.size > 0) {
+        await Promise.all(
+          Object.entries(next).map(async ([elementId, signedUrl]) => {
+            if (!incidentEvidenceIds.has(elementId)) return;
+            try {
+              const response = await fetch(signedUrl);
+              if (!response.ok) return;
+              const blob = await response.blob();
+              const shouldConvert =
+                isHeicLike(blob.type, "") || (blob.type === "application/octet-stream" ? await blobLooksLikeHeif(blob) : await blobLooksLikeHeif(blob));
+              if (!shouldConvert) return;
+              const jpegBlob = await convertHeicBlobToJpegBlob(blob);
+              if (!jpegBlob || cancelled) return;
+              const objectUrl = URL.createObjectURL(jpegBlob);
+              convertedMediaObjectUrlsRef.current.add(objectUrl);
+              next[elementId] = objectUrl;
+            } catch {
+              // Keep signed URL fallback if conversion fails.
+            }
+          })
+        );
+      }
+      convertedMediaObjectUrlsRef.current.forEach((url) => {
+        if (!Object.values(next).includes(url)) {
+          URL.revokeObjectURL(url);
+          convertedMediaObjectUrlsRef.current.delete(url);
+        }
+      });
       setImageUrlsByElementId(next);
     };
     void run();
     return () => {
       cancelled = true;
     };
-  }, [imagePathSignature]);
+  }, [imagePathSignature, elements, isHeicLike, blobLooksLikeHeif, convertHeicBlobToJpegBlob]);
+  const handleRotateEvidenceMediaOverlay = useCallback(() => {
+    setEvidenceMediaOverlay((prev) => {
+      if (!prev) return prev;
+      const nextRotation = ((prev.rotationDeg + 90) % 360) as 0 | 90 | 180 | 270;
+      return { ...prev, rotationDeg: nextRotation };
+    });
+  }, []);
+  const handleCancelEvidenceMediaOverlay = useCallback(() => {
+    setEvidenceMediaOverlay(null);
+  }, []);
+  const handleSaveEvidenceMediaOverlay = useCallback(async () => {
+    if (!evidenceMediaOverlay) return;
+    const element = elements.find((el) => el.id === evidenceMediaOverlay.elementId && el.element_type === "incident_evidence");
+    if (!element) {
+      setEvidenceMediaOverlay(null);
+      return;
+    }
+    const currentConfig = (element.element_config as Record<string, unknown> | null) ?? {};
+    const nextConfig: Record<string, unknown> = {
+      ...currentConfig,
+      media_name: evidenceMediaOverlay.fileName.trim() || String(currentConfig.media_name ?? "").trim() || "Evidence",
+      description: evidenceMediaOverlay.description,
+      media_rotation_deg: evidenceMediaOverlay.rotationDeg,
+    };
+    const unchanged =
+      String(currentConfig.media_name ?? "").trim() === String(nextConfig.media_name ?? "").trim() &&
+      String(currentConfig.description ?? "") === String(nextConfig.description ?? "") &&
+      Number(currentConfig.media_rotation_deg ?? 0) === Number(nextConfig.media_rotation_deg ?? 0);
+    if (!unchanged) {
+      const { data, error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .update({ element_config: nextConfig })
+        .eq("id", element.id)
+        .eq("map_id", mapId)
+        .select(canvasElementSelectColumns)
+        .single();
+      if (e || !data) {
+        setError(e?.message || "Unable to save evidence media details.");
+      } else {
+        const updated = data as unknown as CanvasElementRow;
+        setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+        setBowtieDraft((prev) => (selectedBowtieElementId === updated.id ? (updated.element_config as Record<string, string | boolean> | null) ?? prev : prev));
+      }
+    }
+    setEvidenceMediaOverlay(null);
+  }, [evidenceMediaOverlay, elements, mapId, canvasElementSelectColumns, setError, setElements, selectedBowtieElementId]);
   useEffect(() => {
     if (!selectedBowtieElement) return;
     setBowtieHeadingDraft(selectedBowtieElement.heading ?? "");
     setBowtieDraft((selectedBowtieElement.element_config as Record<string, string | boolean> | null) ?? {});
   }, [selectedBowtieElement]);
+  useEffect(() => {
+    if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
+    setEvidenceUploadPreviewUrl(null);
+    setEvidenceUploadFile(null);
+  }, [selectedBowtieElementId]);
+  const handleClearEvidenceUploadFile = useCallback(() => {
+    if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
+    setEvidenceUploadPreviewUrl(null);
+    setEvidenceUploadFile(null);
+  }, [evidenceUploadPreviewUrl]);
+  const handleSelectEvidenceUploadFile = useCallback(
+    async (file: File | null) => {
+      if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
+      setEvidenceUploadPreviewUrl(null);
+      setEvidenceUploadFile(null);
+      if (!file) return;
+      let nextFile = file;
+      const looksHeic = isHeicLike(file.type, file.name) || (await blobLooksLikeHeif(file));
+      if (looksHeic) {
+        const jpegBlob = await convertHeicBlobToJpegBlob(file);
+        if (jpegBlob) {
+          const baseName = file.name.replace(/\.[^/.]+$/, "");
+          nextFile = new File([jpegBlob], `${baseName}.jpg`, { type: "image/jpeg" });
+        }
+      }
+      setEvidenceUploadFile(nextFile);
+      const objectUrl = URL.createObjectURL(nextFile);
+      setEvidenceUploadPreviewUrl(objectUrl);
+    },
+    [evidenceUploadPreviewUrl, isHeicLike, blobLooksLikeHeif, convertHeicBlobToJpegBlob]
+  );
+  const handleDeleteEvidenceAttachment = useCallback(async () => {
+    if (!selectedBowtieElement || selectedBowtieElement.element_type !== "incident_evidence") return;
+    const currentConfig = (selectedBowtieElement.element_config as Record<string, unknown> | null) ?? {};
+    const path = typeof currentConfig.media_storage_path === "string" ? currentConfig.media_storage_path : "";
+    if (path) {
+      const { error: removeError } = await supabaseBrowser.storage.from("systemmap").remove([path]);
+      if (removeError) {
+        setError(removeError.message || "Unable to delete attachment from storage.");
+        return;
+      }
+    }
+    const nextConfig: Record<string, unknown> = { ...currentConfig };
+    delete nextConfig.media_storage_path;
+    delete nextConfig.media_mime;
+    delete nextConfig.media_name;
+    nextConfig.media_rotation_deg = 0;
+    const { data, error: updateError } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update({ element_config: nextConfig })
+      .eq("id", selectedBowtieElement.id)
+      .eq("map_id", mapId)
+      .select(canvasElementSelectColumns)
+      .single();
+    if (updateError || !data) {
+      setError(updateError?.message || "Unable to clear attachment from evidence node.");
+      return;
+    }
+    const updated = data as unknown as CanvasElementRow;
+    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+    setBowtieDraft((updated.element_config as Record<string, string | boolean> | null) ?? {});
+    setImageUrlsByElementId((prev) => {
+      const next = { ...prev };
+      delete next[selectedBowtieElement.id];
+      return next;
+    });
+    if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
+    setEvidenceUploadPreviewUrl(null);
+    setEvidenceUploadFile(null);
+  }, [
+    selectedBowtieElement,
+    mapId,
+    canvasElementSelectColumns,
+    setElements,
+    setError,
+    evidenceUploadPreviewUrl,
+  ]);
   useEffect(() => {
     if (!map) return;
     setMapTitleDraft(map.title);
@@ -1685,6 +2583,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       !!selectedStickyId ||
       !!selectedImageId ||
       !!selectedTextBoxId ||
+      !!selectedTableId ||
+      !!selectedFlowShapeId ||
       !!selectedBowtieElementId ||
       !!selectedGroupingId ||
       !!outlineNodeId ||
@@ -1710,6 +2610,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     selectedStickyId,
     selectedImageId,
     selectedTextBoxId,
+    selectedTableId,
+    selectedFlowShapeId,
     selectedBowtieElementId,
     selectedGroupingId,
     outlineNodeId,
@@ -1779,6 +2681,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           heading: el.heading,
           color_hex: el.color_hex,
           created_by_user_id: userId ?? el.created_by_user_id,
+          element_config: (el.element_config as Record<string, unknown> | null) ?? null,
           pos_x: snapToMinorGrid(el.pos_x + offset),
           pos_y: snapToMinorGrid(el.pos_y + offset),
           width: el.width,
@@ -1912,6 +2815,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     handleAddGroupingContainer,
     handleAddStickyNote,
     handleAddTextBox,
+    handleAddTable,
+    handleAddShapeRectangle,
+    handleAddShapeCircle,
+    handleAddShapePill,
+    handleAddShapePentagon,
+    handleAddShapeChevronLeft,
+    handleAddShapeArrow,
     handleAddImageAsset,
     handleAddBowtieHazard,
     handleAddBowtieTopEvent,
@@ -1939,6 +2849,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     handleSaveStickyNote,
     handleSaveImageAsset,
     handleSaveTextBox,
+    handleSaveTable,
+    handleSaveFlowShape,
   } = useCanvasElementActions({
     mapCategoryId,
     canWriteMap,
@@ -1981,6 +2893,26 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     imageMinHeight,
     textBoxDefaultWidth,
     textBoxDefaultHeight,
+    tableDefaultWidth,
+    tableDefaultHeight,
+    tableMinWidth,
+    tableMinHeight,
+    tableMinRows,
+    tableMinColumns,
+    shapeRectangleDefaultWidth,
+    shapeRectangleDefaultHeight,
+    shapeCircleDefaultSize,
+    shapePillDefaultWidth,
+    shapePillDefaultHeight,
+    shapePentagonDefaultWidth,
+    shapePentagonDefaultHeight,
+    shapeArrowDefaultWidth,
+    shapeArrowDefaultHeight,
+    shapeArrowMinWidth,
+    shapeArrowMinHeight,
+    shapeMinWidth,
+    shapeMinHeight,
+    shapeDefaultFillColor,
     bowtieDefaultWidth,
     bowtieHazardHeight,
     bowtieSquareHeight,
@@ -2040,10 +2972,33 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     textBoxUnderlineDraft,
     textBoxAlignDraft,
     textBoxFontSizeDraft,
+    selectedTableId,
+    tableRowsDraft,
+    tableColumnsDraft,
+    tableHeaderBgDraft,
+    tableBoldDraft,
+    tableItalicDraft,
+    tableUnderlineDraft,
+    tableAlignDraft,
+    tableFontSizeDraft,
+    selectedFlowShapeId,
+    flowShapeTextDraft,
+    flowShapeAlignDraft,
+    flowShapeBoldDraft,
+    flowShapeItalicDraft,
+    flowShapeUnderlineDraft,
+    flowShapeFontSizeDraft,
+    flowShapeColorDraft,
+    flowShapeFillModeDraft,
+    flowShapeDirectionDraft,
+    flowShapeRotationDraft,
     elements,
+    nodes,
     setSelectedStickyId,
     setSelectedImageId,
     setSelectedTextBoxId,
+    setSelectedTableId,
+    setSelectedFlowShapeId,
   });
   const {
     showImageUploadModal,
@@ -2329,9 +3284,33 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       const consequence = String(nextConfig.consequence || "moderate");
       const riskLevel = calculateRiskLevel(likelihood, consequence);
       nextConfig.risk_level = riskLevel;
-      if (!bowtieHeadingDraft.trim()) {
-        nextHeading = `Risk Level: ${riskLevel.charAt(0).toUpperCase()}${riskLevel.slice(1)}`;
+      nextHeading = `${riskLevel.charAt(0).toUpperCase()}${riskLevel.slice(1)}`;
+    }
+    if (elementType === "incident_evidence" && evidenceUploadFile) {
+      const ext = evidenceUploadFile.name.includes(".") ? evidenceUploadFile.name.split(".").pop() : "bin";
+      const safeBaseName =
+        evidenceUploadFile.name
+          .replace(/\.[^/.]+$/, "")
+          .replace(/[^a-zA-Z0-9-_ ]/g, "")
+          .trim()
+          .replace(/\s+/g, "-")
+          .toLowerCase() || "evidence";
+      const storagePath = `${mapId}/${Date.now()}-${crypto.randomUUID()}-${safeBaseName}.${ext}`;
+      const { error: uploadError } = await supabaseBrowser.storage.from("systemmap").upload(storagePath, evidenceUploadFile, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+      if (uploadError) {
+        setError(uploadError.message || "Unable to upload evidence file.");
+        return;
       }
+      const previousPath = typeof nextConfig.media_storage_path === "string" ? nextConfig.media_storage_path : "";
+      if (previousPath && previousPath !== storagePath) {
+        await supabaseBrowser.storage.from("systemmap").remove([previousPath]);
+      }
+      nextConfig.media_storage_path = storagePath;
+      nextConfig.media_mime = evidenceUploadFile.type || "";
+      nextConfig.media_name = evidenceUploadFile.name;
     }
     const { data, error: e } = await supabaseBrowser
       .schema("ms")
@@ -2347,8 +3326,25 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+    if (evidenceUploadFile) {
+      if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
+      setEvidenceUploadPreviewUrl(null);
+      setEvidenceUploadFile(null);
+    }
     setSelectedBowtieElementId(null);
-  }, [canWriteMap, selectedBowtieElement, bowtieDraft, bowtieHeadingDraft, calculateRiskLevel, mapId, setError, setElements, canvasElementSelectColumns]);
+  }, [
+    canWriteMap,
+    selectedBowtieElement,
+    bowtieDraft,
+    bowtieHeadingDraft,
+    calculateRiskLevel,
+    mapId,
+    setError,
+    setElements,
+    canvasElementSelectColumns,
+    evidenceUploadFile,
+    evidenceUploadPreviewUrl,
+  ]);
   const closeAddRelationshipModal = useCallback(() => {
     setShowAddRelationship(false);
     setRelationshipSourceNodeId(null);
@@ -2397,6 +3393,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedStickyId(null);
     setSelectedImageId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
+    setSelectedFlowShapeId(null);
     setSelectedBowtieElementId(null);
     closeDesktopDrilldownPanels();
     setMobileNodeMenuId(null);
@@ -2572,6 +3570,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setSelectedImageId,
     selectedTextBoxId,
     setSelectedTextBoxId,
+    selectedTableId,
+    setSelectedTableId,
+    selectedFlowShapeId,
+    setSelectedFlowShapeId,
     selectedFlowIds,
     handleDeleteNode,
     setShowDeleteSelectionConfirm,
@@ -2732,6 +3734,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         handleAddStickyNote={handleAddStickyNote}
         handleStartAddImageAsset={handleStartAddImageAsset}
         handleAddTextBox={handleAddTextBox}
+        handleAddTable={handleAddTable}
+        handleAddShapeRectangle={handleAddShapeRectangle}
+        handleAddShapeCircle={handleAddShapeCircle}
+        handleAddShapePill={handleAddShapePill}
+        handleAddShapePentagon={handleAddShapePentagon}
+        handleAddShapeChevronLeft={handleAddShapeChevronLeft}
+        handleAddShapeArrow={handleAddShapeArrow}
         handleAddBowtieHazard={handleAddBowtieHazard}
         handleAddBowtieTopEvent={handleAddBowtieTopEvent}
         handleAddBowtieThreat={handleAddBowtieThreat}
@@ -2827,6 +3836,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedStickyId,
                 setSelectedImageId,
                 setSelectedTextBoxId,
+                setSelectedTableId,
+                setSelectedFlowShapeId,
                 setSelectedBowtieElementId,
                 setMobileNodeMenuId,
               })
@@ -2940,6 +3951,9 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           showPrintSelectionConfirm={showPrintSelectionConfirm}
           onCancelPrintSelection={exitPrintSelectionMode}
           onConfirmPrintArea={() => void handleConfirmPrintArea()}
+          onCopyPrintAreaImage={() => void handleCopyPrintAreaImageToClipboard()}
+          isCopyingPrintImage={isCopyingPrintImage}
+          printSelectionCopyMessage={printSelectionCopyMessage}
           isPreparingPrint={isPreparingPrint}
           showPrintPreview={showPrintPreview}
           printPreviewHtml={printPreviewHtml}
@@ -2973,6 +3987,18 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           }}
           imageUploadFile={imageUploadFile}
           imageUploadSaving={imageUploadSaving}
+          evidenceMediaOverlay={evidenceMediaOverlay}
+          onCancelEvidenceMediaOverlay={handleCancelEvidenceMediaOverlay}
+          onSaveEvidenceMediaOverlay={() => {
+            void handleSaveEvidenceMediaOverlay();
+          }}
+          onRotateEvidenceMediaOverlay={handleRotateEvidenceMediaOverlay}
+          onChangeEvidenceMediaOverlayFileName={(value) =>
+            setEvidenceMediaOverlay((prev) => (prev ? { ...prev, fileName: value } : prev))
+          }
+          onChangeEvidenceMediaOverlayDescription={(value) =>
+            setEvidenceMediaOverlay((prev) => (prev ? { ...prev, description: value } : prev))
+          }
           relationshipPopup={relationshipPopup}
           relationshipPopupRef={relationshipPopupRef}
         />
@@ -3224,8 +4250,25 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             setBowtieHeadingDraft,
             bowtieDraft,
             setBowtieDraft,
+            evidenceUploadPreviewUrl,
+            evidenceUploadFileName: evidenceUploadFile?.name ?? "",
+            evidenceUploadFileMime: evidenceUploadFile?.type ?? "",
+            evidenceCurrentMediaName: String(bowtieDraft.media_name ?? ""),
+            evidenceCurrentMediaMime: String(bowtieDraft.media_mime ?? ""),
+            evidenceCurrentMediaUrl:
+              selectedBowtieElement?.element_type === "incident_evidence" ? imageUrlsByElementId[selectedBowtieElement.id] ?? null : null,
+            onSelectEvidenceUploadFile: handleSelectEvidenceUploadFile,
+            onClearEvidenceUploadFile: handleClearEvidenceUploadFile,
+            onDeleteEvidenceAttachment: handleDeleteEvidenceAttachment,
             onDelete: async () => {
               if (!selectedBowtieElement) return;
+              if (selectedBowtieElement.element_type === "incident_evidence") {
+                const cfg = (selectedBowtieElement.element_config as Record<string, unknown> | null) ?? {};
+                const path = typeof cfg.media_storage_path === "string" ? cfg.media_storage_path : "";
+                if (path) {
+                  await supabaseBrowser.storage.from("systemmap").remove([path]);
+                }
+              }
               await handleDeleteProcessElement(selectedBowtieElement.id);
               setSelectedBowtieElementId(null);
             },
@@ -3325,6 +4368,85 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             },
             onSave: handleSaveTextBox,
             onClose: () => setSelectedTextBoxId(null),
+          }}
+          tableProps={{
+            open: !!selectedTable,
+            isMobile,
+            leftAsideSlideIn,
+            tableRowsDraft,
+            setTableRowsDraft,
+            tableColumnsDraft,
+            setTableColumnsDraft,
+            tableHeaderBgDraft,
+            setTableHeaderBgDraft,
+            tableBoldDraft,
+            setTableBoldDraft,
+            tableItalicDraft,
+            setTableItalicDraft,
+            tableUnderlineDraft,
+            setTableUnderlineDraft,
+            tableAlignDraft,
+            setTableAlignDraft,
+            tableFontSizeDraft,
+            setTableFontSizeDraft,
+            tableMinRows,
+            tableMinColumns,
+            onDelete: async () => {
+              if (!selectedTable) return;
+              await handleDeleteProcessElement(selectedTable.id);
+              setSelectedTableId(null);
+            },
+            onSave: handleSaveTable,
+            onClose: () => setSelectedTableId(null),
+          }}
+          flowShapeProps={{
+            open: !!selectedFlowShape,
+            isMobile,
+            leftAsideSlideIn,
+            title:
+              selectedFlowShape?.element_type === "shape_circle"
+                ? "Circle Properties"
+                : selectedFlowShape?.element_type === "shape_pill"
+                ? "Pill Properties"
+                : selectedFlowShape?.element_type === "shape_pentagon"
+                ? "Pentagon Properties"
+                : selectedFlowShape?.element_type === "shape_chevron_left"
+                ? "Chevron Properties"
+                : selectedFlowShape?.element_type === "shape_arrow"
+                ? "Arrow Properties"
+                : "Rectangle Properties",
+            shapeTextDraft: flowShapeTextDraft,
+            setShapeTextDraft: setFlowShapeTextDraft,
+            shapeAlignDraft: flowShapeAlignDraft,
+            setShapeAlignDraft: setFlowShapeAlignDraft,
+            shapeBoldDraft: flowShapeBoldDraft,
+            setShapeBoldDraft: setFlowShapeBoldDraft,
+            shapeItalicDraft: flowShapeItalicDraft,
+            setShapeItalicDraft: setFlowShapeItalicDraft,
+            shapeUnderlineDraft: flowShapeUnderlineDraft,
+            setShapeUnderlineDraft: setFlowShapeUnderlineDraft,
+            shapeFontSizeDraft: flowShapeFontSizeDraft,
+            setShapeFontSizeDraft: setFlowShapeFontSizeDraft,
+            shapeColorDraft: flowShapeColorDraft,
+            setShapeColorDraft: setFlowShapeColorDraft,
+            shapeFillModeDraft: flowShapeFillModeDraft,
+            setShapeFillModeDraft: setFlowShapeFillModeDraft,
+            canFlipDirection:
+              selectedFlowShape?.element_type === "shape_pentagon" ||
+              selectedFlowShape?.element_type === "shape_chevron_left",
+            shapeDirectionDraft: flowShapeDirectionDraft,
+            setShapeDirectionDraft: setFlowShapeDirectionDraft,
+            supportsText: selectedFlowShape?.element_type !== "shape_arrow",
+            canRotate: selectedFlowShape?.element_type === "shape_arrow",
+            shapeRotationDraft: flowShapeRotationDraft,
+            setShapeRotationDraft: setFlowShapeRotationDraft,
+            onDelete: async () => {
+              if (!selectedFlowShape) return;
+              await handleDeleteProcessElement(selectedFlowShape.id);
+              setSelectedFlowShapeId(null);
+            },
+            onSave: handleSaveFlowShape,
+            onClose: () => setSelectedFlowShapeId(null),
           }}
           documentProps={{
             open: !!selectedNode && !isMobile,

@@ -11,7 +11,7 @@ type SystemMapRow = {
   description: string | null;
   owner_id: string;
   map_code: string | null;
-  map_category?: "document_map" | "bow_tie" | "incident_investigation" | "org_chart" | null;
+  map_category?: "document_map" | "bow_tie" | "incident_investigation" | "org_chart" | "process_flow" | null;
   role: string;
   updated_at: string;
   created_at: string;
@@ -89,7 +89,7 @@ type DocumentOutlineItemRow = {
 };
 
 type MapCategoryOption = {
-  id: "document_map" | "bow_tie" | "incident_investigation" | "org_chart";
+  id: "document_map" | "bow_tie" | "incident_investigation" | "org_chart" | "process_flow";
   label: string;
   description: string;
 };
@@ -99,6 +99,7 @@ const mapCategoryOptions: MapCategoryOption[] = [
   { id: "bow_tie", label: "Bow Tie", description: "Hazard, controls, escalation and consequence mapping." },
   { id: "incident_investigation", label: "Incident Investigation", description: "Investigation workflows and evidence maps." },
   { id: "org_chart", label: "Org Chart", description: "People and team structure mapping." },
+  { id: "process_flow", label: "Process Flow", description: "Process-oriented maps for flow, systems, and related content." },
 ];
 
 const formatDateTime = (value: string) =>
@@ -219,7 +220,7 @@ export default function SystemMapsListClient() {
         .from("system_maps")
         .insert({
           owner_id: user.id,
-          title: mapCategory === "bow_tie" ? "Untitled Bow Tie Map" : "Untitled System Map",
+          title: mapCategory === "bow_tie" ? "Untitled Bow Tie Map" : mapCategory === "process_flow" ? "Untitled Process Flow Map" : "Untitled System Map",
           map_category: mapCategory,
         })
         .select("id")
@@ -234,7 +235,7 @@ export default function SystemMapsListClient() {
           .from("system_maps")
           .insert({
             owner_id: user.id,
-            title: mapCategory === "bow_tie" ? "Untitled Bow Tie Map" : "Untitled System Map",
+            title: mapCategory === "bow_tie" ? "Untitled Bow Tie Map" : mapCategory === "process_flow" ? "Untitled Process Flow Map" : "Untitled System Map",
             map_category: mapCategory,
           });
 
@@ -305,6 +306,7 @@ export default function SystemMapsListClient() {
     if (row.map_category === "bow_tie") return "Bow Tie";
     if (row.map_category === "incident_investigation") return "Incident Investigation";
     if (row.map_category === "org_chart") return "Org Chart";
+    if (row.map_category === "process_flow") return "Process Flow";
     return row.map_category;
   };
 

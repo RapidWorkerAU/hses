@@ -31,6 +31,19 @@ import {
   processHeadingWidth,
   processMinHeight,
   processMinWidth,
+  shapeArrowDefaultHeight,
+  shapeArrowDefaultWidth,
+  shapeArrowMinHeight,
+  shapeArrowMinWidth,
+  shapeCircleDefaultSize,
+  shapeMinHeight,
+  shapeMinWidth,
+  shapePentagonDefaultHeight,
+  shapePentagonDefaultWidth,
+  shapePillDefaultHeight,
+  shapePillDefaultWidth,
+  shapeRectangleDefaultHeight,
+  shapeRectangleDefaultWidth,
   type Rect,
   systemCircleDiameter,
   systemCircleElementHeight,
@@ -38,6 +51,10 @@ import {
   textBoxDefaultWidth,
   textBoxMinHeight,
   textBoxMinWidth,
+  tableDefaultHeight,
+  tableDefaultWidth,
+  tableMinHeight,
+  tableMinWidth,
 } from "./canvasShared";
 import type { MapCategoryId } from "./mapCategories";
 
@@ -74,6 +91,13 @@ export const buildFlowEdgesBase = (params: {
     }
     if (el.element_type === "image_asset") return { width: Math.max(imageMinWidth, el.width || imageDefaultWidth), height: Math.max(imageMinHeight, el.height || imageDefaultWidth) };
     if (el.element_type === "text_box") return { width: Math.max(textBoxMinWidth, el.width || textBoxDefaultWidth), height: Math.max(textBoxMinHeight, el.height || textBoxDefaultHeight) };
+    if (el.element_type === "table") return { width: Math.max(tableMinWidth, el.width || tableDefaultWidth), height: Math.max(tableMinHeight, el.height || tableDefaultHeight) };
+    if (el.element_type === "shape_rectangle") return { width: Math.max(shapeMinWidth, el.width || shapeRectangleDefaultWidth), height: Math.max(shapeMinHeight, el.height || shapeRectangleDefaultHeight) };
+    if (el.element_type === "shape_circle") return { width: Math.max(shapeMinWidth, el.width || shapeCircleDefaultSize), height: Math.max(shapeMinHeight, el.height || shapeCircleDefaultSize) };
+    if (el.element_type === "shape_pill") return { width: Math.max(shapeMinWidth, el.width || shapePillDefaultWidth), height: Math.max(shapeMinHeight, el.height || shapePillDefaultHeight) };
+    if (el.element_type === "shape_pentagon") return { width: Math.max(shapeMinWidth, el.width || shapePentagonDefaultWidth), height: Math.max(shapeMinHeight, el.height || shapePentagonDefaultHeight) };
+    if (el.element_type === "shape_chevron_left") return { width: Math.max(shapeMinWidth, el.width || shapePentagonDefaultWidth), height: Math.max(shapeMinHeight, el.height || shapePentagonDefaultHeight) };
+    if (el.element_type === "shape_arrow") return { width: Math.max(shapeArrowMinWidth, el.width || shapeArrowDefaultWidth), height: Math.max(shapeArrowMinHeight, el.height || shapeArrowDefaultHeight) };
     if (el.element_type === "grouping_container") {
       return {
         width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
@@ -534,4 +558,3 @@ export const buildFlowEdgesBase = (params: {
     };
   }).filter(Boolean) as Edge[];
 };
-

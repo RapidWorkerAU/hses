@@ -63,6 +63,13 @@ export type CanvasElementRow = {
     | "person"
     | "image_asset"
     | "text_box"
+    | "table"
+    | "shape_rectangle"
+    | "shape_circle"
+    | "shape_pill"
+    | "shape_pentagon"
+    | "shape_chevron_left"
+    | "shape_arrow"
     | "bowtie_hazard"
     | "bowtie_top_event"
     | "bowtie_threat"
@@ -127,6 +134,13 @@ export type FlowData = {
     | "person"
     | "image_asset"
     | "text_box"
+    | "table"
+    | "shape_rectangle"
+    | "shape_circle"
+    | "shape_pill"
+    | "shape_pentagon"
+    | "shape_chevron_left"
+    | "shape_arrow"
     | "bowtie_hazard"
     | "bowtie_top_event"
     | "bowtie_threat"
@@ -157,6 +171,7 @@ export type FlowData = {
   documentNumber?: string;
   categoryColor?: string;
   canEdit?: boolean;
+  canResize?: boolean;
   creatorName?: string;
   createdAtLabel?: string;
   userGroup: string;
@@ -167,6 +182,12 @@ export type FlowData = {
   isUnconfigured: boolean;
   isCritical?: boolean;
   imageUrl?: string;
+  evidenceMediaUrl?: string;
+  evidenceMediaMime?: string;
+  evidenceMediaName?: string;
+  evidenceShowPreview?: boolean;
+  evidenceMediaRotationDeg?: 0 | 90 | 180 | 270;
+  onOpenEvidenceMedia?: () => void;
   textStyle?: {
     bold?: boolean;
     italic?: boolean;
@@ -174,6 +195,38 @@ export type FlowData = {
     align?: "left" | "center" | "right";
     fontSize?: number;
   };
+  shapeStyle?: {
+    direction?: "left" | "right";
+    fillMode?: "fill" | "outline";
+    rotationDeg?: 0 | 90 | 180 | 270;
+  };
+  tableConfig?: {
+    rows: number;
+    columns: number;
+    headerRowBg: string | null;
+    cellTexts?: string[][];
+    cellStyles?: Array<Array<{
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      align?: "left" | "center" | "right";
+      vAlign?: "top" | "middle" | "bottom";
+      fontSize?: number;
+    }>>;
+  };
+  onTableCellCommit?: (rowIndex: number, columnIndex: number, value: string) => void;
+  onTableCellStyleCommit?: (
+    rowIndex: number,
+    columnIndex: number,
+    style: {
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      align?: "left" | "center" | "right";
+      vAlign?: "top" | "middle" | "bottom";
+      fontSize?: number;
+    }
+  ) => void;
   orgChartPerson?: {
     displayName: string;
     positionLine: string;
@@ -259,6 +312,30 @@ export const textBoxDefaultWidth = minorGridSize * 20;
 export const textBoxDefaultHeight = minorGridSize * 5;
 export const textBoxMinWidth = minorGridSize * 5;
 export const textBoxMinHeight = minorGridSize * 2;
+export const tableCellDefaultWidthSquares = 5;
+export const tableCellDefaultHeightSquares = 2;
+export const tableDefaultRows = 2;
+export const tableDefaultColumns = 2;
+export const tableDefaultWidth = minorGridSize * tableCellDefaultWidthSquares * tableDefaultColumns;
+export const tableDefaultHeight = minorGridSize * tableCellDefaultHeightSquares * tableDefaultRows;
+export const tableMinRows = 1;
+export const tableMinColumns = 1;
+export const tableMinWidth = minorGridSize * tableCellDefaultWidthSquares * tableMinColumns;
+export const tableMinHeight = minorGridSize * tableCellDefaultHeightSquares * tableMinRows;
+export const shapeRectangleDefaultWidth = minorGridSize * 10;
+export const shapeRectangleDefaultHeight = minorGridSize * 5;
+export const shapeCircleDefaultSize = minorGridSize * 7;
+export const shapePillDefaultWidth = minorGridSize * 10;
+export const shapePillDefaultHeight = minorGridSize * 5;
+export const shapePentagonDefaultWidth = minorGridSize * 10;
+export const shapePentagonDefaultHeight = minorGridSize * 5;
+export const shapeArrowDefaultWidth = minorGridSize * 5;
+export const shapeArrowDefaultHeight = minorGridSize * 2;
+export const shapeArrowMinWidth = minorGridSize * 2;
+export const shapeArrowMinHeight = minorGridSize * 2;
+export const shapeMinWidth = minorGridSize * 3;
+export const shapeMinHeight = minorGridSize * 2;
+export const shapeDefaultFillColor = "#249BC7";
 export const bowtieDefaultWidth = minorGridSize * 7;
 export const bowtieHazardHeight = minorGridSize * 4;
 export const bowtieSquareHeight = minorGridSize * 4;
@@ -577,6 +654,13 @@ export const getElementRelationshipTypeLabel = (elementType: CanvasElementRow["e
   if (elementType === "sticky_note") return "Sticky Note";
   if (elementType === "image_asset") return "Image";
   if (elementType === "text_box") return "Text";
+  if (elementType === "table") return "Table";
+  if (elementType === "shape_rectangle") return "Rectangle";
+  if (elementType === "shape_circle") return "Circle";
+  if (elementType === "shape_pill") return "Pill";
+  if (elementType === "shape_pentagon") return "Pentagon";
+  if (elementType === "shape_chevron_left") return "Chevron";
+  if (elementType === "shape_arrow") return "Arrow";
   if (elementType === "bowtie_hazard") return "Hazard";
   if (elementType === "bowtie_top_event") return "Top Event";
   if (elementType === "bowtie_threat") return "Threat";

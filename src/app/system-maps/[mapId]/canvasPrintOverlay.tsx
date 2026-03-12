@@ -12,6 +12,9 @@ type CanvasPrintOverlayProps = {
   showPrintSelectionConfirm: boolean;
   onCancelPrintSelection: () => void;
   onConfirmPrintArea: () => void;
+  onCopyPrintAreaImage: () => void;
+  isCopyingPrintImage: boolean;
+  printSelectionCopyMessage: string | null;
   isPreparingPrint: boolean;
   showPrintPreview: boolean;
   printPreviewHtml: string | null;
@@ -33,6 +36,9 @@ export function CanvasPrintOverlay({
   showPrintSelectionConfirm,
   onCancelPrintSelection,
   onConfirmPrintArea,
+  onCopyPrintAreaImage,
+  isCopyingPrintImage,
+  printSelectionCopyMessage,
   isPreparingPrint,
   showPrintPreview,
   printPreviewHtml,
@@ -43,6 +49,9 @@ export function CanvasPrintOverlay({
   onClosePreview,
   printPreviewFrameRef,
 }: CanvasPrintOverlayProps) {
+  const isProcessingPrintAction = isPreparingPrint || isCopyingPrintImage;
+  const isCopyMessageError = !!printSelectionCopyMessage && printSelectionCopyMessage.toLowerCase().startsWith("unable");
+
   return (
     <>
       {printSelectionMode ? (
@@ -96,24 +105,38 @@ export function CanvasPrintOverlay({
 
       {showPrintSelectionConfirm ? (
         <div className="fixed inset-0 z-[91] flex items-center justify-center bg-slate-900/45 p-4 print-hidden">
-          <div className="w-full max-w-md rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-2xl rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
             <h2 className="text-lg font-semibold text-slate-900">Print selected area?</h2>
             <p className="mt-2 text-sm text-slate-700">Use this selected area for the PDF export.</p>
+            {printSelectionCopyMessage ? (
+              <p className={`mt-3 text-sm ${isCopyMessageError ? "text-red-700" : "text-emerald-700"}`}>{printSelectionCopyMessage}</p>
+            ) : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
-                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={onCancelPrintSelection}
+                disabled={isProcessingPrintAction}
               >
                 Cancel Print Selection
               </button>
               <button
                 className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={onConfirmPrintArea}
-                disabled={isPreparingPrint}
+                onClick={onCopyPrintAreaImage}
+                disabled={isProcessingPrintAction}
               >
                 <span className="inline-flex items-center gap-2">
-                  {isPreparingPrint ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-black border-r-transparent" /> : null}
-                  {isPreparingPrint ? "Preparing..." : "Print This Area"}
+                  {isProcessingPrintAction ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-black border-r-transparent" /> : null}
+                  {isProcessingPrintAction ? "Preparing..." : "Copy to Clipboard"}
+                </span>
+              </button>
+              <button
+                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={onConfirmPrintArea}
+                disabled={isProcessingPrintAction}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {isProcessingPrintAction ? <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-black border-r-transparent" /> : null}
+                  {isProcessingPrintAction ? "Preparing..." : "Print This Area"}
                 </span>
               </button>
             </div>
@@ -171,4 +194,3 @@ export function CanvasPrintOverlay({
     </>
   );
 }
-

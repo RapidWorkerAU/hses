@@ -16,6 +16,42 @@ const formatBowtieOptionLabel = (value: string) =>
     })
     .join(" ");
 
+const calculateBowtieRiskLevel = (likelihoodRaw: string, consequenceRaw: string) => {
+  const likelihoodScoreByKey: Record<string, number> = {
+    rare: 1,
+    unlikely: 2,
+    possible: 3,
+    likely: 4,
+    almost_certain: 5,
+  };
+  const consequenceScoreByKey: Record<string, number> = {
+    insignificant: 1,
+    minor: 2,
+    moderate: 3,
+    major: 4,
+    severe: 5,
+  };
+  const likelihood = likelihoodScoreByKey[likelihoodRaw] ?? 3;
+  const consequence = consequenceScoreByKey[consequenceRaw] ?? 3;
+  const score = likelihood * consequence;
+  if (score <= 4) return "low";
+  if (score <= 9) return "medium";
+  if (score <= 16) return "high";
+  return "extreme";
+};
+
+const squarePaletteRows = [
+  ["#EBC0C0", "#E5CFB6", "#E3E3B5", "#C7E2B0", "#B1E1B3", "#A7DEBF", "#A6DCE0", "#A7C9E3", "#B4B4E0", "#CAB4E1", "#DDB2DF", "#E2B2CF", "#DCDCDC"],
+  ["#EE8F91", "#E8BD8D", "#E4E68A", "#B4E189", "#88DF8D", "#83D8AB", "#7FD2D4", "#83B3DF", "#8F8DDE", "#B18BDE", "#D883D9", "#E288C0", "#C9C9C9"],
+  ["#FA6565", "#F1AF67", "#ECEF57", "#A2EA56", "#61E95F", "#5FDEA0", "#59D6D8", "#549FE6", "#6163E6", "#9E5AE5", "#DB59E2", "#EC5BAC", "#B3B3B3"],
+  ["#FF3333", "#F89835", "#F2EF2C", "#8AF22C", "#38F234", "#3BE08E", "#3DD0D2", "#3B8FE4", "#3D37E3", "#8938E5", "#E538E4", "#F137A1", "#9F9F9F"],
+  ["#EF0F0F", "#FC8801", "#F1EE03", "#75F100", "#13F500", "#12E17D", "#18CED1", "#1B84E8", "#130AEB", "#790CE6", "#EA03E8", "#FF0090", "#878787"],
+  ["#DE0000", "#D26C00", "#C7C200", "#5ECA00", "#03C900", "#0DC269", "#19B8BA", "#1063C9", "#1209C1", "#6B07BA", "#D100CD", "#D00077", "#6C6C6C"],
+  ["#B80000", "#A35A00", "#9C9B00", "#4F9900", "#029A00", "#0A9B53", "#109A9A", "#0A51A2", "#0D0DA0", "#5D0C97", "#AD0CA9", "#AE005E", "#4F4F4F"],
+  ["#930000", "#7D4100", "#777700", "#376E00", "#006C00", "#066C3E", "#0B6F70", "#083B77", "#090976", "#43066F", "#7C007A", "#7F0045", "#1F1F1F"],
+  ["#7A0000", "#5B2A00", "#4F5000", "#254A00", "#004A00", "#004A2A", "#00494A", "#002C57", "#000056", "#2E0050", "#530052", "#52002E", "#000000"],
+] as const;
+
 type AsideShellProps = {
   isMobile: boolean;
   leftAsideSlideIn: boolean;
@@ -75,7 +111,7 @@ export function CategoryPropertiesAside({
   setProcessWidthDraft,
   processHeightDraft,
   setProcessHeightDraft,
-  categoryColorOptions,
+  categoryColorOptions: _categoryColorOptions,
   processColorDraft,
   setProcessColorDraft,
   onDelete,
@@ -83,6 +119,8 @@ export function CategoryPropertiesAside({
   onClose,
 }: CategoryPropertiesAsideProps) {
   if (!open) return null;
+  const safeColor = /^#[0-9a-fA-F]{6}$/.test(processColorDraft ?? "") ? String(processColorDraft).toUpperCase() : "#249BC7";
+  const hasColor = /^#[0-9a-fA-F]{6}$/.test(processColorDraft ?? "");
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Category Properties" onClose={onClose}>
       <div className="mt-4 space-y-3">
@@ -113,26 +151,53 @@ export function CategoryPropertiesAside({
           />
         </label>
         <div className="text-sm text-white">
-          <div>Category Colour</div>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {categoryColorOptions.map((option) => {
-              const selected = (processColorDraft ?? "").toLowerCase() === option.value.toLowerCase();
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  title={option.name}
-                  aria-label={option.name}
-                  className={`h-8 rounded-none border ${selected ? "border-white ring-2 ring-white/80" : "border-slate-300"} shadow-sm`}
-                  style={{ backgroundColor: option.value }}
-                  onClick={() =>
-                    setProcessColorDraft((prev) =>
-                      (prev ?? "").toLowerCase() === option.value.toLowerCase() ? null : option.value
-                    )
-                  }
-                />
-              );
-            })}
+          <div>Background Colour</div>
+          <div className="mt-2 w-full border border-slate-300 bg-white p-[2px]">
+            {squarePaletteRows.map((row, rowIndex) => (
+              <div
+                key={`category-swatch-row-${rowIndex}`}
+                className="grid"
+                style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+              >
+                {row.map((hex, colIndex) => {
+                  const selected = safeColor.toLowerCase() === hex.toLowerCase();
+                  return (
+                    <button
+                      key={`category-swatch-${rowIndex}-${colIndex}`}
+                      type="button"
+                      className={`aspect-square w-full border border-white ${selected ? "ring-2 ring-black ring-inset" : ""}`}
+                      style={{ backgroundColor: hex }}
+                      onClick={() => setProcessColorDraft(() => hex)}
+                      title={hex}
+                      aria-label={hex}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="color"
+              className="h-10 w-14 rounded-none border border-slate-300 bg-white p-1"
+              value={safeColor}
+              onChange={(e) => setProcessColorDraft(() => e.target.value.toUpperCase())}
+            />
+            <input
+              type="text"
+              className="h-10 w-full rounded border border-slate-300 bg-white px-3 py-2 font-mono text-black"
+              value={processColorDraft ?? ""}
+              onChange={(e) => setProcessColorDraft(() => e.target.value.toUpperCase())}
+              placeholder="#249BC7"
+            />
+            <button
+              type="button"
+              className="h-10 rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+              onClick={() => setProcessColorDraft(() => null)}
+              disabled={!hasColor}
+            >
+              Clear
+            </button>
           </div>
         </div>
       </div>
@@ -548,6 +613,439 @@ export function TextBoxAside({
   );
 }
 
+type FlowShapeAsideProps = {
+  open: boolean;
+  isMobile: boolean;
+  leftAsideSlideIn: boolean;
+  title: string;
+  shapeTextDraft: string;
+  setShapeTextDraft: (value: string) => void;
+  shapeAlignDraft: "left" | "center" | "right";
+  setShapeAlignDraft: (value: "left" | "center" | "right") => void;
+  shapeBoldDraft: boolean;
+  setShapeBoldDraft: (value: boolean) => void;
+  shapeItalicDraft: boolean;
+  setShapeItalicDraft: (value: boolean) => void;
+  shapeUnderlineDraft: boolean;
+  setShapeUnderlineDraft: (value: boolean) => void;
+  shapeFontSizeDraft: string;
+  setShapeFontSizeDraft: (value: string) => void;
+  shapeColorDraft: string;
+  setShapeColorDraft: (value: string) => void;
+  shapeFillModeDraft: "fill" | "outline";
+  setShapeFillModeDraft: (value: "fill" | "outline") => void;
+  supportsText: boolean;
+  canFlipDirection: boolean;
+  shapeDirectionDraft: "left" | "right";
+  setShapeDirectionDraft: (value: "left" | "right") => void;
+  canRotate: boolean;
+  shapeRotationDraft: 0 | 90 | 180 | 270;
+  setShapeRotationDraft: (value: 0 | 90 | 180 | 270) => void;
+  onDelete: () => Promise<void>;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+};
+
+type TableAsideProps = {
+  open: boolean;
+  isMobile: boolean;
+  leftAsideSlideIn: boolean;
+  tableRowsDraft: string;
+  setTableRowsDraft: (value: string) => void;
+  tableColumnsDraft: string;
+  setTableColumnsDraft: (value: string) => void;
+  tableHeaderBgDraft: string;
+  setTableHeaderBgDraft: (value: string) => void;
+  tableBoldDraft: boolean;
+  setTableBoldDraft: (value: boolean) => void;
+  tableItalicDraft: boolean;
+  setTableItalicDraft: (value: boolean) => void;
+  tableUnderlineDraft: boolean;
+  setTableUnderlineDraft: (value: boolean) => void;
+  tableAlignDraft: "left" | "center" | "right";
+  setTableAlignDraft: (value: "left" | "center" | "right") => void;
+  tableFontSizeDraft: string;
+  setTableFontSizeDraft: (value: string) => void;
+  tableMinRows: number;
+  tableMinColumns: number;
+  onDelete: () => Promise<void>;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+};
+
+export function TableAside({
+  open,
+  isMobile,
+  leftAsideSlideIn,
+  tableRowsDraft,
+  setTableRowsDraft,
+  tableColumnsDraft,
+  setTableColumnsDraft,
+  tableHeaderBgDraft,
+  setTableHeaderBgDraft,
+  tableMinRows,
+  tableMinColumns,
+  onDelete,
+  onSave,
+  onClose,
+}: TableAsideProps) {
+  if (!open) return null;
+  const safeColor = /^#[0-9a-fA-F]{6}$/.test(tableHeaderBgDraft) ? tableHeaderBgDraft : "#1E3A8A";
+  const hasHeaderColor = /^#[0-9a-fA-F]{6}$/.test(tableHeaderBgDraft);
+  const parsePositiveInt = (value: string, fallback: number) => {
+    const parsed = Number(value.trim());
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(1, Math.floor(parsed));
+  };
+  const rowValue = parsePositiveInt(tableRowsDraft, tableMinRows);
+  const columnValue = parsePositiveInt(tableColumnsDraft, tableMinColumns);
+  const bumpRows = (delta: number) => {
+    const next = Math.max(tableMinRows, rowValue + delta);
+    setTableRowsDraft(String(next));
+  };
+  const bumpColumns = (delta: number) => {
+    const next = Math.max(tableMinColumns, columnValue + delta);
+    setTableColumnsDraft(String(next));
+  };
+  return (
+    <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Table Properties" onClose={onClose}>
+      <div className="mt-4 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-sm text-white">Rows (min {tableMinRows})
+            <div className="mt-1 flex items-stretch">
+              <input
+                type="text"
+                inputMode="numeric"
+                className="w-full rounded-l border border-slate-300 bg-white px-3 py-2 text-black"
+                value={tableRowsDraft}
+                onChange={(e) => setTableRowsDraft(e.target.value)}
+              />
+              <div className="flex w-9 flex-col">
+                <button
+                  type="button"
+                  aria-label="Increase rows"
+                  className="flex h-1/2 items-center justify-center rounded-tr border border-l-0 border-slate-300 bg-white text-black hover:bg-slate-100"
+                  onClick={() => bumpRows(1)}
+                >
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden="true">
+                    <path d="M6 14l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Decrease rows"
+                  className="flex h-1/2 items-center justify-center rounded-br border border-l-0 border-t-0 border-slate-300 bg-white text-black hover:bg-slate-100"
+                  onClick={() => bumpRows(-1)}
+                >
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden="true">
+                    <path d="M6 10l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </label>
+          <label className="text-sm text-white">Columns (min {tableMinColumns})
+            <div className="mt-1 flex items-stretch">
+              <input
+                type="text"
+                inputMode="numeric"
+                className="w-full rounded-l border border-slate-300 bg-white px-3 py-2 text-black"
+                value={tableColumnsDraft}
+                onChange={(e) => setTableColumnsDraft(e.target.value)}
+              />
+              <div className="flex w-9 flex-col">
+                <button
+                  type="button"
+                  aria-label="Increase columns"
+                  className="flex h-1/2 items-center justify-center rounded-tr border border-l-0 border-slate-300 bg-white text-black hover:bg-slate-100"
+                  onClick={() => bumpColumns(1)}
+                >
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden="true">
+                    <path d="M6 14l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Decrease columns"
+                  className="flex h-1/2 items-center justify-center rounded-br border border-l-0 border-t-0 border-slate-300 bg-white text-black hover:bg-slate-100"
+                  onClick={() => bumpColumns(-1)}
+                >
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden="true">
+                    <path d="M6 10l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </label>
+        </div>
+        <div className="text-sm text-white">
+          <div className="mb-2">Top Row Background (optional)</div>
+          <div className="mt-2 w-full border border-slate-300 bg-white p-[2px]">
+            {squarePaletteRows.map((row, rowIndex) => (
+              <div
+                key={`table-swatch-row-${rowIndex}`}
+                className="grid"
+                style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+              >
+                {row.map((hex, colIndex) => {
+                  const selected = safeColor.toLowerCase() === hex.toLowerCase();
+                  return (
+                    <button
+                      key={`table-swatch-${rowIndex}-${colIndex}`}
+                      type="button"
+                      className={`aspect-square w-full border border-white ${selected ? "ring-2 ring-black ring-inset" : ""}`}
+                      style={{ backgroundColor: hex }}
+                      onClick={() => setTableHeaderBgDraft(hex)}
+                      title={hex}
+                      aria-label={hex}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="color"
+              className="h-10 w-14 rounded-none border border-slate-300 bg-white p-1"
+              value={safeColor}
+              onChange={(e) => setTableHeaderBgDraft(e.target.value.toUpperCase())}
+            />
+            <input
+              type="text"
+              className="h-10 w-full rounded border border-slate-300 bg-white px-3 py-2 font-mono text-black"
+              value={tableHeaderBgDraft}
+              onChange={(e) => setTableHeaderBgDraft(e.target.value.toUpperCase())}
+              placeholder="#1E3A8A"
+            />
+            <button
+              type="button"
+              className="h-10 rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
+              onClick={() => setTableHeaderBgDraft("")}
+              disabled={!hasHeaderColor}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex items-center justify-between">
+        <button className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100" onClick={() => void onDelete()}>
+          Delete table
+        </button>
+        <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={() => void onSave()}>
+          Save table
+        </button>
+      </div>
+    </AsideShell>
+  );
+}
+
+export function FlowShapeAside({
+  open,
+  isMobile,
+  leftAsideSlideIn,
+  title,
+  shapeTextDraft,
+  setShapeTextDraft,
+  shapeAlignDraft,
+  setShapeAlignDraft,
+  shapeBoldDraft,
+  setShapeBoldDraft,
+  shapeItalicDraft,
+  setShapeItalicDraft,
+  shapeUnderlineDraft,
+  setShapeUnderlineDraft,
+  shapeFontSizeDraft,
+  setShapeFontSizeDraft,
+  shapeColorDraft,
+  setShapeColorDraft,
+  shapeFillModeDraft,
+  setShapeFillModeDraft,
+  supportsText,
+  canFlipDirection,
+  shapeDirectionDraft,
+  setShapeDirectionDraft,
+  canRotate,
+  shapeRotationDraft,
+  setShapeRotationDraft,
+  onDelete,
+  onSave,
+  onClose,
+}: FlowShapeAsideProps) {
+  if (!open) return null;
+  const textSizeOptions = [16, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72, 84, 96, 112, 128, 144, 168];
+  const safeColor = /^#[0-9a-fA-F]{6}$/.test(shapeColorDraft) ? shapeColorDraft : "#249BC7";
+  return (
+    <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title={title} onClose={onClose}>
+      <div className="mt-4 space-y-3">
+        {supportsText ? (
+          <>
+            <label className="text-sm text-white">Shape Text
+              <textarea
+                className="mt-1 min-h-[180px] w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+                value={shapeTextDraft}
+                onChange={(e) => setShapeTextDraft(e.target.value)}
+                placeholder="Enter shape text"
+              />
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+                <button type="button" className={`rounded-none border px-2 py-2 text-sm ${shapeBoldDraft ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`} onClick={() => setShapeBoldDraft(!shapeBoldDraft)}>Bold</button>
+                <button type="button" className={`rounded-none border px-2 py-2 text-sm ${shapeItalicDraft ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`} onClick={() => setShapeItalicDraft(!shapeItalicDraft)}>Italic</button>
+                <button type="button" className={`rounded-none border px-2 py-2 text-sm ${shapeUnderlineDraft ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`} onClick={() => setShapeUnderlineDraft(!shapeUnderlineDraft)}>Underline</button>
+            </div>
+            <div className="text-sm text-white">
+              <div>Text Alignment</div>
+              <div className="mt-1 grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  aria-label="Align left"
+                  className={`flex items-center justify-center rounded-none border px-2 py-2 ${shapeAlignDraft === "left" ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`}
+                  onClick={() => setShapeAlignDraft("left")}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                    <path d="M4 6h14M4 10h10M4 14h14M4 18h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Align center"
+                  className={`flex items-center justify-center rounded-none border px-2 py-2 ${shapeAlignDraft === "center" ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`}
+                  onClick={() => setShapeAlignDraft("center")}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                    <path d="M5 6h14M7 10h10M5 14h14M7 18h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Align right"
+                  className={`flex items-center justify-center rounded-none border px-2 py-2 ${shapeAlignDraft === "right" ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`}
+                  onClick={() => setShapeAlignDraft("right")}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+                    <path d="M6 6h14M10 10h10M6 14h14M10 18h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <label className="text-sm text-white">Text Size (16px to 168px)
+              <select className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={shapeFontSizeDraft} onChange={(e) => setShapeFontSizeDraft(e.target.value)}>
+                {textSizeOptions.map((size) => (
+                  <option key={size} value={String(size)} style={{ fontSize: `${size}px` }}>
+                    {size}px
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
+        <div className="text-sm text-white">
+          <div>Shape Style</div>
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className={`rounded-none border px-2 py-2 text-sm ${shapeFillModeDraft === "fill" ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`}
+              onClick={() => setShapeFillModeDraft("fill")}
+            >
+              Infilled
+            </button>
+            <button
+              type="button"
+              className={`rounded-none border px-2 py-2 text-sm ${shapeFillModeDraft === "outline" ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`}
+              onClick={() => setShapeFillModeDraft("outline")}
+            >
+              Outlined
+            </button>
+          </div>
+        </div>
+        {canFlipDirection ? (
+          <div className="text-sm text-white">
+            <div>Direction</div>
+            <div className="mt-1 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className={`rounded-none border px-2 py-2 text-sm ${shapeDirectionDraft === "left" ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`}
+                onClick={() => setShapeDirectionDraft("left")}
+              >
+                Left
+              </button>
+              <button
+                type="button"
+                className={`rounded-none border px-2 py-2 text-sm ${shapeDirectionDraft === "right" ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`}
+                onClick={() => setShapeDirectionDraft("right")}
+              >
+                Right
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {canRotate ? (
+          <div className="text-sm text-white">
+            <div>Rotation</div>
+            <div className="mt-1 grid grid-cols-4 gap-2">
+              <button type="button" className={`rounded-none border px-2 py-2 text-sm ${shapeRotationDraft === 0 ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`} onClick={() => setShapeRotationDraft(0)}>0°</button>
+              <button type="button" className={`rounded-none border px-2 py-2 text-sm ${shapeRotationDraft === 90 ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`} onClick={() => setShapeRotationDraft(90)}>90°</button>
+              <button type="button" className={`rounded-none border px-2 py-2 text-sm ${shapeRotationDraft === 180 ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`} onClick={() => setShapeRotationDraft(180)}>180°</button>
+              <button type="button" className={`rounded-none border px-2 py-2 text-sm ${shapeRotationDraft === 270 ? "border-white bg-white text-black" : "border-white bg-transparent text-white"}`} onClick={() => setShapeRotationDraft(270)}>270°</button>
+            </div>
+          </div>
+        ) : null}
+        <div className="text-sm text-white">
+          <div>Background Colour</div>
+          <div className="mt-2 w-full border border-slate-300 bg-white p-[2px]">
+            {squarePaletteRows.map((row, rowIndex) => (
+              <div
+                key={`shape-swatch-row-${rowIndex}`}
+                className="grid"
+                style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
+              >
+                {row.map((hex, colIndex) => {
+                  const selected = safeColor.toLowerCase() === hex.toLowerCase();
+                  return (
+                    <button
+                      key={`shape-swatch-${rowIndex}-${colIndex}`}
+                      type="button"
+                      className={`aspect-square w-full border border-white ${selected ? "ring-2 ring-black ring-inset" : ""}`}
+                      style={{ backgroundColor: hex }}
+                      onClick={() => setShapeColorDraft(hex)}
+                      title={hex}
+                      aria-label={hex}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="color"
+              className="h-10 w-14 rounded-none border border-slate-300 bg-white p-1"
+              value={safeColor}
+              onChange={(e) => setShapeColorDraft(e.target.value.toUpperCase())}
+            />
+            <input
+              type="text"
+              className="h-10 w-full rounded border border-slate-300 bg-white px-3 py-2 font-mono text-black"
+              value={shapeColorDraft}
+              onChange={(e) => setShapeColorDraft(e.target.value.toUpperCase())}
+              placeholder="#249BC7"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex items-center justify-between">
+        <button className="w-full rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100" onClick={() => void onDelete()}>
+          Delete shape
+        </button>
+        <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={() => void onSave()}>
+          Save shape
+        </button>
+      </div>
+    </AsideShell>
+  );
+}
+
 type RelationLabels = {
   sourceLabel: string;
   targetLabel: string;
@@ -609,17 +1107,19 @@ function RelationshipSection({
           return (
             <div key={r.id} className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-800">
               <div className="flex items-start justify-between gap-2">
-                <div className="text-sm font-medium">
+                <div className="min-w-0 flex-1 pr-2 text-sm font-medium">
+                  <div className="break-words">
                   {labels.sourceLabel} {"->"} {labels.targetLabel} <span className="font-normal text-slate-500">({labels.targetType})</span>
-                  <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-slate-500">
-                    Relation: {getDisplayRelationType(r.relation_type)}
-                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.04em] text-slate-500">
+                  Relation: {getDisplayRelationType(r.relation_type)}
+                </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     title="Edit relationship definition"
                     aria-label="Edit relationship definition"
-                    className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
+                    className="flex h-7 w-7 items-center justify-center border border-slate-300 bg-white hover:bg-slate-100"
                     onClick={() => onStartEdit(r)}
                   >
                     <img src="/icons/edit.svg" alt="" className="h-4 w-4" />
@@ -627,7 +1127,7 @@ function RelationshipSection({
                   <button
                     title="Delete relationship"
                     aria-label="Delete relationship"
-                    className="rounded-none border border-slate-300 bg-white p-1 hover:bg-slate-100"
+                    className="flex h-7 w-7 items-center justify-center border border-slate-300 bg-white hover:bg-slate-100"
                     onClick={() => onDelete(r.id)}
                   >
                     <img src="/icons/delete.svg" alt="" className="h-4 w-4" />
@@ -971,6 +1471,15 @@ type BowtiePropertiesAsideProps = {
   setBowtieHeadingDraft: (value: string) => void;
   bowtieDraft: Record<string, string | boolean>;
   setBowtieDraft: React.Dispatch<React.SetStateAction<Record<string, string | boolean>>>;
+  evidenceUploadPreviewUrl: string | null;
+  evidenceUploadFileName: string;
+  evidenceUploadFileMime: string;
+  evidenceCurrentMediaName: string;
+  evidenceCurrentMediaMime: string;
+  evidenceCurrentMediaUrl: string | null;
+  onSelectEvidenceUploadFile: (file: File | null) => void;
+  onClearEvidenceUploadFile: () => void;
+  onDeleteEvidenceAttachment: () => Promise<void>;
   onDelete: () => Promise<void>;
   onSave: () => Promise<void>;
   onClose: () => void;
@@ -989,6 +1498,15 @@ export function BowtiePropertiesAside({
   setBowtieHeadingDraft,
   bowtieDraft,
   setBowtieDraft,
+  evidenceUploadPreviewUrl,
+  evidenceUploadFileName,
+  evidenceUploadFileMime,
+  evidenceCurrentMediaName,
+  evidenceCurrentMediaMime,
+  evidenceCurrentMediaUrl,
+  onSelectEvidenceUploadFile,
+  onClearEvidenceUploadFile,
+  onDeleteEvidenceAttachment,
   onDelete,
   onSave,
   onClose,
@@ -1022,7 +1540,31 @@ export function BowtiePropertiesAside({
   } as const)[bowtieElementType] || "Node";
 
   const setField = (key: string, value: string | boolean) =>
-    setBowtieDraft((prev) => ({ ...prev, [key]: value }));
+    setBowtieDraft((prev) => {
+      const next = { ...prev, [key]: value };
+      if (bowtieElementType === "bowtie_risk_rating" && (key === "likelihood" || key === "consequence")) {
+        const likelihood = String(next.likelihood ?? "possible");
+        const consequence = String(next.consequence ?? "moderate");
+        next.risk_level = calculateBowtieRiskLevel(likelihood, consequence);
+      }
+      return next;
+    });
+
+  const riskLevelLabel =
+    bowtieElementType === "bowtie_risk_rating"
+      ? formatBowtieOptionLabel(
+          calculateBowtieRiskLevel(
+            String(bowtieDraft.likelihood ?? "possible"),
+            String(bowtieDraft.consequence ?? "moderate")
+          )
+        )
+      : "";
+  const uploadNameLower = String(evidenceUploadFileName || "").toLowerCase();
+  const currentNameLower = String(evidenceCurrentMediaName || "").toLowerCase();
+  const uploadIsPdf = evidenceUploadFileMime.toLowerCase().includes("pdf") || uploadNameLower.endsWith(".pdf");
+  const currentIsPdf = evidenceCurrentMediaMime.toLowerCase().includes("pdf") || currentNameLower.endsWith(".pdf");
+  const uploadIsHeic = uploadNameLower.endsWith(".heic") || uploadNameLower.endsWith(".heif") || evidenceUploadFileMime.toLowerCase().includes("heic") || evidenceUploadFileMime.toLowerCase().includes("heif");
+  const currentIsHeic = (currentNameLower.endsWith(".heic") || currentNameLower.endsWith(".heif") || evidenceCurrentMediaMime.toLowerCase().includes("heic") || evidenceCurrentMediaMime.toLowerCase().includes("heif")) && !String(evidenceCurrentMediaUrl || "").startsWith("blob:");
 
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title={`${title} Properties`} onClose={onClose}>
@@ -1038,7 +1580,7 @@ export function BowtiePropertiesAside({
         </button>
       </div>
       <div className="mt-4 space-y-3">
-        {!isIncidentElement ? (
+        {!isIncidentElement && !isRiskRating ? (
           <label className="text-sm text-white">Label
             <input
               className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
@@ -1046,6 +1588,10 @@ export function BowtiePropertiesAside({
               onChange={(e) => setBowtieHeadingDraft(e.target.value)}
             />
           </label>
+        ) : isRiskRating ? (
+          <div className="text-sm text-white">Label
+            <div className="mt-1 rounded border border-slate-300 bg-[#0f2942] px-3 py-2 text-white">{riskLevelLabel}</div>
+          </div>
         ) : (
           <div className="text-sm text-white">Label
             <div className="mt-1 rounded border border-slate-300 bg-[#0f2942] px-3 py-2 text-white">{bowtieHeadingDraft || title}</div>
@@ -1069,9 +1615,6 @@ export function BowtiePropertiesAside({
                 <option value="">Select type</option>
                 {["mechanical", "electrical", "pressure", "chemical", "biological", "human", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
-            </label>
-            <label className="text-sm text-white">Scope / Asset
-              <input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.scope_asset ?? "")} onChange={(e) => setField("scope_asset", e.target.value)} />
             </label>
           </>
         ) : null}
@@ -1194,7 +1737,7 @@ export function BowtiePropertiesAside({
               </select>
             </label>
             <div className="text-sm text-white">Risk Level
-              <div className="mt-1 rounded border border-slate-300 bg-white px-3 py-2 text-black">{formatBowtieOptionLabel(String(bowtieDraft.risk_level ?? "medium"))}</div>
+              <div className="mt-1 rounded border border-slate-300 bg-white px-3 py-2 text-black">{riskLevelLabel}</div>
             </div>
           </>
         ) : null}
@@ -1297,6 +1840,28 @@ export function BowtiePropertiesAside({
 
         {bowtieElementType === "incident_system_factor" ? (
           <>
+            <label className="text-sm text-white">Factor Presence
+              <select
+                className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+                value={String(bowtieDraft.factor_presence ?? "present")}
+                onChange={(e) => setField("factor_presence", e.target.value)}
+              >
+                <option value="present">Present</option>
+                <option value="absent">Absent</option>
+              </select>
+            </label>
+            <label className="text-sm text-white">Factor Classification
+              <select
+                className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
+                value={String(bowtieDraft.factor_classification ?? "contributing")}
+                onChange={(e) => setField("factor_classification", e.target.value)}
+              >
+                <option value="essential">Essential</option>
+                <option value="contributing">Contributing</option>
+                <option value="predisposing">Predisposing</option>
+                <option value="neutral">Neutral</option>
+              </select>
+            </label>
             <label className="text-sm text-white">Category
               <select
                 className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
@@ -1305,17 +1870,6 @@ export function BowtiePropertiesAside({
               >
                 <option value="">Select category</option>
                 {["training", "supervision", "planning", "design", "culture", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
-              </select>
-            </label>
-            <label className="text-sm text-white">Cause Level
-              <select
-                className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-                value={String(bowtieDraft.cause_level ?? "contributing")}
-                onChange={(e) => setField("cause_level", e.target.value)}
-              >
-                <option value="immediate">Immediate</option>
-                <option value="contributing">Contributing</option>
-                <option value="root">Root</option>
               </select>
             </label>
           </>
@@ -1352,17 +1906,11 @@ export function BowtiePropertiesAside({
                 onChange={(e) => setField("control_type", e.target.value)}
               >
                 <option value="">Select control type</option>
-                {["engineering", "administrative", "ppe", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
+                {["engineering", "substitution", "elimination", "administrative", "ppe", "other"].map((v) => <option key={v} value={v}>{formatBowtieOptionLabel(v)}</option>)}
               </select>
             </label>
             <label className="text-sm text-white">Owner
               <input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.owner_text ?? "")} onChange={(e) => setField("owner_text", e.target.value)} />
-            </label>
-            <label className="text-sm text-white">Verification Method
-              <input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.verification_method ?? "")} onChange={(e) => setField("verification_method", e.target.value)} />
-            </label>
-            <label className="text-sm text-white">Verification Frequency
-              <input className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black" value={String(bowtieDraft.verification_frequency ?? "")} onChange={(e) => setField("verification_frequency", e.target.value)} />
             </label>
           </>
         ) : null}
@@ -1385,6 +1933,89 @@ export function BowtiePropertiesAside({
                 value={String(bowtieDraft.source ?? "")}
                 onChange={(e) => setField("source", e.target.value)}
               />
+            </label>
+            <div className="text-sm text-white">
+              <div>Upload Evidence (Image or PDF)</div>
+              <div className="mt-1 rounded-none border border-dashed border-slate-300 p-4">
+                <label className="flex cursor-pointer flex-col items-center justify-center text-center">
+                  <div className="text-xs text-slate-200">Drag and drop file or click to browse</div>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,application/pdf"
+                    className="mt-3 block w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-black file:mr-2 file:rounded-none file:border file:border-black file:bg-white file:px-2 file:py-1 file:text-xs file:font-semibold file:text-black hover:file:bg-slate-100"
+                    style={{ color: "#111827", backgroundColor: "#ffffff" }}
+                    onChange={(e) => onSelectEvidenceUploadFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {String(evidenceUploadFileName || evidenceCurrentMediaName).trim() ? (
+                  <div
+                    className="mt-2 rounded border border-slate-200 bg-white px-2 py-2 text-[12px] break-all"
+                    style={{ color: "#0f172a", fontWeight: 600 }}
+                  >
+                    File: {String(evidenceUploadFileName || evidenceCurrentMediaName).trim()}
+                  </div>
+                ) : null}
+                {!evidenceUploadPreviewUrl && evidenceCurrentMediaUrl ? (
+                  <div className="mt-3 overflow-hidden rounded border border-slate-200 bg-white p-2">
+                    {currentIsPdf ? (
+                      <iframe
+                        title={evidenceCurrentMediaName || "Current evidence PDF preview"}
+                        src={`${evidenceCurrentMediaUrl}#page=1&view=FitH&toolbar=0&navpanes=0`}
+                        className="h-44 w-full border-0 bg-white"
+                      />
+                    ) : currentIsHeic ? (
+                      <div className="flex h-44 w-full items-center justify-center rounded border border-slate-200 bg-slate-50 px-3 text-center text-xs text-slate-700">
+                        Preview unavailable for HEIC/HEIF in this panel.
+                      </div>
+                    ) : (
+                      <img src={evidenceCurrentMediaUrl} alt="Current evidence preview" className="max-h-44 w-full object-contain" />
+                    )}
+                  </div>
+                ) : null}
+                {evidenceUploadPreviewUrl ? (
+                  <div className="mt-3 overflow-hidden rounded border border-slate-200 bg-slate-50 p-2">
+                    {uploadIsPdf ? (
+                      <iframe
+                        title={evidenceUploadFileName || "Evidence upload PDF preview"}
+                        src={`${evidenceUploadPreviewUrl}#page=1&view=FitH&toolbar=0&navpanes=0`}
+                        className="h-40 w-full border-0 bg-white"
+                      />
+                    ) : uploadIsHeic ? (
+                      <div className="flex h-40 w-full items-center justify-center rounded border border-slate-200 bg-white px-3 text-center text-xs text-slate-700">
+                        Preview unavailable for HEIC/HEIF. Save to upload the file.
+                      </div>
+                    ) : (
+                      <img src={evidenceUploadPreviewUrl} alt="Evidence upload preview" className="max-h-40 w-full object-contain" />
+                    )}
+                  </div>
+                ) : null}
+                {evidenceUploadPreviewUrl || evidenceUploadFileName ? (
+                  <button
+                    type="button"
+                    className="mt-2 rounded-none border border-black bg-white px-2 py-1 text-xs text-black hover:bg-slate-100"
+                    onClick={onClearEvidenceUploadFile}
+                  >
+                    Clear selected file
+                  </button>
+                ) : null}
+                {evidenceCurrentMediaUrl || String(evidenceCurrentMediaName).trim() ? (
+                  <button
+                    type="button"
+                    className="mt-2 w-full rounded-none border border-black bg-white px-2 py-1 text-xs text-rose-700 hover:bg-slate-100"
+                    onClick={() => void onDeleteEvidenceAttachment()}
+                  >
+                    Delete attachment
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-white">
+              <input
+                type="checkbox"
+                checked={Boolean(bowtieDraft.show_canvas_preview)}
+                onChange={(e) => setField("show_canvas_preview", e.target.checked)}
+              />
+              <span>Show image/PDF preview on canvas</span>
             </label>
           </>
         ) : null}

@@ -32,6 +32,13 @@ type CanvasActionButtonsProps = {
   handleAddStickyNote: () => void;
   handleStartAddImageAsset: () => void;
   handleAddTextBox: () => void;
+  handleAddTable: () => void;
+  handleAddShapeRectangle: () => void;
+  handleAddShapeCircle: () => void;
+  handleAddShapePill: () => void;
+  handleAddShapePentagon: () => void;
+  handleAddShapeChevronLeft: () => void;
+  handleAddShapeArrow: () => void;
   handleAddBowtieHazard: () => void;
   handleAddBowtieTopEvent: () => void;
   handleAddBowtieThreat: () => void;
@@ -83,6 +90,13 @@ export function CanvasActionButtons({
   handleAddStickyNote,
   handleStartAddImageAsset,
   handleAddTextBox,
+  handleAddTable,
+  handleAddShapeRectangle,
+  handleAddShapeCircle,
+  handleAddShapePill,
+  handleAddShapePentagon,
+  handleAddShapeChevronLeft,
+  handleAddShapeArrow,
   handleAddBowtieHazard,
   handleAddBowtieTopEvent,
   handleAddBowtieThreat,
@@ -242,6 +256,13 @@ export function CanvasActionButtons({
                 {allowed.has("incident_recommendation") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddIncidentRecommendation}>Recommendation</button> : null}
                 {allowed.has("image_asset") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleStartAddImageAsset}>Image</button> : null}
                 {allowed.has("text_box") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddTextBox}>Text Box</button> : null}
+                {allowed.has("table") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddTable}>Table</button> : null}
+                {allowed.has("shape_rectangle") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddShapeRectangle}>Rectangle</button> : null}
+                {allowed.has("shape_circle") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddShapeCircle}>Circle</button> : null}
+                {allowed.has("shape_pill") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddShapePill}>Pill</button> : null}
+                {allowed.has("shape_pentagon") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddShapePentagon}>Pentagon</button> : null}
+                {allowed.has("shape_chevron_left") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddShapeChevronLeft}>Chevron</button> : null}
+                {allowed.has("shape_arrow") ? <button className="block w-full rounded-none px-3 py-2 text-left font-normal text-slate-800 hover:bg-slate-100" onClick={handleAddShapeArrow}>Arrow</button> : null}
               </>
             ) : null}
             {canCreateSticky && allowed.has("sticky_note") ? (

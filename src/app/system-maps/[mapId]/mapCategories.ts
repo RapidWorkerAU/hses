@@ -10,6 +10,13 @@ export type NodePaletteKind =
   | "sticky_note"
   | "image_asset"
   | "text_box"
+  | "table"
+  | "shape_rectangle"
+  | "shape_circle"
+  | "shape_pill"
+  | "shape_pentagon"
+  | "shape_chevron_left"
+  | "shape_arrow"
   | "incident_sequence_step"
   | "incident_outcome"
   | "incident_task_condition"
@@ -33,7 +40,8 @@ export type MapCategoryId =
   | "document_map"
   | "bow_tie"
   | "incident_investigation"
-  | "org_chart";
+  | "org_chart"
+  | "process_flow";
 
 export type MapCategoryConfig = {
   id: MapCategoryId;
@@ -46,7 +54,7 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
     id: "document_map",
     label: "Document Map",
     // Current behavior baseline; future categories can narrow this safely.
-    allowedNodeKinds: ["document", "system", "process", "person", "category", "grouping_container", "sticky_note", "image_asset", "text_box"],
+    allowedNodeKinds: ["document", "system", "process", "person", "category", "grouping_container", "sticky_note", "image_asset", "text_box", "table"],
   },
   bow_tie: {
     id: "bow_tie",
@@ -81,6 +89,7 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
       "sticky_note",
       "image_asset",
       "text_box",
+      "table",
       "incident_sequence_step",
       "incident_outcome",
       "incident_task_condition",
@@ -96,6 +105,27 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
     id: "org_chart",
     label: "Org Chart",
     allowedNodeKinds: ["person", "category", "grouping_container", "image_asset", "text_box"],
+  },
+  process_flow: {
+    id: "process_flow",
+    label: "Process Flow",
+    allowedNodeKinds: [
+      "category",
+      "grouping_container",
+      "text_box",
+      "image_asset",
+      "document",
+      "sticky_note",
+      "process",
+      "system",
+      "table",
+      "shape_rectangle",
+      "shape_circle",
+      "shape_pill",
+      "shape_pentagon",
+      "shape_chevron_left",
+      "shape_arrow",
+    ],
   },
 };
 

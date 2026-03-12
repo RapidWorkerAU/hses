@@ -25,6 +25,8 @@ type HandleCanvasNodeClickParams = {
   setSelectedStickyId: Setter<string | null>;
   setSelectedImageId: Setter<string | null>;
   setSelectedTextBoxId: Setter<string | null>;
+  setSelectedTableId: Setter<string | null>;
+  setSelectedFlowShapeId: Setter<string | null>;
   setSelectedBowtieElementId: Setter<string | null>;
   setMobileNodeMenuId: Setter<string | null>;
 };
@@ -82,10 +84,13 @@ export const handleCanvasNodeClick = ({
   setSelectedStickyId,
   setSelectedImageId,
   setSelectedTextBoxId,
+  setSelectedTableId,
+  setSelectedFlowShapeId,
   setSelectedBowtieElementId,
   setMobileNodeMenuId,
 }: HandleCanvasNodeClickParams) => {
   setSelectedFlowIds((prev) => (prev.size ? new Set<string>() : prev));
+  setSelectedFlowShapeId(null);
 
   if (mapRole === "read") {
     if (node.data.entityKind === "sticky_note") {
@@ -101,6 +106,7 @@ export const handleCanvasNodeClick = ({
         setSelectedBowtieElementId(null);
         setSelectedImageId(null);
         setSelectedTextBoxId(null);
+        setSelectedTableId(null);
         setSelectedStickyId(stickyId);
         return;
       }
@@ -109,6 +115,7 @@ export const handleCanvasNodeClick = ({
     setSelectedPersonId(null);
     setSelectedImageId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(null);
     return;
   }
@@ -132,6 +139,7 @@ export const handleCanvasNodeClick = ({
     setSelectedStickyId(null);
     setSelectedImageId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(null);
     setSelectedProcessId(parseProcessFlowId(node.id));
     return;
@@ -157,6 +165,7 @@ export const handleCanvasNodeClick = ({
     setSelectedStickyId(null);
     setSelectedImageId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(null);
     setSelectedProcessComponentId(parseProcessFlowId(node.id));
     return;
@@ -180,6 +189,7 @@ export const handleCanvasNodeClick = ({
     setSelectedStickyId(null);
     setSelectedImageId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(null);
     setSelectedSystemId(parseProcessFlowId(node.id));
     return;
@@ -251,6 +261,7 @@ export const handleCanvasNodeClick = ({
         setSelectedGroupingId(null);
         setSelectedStickyId(null);
         setSelectedTextBoxId(null);
+        setSelectedTableId(null);
         setSelectedBowtieElementId(null);
         setSelectedImageId(parseProcessFlowId(node.id));
       }
@@ -264,6 +275,7 @@ export const handleCanvasNodeClick = ({
     setSelectedGroupingId(null);
     setSelectedStickyId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(null);
     setSelectedImageId(parseProcessFlowId(node.id));
     return;
@@ -280,6 +292,7 @@ export const handleCanvasNodeClick = ({
         setSelectedGroupingId(null);
         setSelectedStickyId(null);
         setSelectedImageId(null);
+        setSelectedTableId(null);
         setSelectedBowtieElementId(null);
         setSelectedTextBoxId(parseProcessFlowId(node.id));
       }
@@ -293,8 +306,80 @@ export const handleCanvasNodeClick = ({
     setSelectedGroupingId(null);
     setSelectedStickyId(null);
     setSelectedImageId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(null);
     setSelectedTextBoxId(parseProcessFlowId(node.id));
+    return;
+  }
+
+  if (node.data.entityKind === "table") {
+    if (isMobile) {
+      if (isMobileDoubleTap(node.id, lastMobileTapRef)) {
+        setSelectedNodeId(null);
+        setSelectedProcessId(null);
+        setSelectedSystemId(null);
+        setSelectedProcessComponentId(null);
+        setSelectedPersonId(null);
+        setSelectedGroupingId(null);
+        setSelectedStickyId(null);
+        setSelectedImageId(null);
+        setSelectedTextBoxId(null);
+        setSelectedBowtieElementId(null);
+        setSelectedTableId(parseProcessFlowId(node.id));
+      }
+      return;
+    }
+    setSelectedNodeId(null);
+    setSelectedProcessId(null);
+    setSelectedSystemId(null);
+    setSelectedProcessComponentId(null);
+    setSelectedPersonId(null);
+    setSelectedGroupingId(null);
+    setSelectedStickyId(null);
+    setSelectedImageId(null);
+    setSelectedTextBoxId(null);
+    setSelectedBowtieElementId(null);
+    setSelectedTableId(parseProcessFlowId(node.id));
+    return;
+  }
+
+  if (
+    node.data.entityKind === "shape_rectangle" ||
+    node.data.entityKind === "shape_circle" ||
+    node.data.entityKind === "shape_pill" ||
+    node.data.entityKind === "shape_pentagon" ||
+    node.data.entityKind === "shape_chevron_left" ||
+    node.data.entityKind === "shape_arrow"
+  ) {
+    if (isMobile) {
+      if (isMobileDoubleTap(node.id, lastMobileTapRef)) {
+        setSelectedNodeId(null);
+        setSelectedProcessId(null);
+        setSelectedSystemId(null);
+        setSelectedProcessComponentId(null);
+        setSelectedPersonId(null);
+        setSelectedGroupingId(null);
+        setSelectedStickyId(null);
+        setSelectedImageId(null);
+        setSelectedTextBoxId(null);
+        setSelectedTableId(null);
+        setSelectedBowtieElementId(null);
+        setSelectedFlowShapeId(parseProcessFlowId(node.id));
+      }
+      return;
+    }
+    setSelectedNodeId(null);
+    setSelectedProcessId(null);
+    setSelectedSystemId(null);
+    setSelectedProcessComponentId(null);
+    setSelectedPersonId(null);
+    setSelectedGroupingId(null);
+    setSelectedStickyId(null);
+    setSelectedImageId(null);
+    setSelectedTextBoxId(null);
+    setSelectedTableId(null);
+    setSelectedBowtieElementId(null);
+    setSelectedFlowShapeId(parseProcessFlowId(node.id));
     return;
   }
 
@@ -310,6 +395,7 @@ export const handleCanvasNodeClick = ({
         setSelectedStickyId(null);
         setSelectedImageId(null);
         setSelectedTextBoxId(null);
+        setSelectedTableId(null);
         setSelectedBowtieElementId(parseProcessFlowId(node.id));
       }
       return;
@@ -323,6 +409,7 @@ export const handleCanvasNodeClick = ({
     setSelectedStickyId(null);
     setSelectedImageId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(parseProcessFlowId(node.id));
     return;
   }
@@ -336,6 +423,7 @@ export const handleCanvasNodeClick = ({
     setSelectedGroupingId(null);
     setSelectedImageId(null);
     setSelectedTextBoxId(null);
+    setSelectedTableId(null);
     setSelectedBowtieElementId(null);
     setSelectedStickyId(parseProcessFlowId(node.id));
     return;
@@ -356,7 +444,7 @@ export const handleCanvasNodeClick = ({
   setSelectedStickyId(null);
   setSelectedImageId(null);
   setSelectedTextBoxId(null);
+  setSelectedTableId(null);
   setSelectedBowtieElementId(null);
   setSelectedNodeId(node.id);
 };
-

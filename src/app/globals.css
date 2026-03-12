@@ -3253,6 +3253,77 @@ body.mobile-menu-open {
   z-index: 1;
 }
 
+.dashboard-table.risk-records-table thead th {
+  vertical-align: middle;
+  font-size: 0.72rem;
+  color: #ffffff;
+  background: #0b1f3b;
+}
+
+.dashboard-table.risk-records-table .risk-records-phase-row {
+  background: #fde8c8;
+  color: #5b3a00;
+}
+
+.dashboard-table.risk-records-table {
+  table-layout: fixed;
+}
+
+.dashboard-table.risk-records-table .risk-rating-cell {
+  display: flex;
+  flex-direction: column;
+  margin: -10px -12px;
+  min-height: 96px;
+  text-align: center;
+}
+
+.dashboard-table.risk-records-table .risk-rating-band {
+  display: flex;
+  flex: 0 0 30%;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 30px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.dashboard-table.risk-records-table .risk-rating-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.dashboard-table.risk-records-table .risk-rating-band--low {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.dashboard-table.risk-records-table .risk-rating-band--medium {
+  background: #f59e0b;
+  color: #1f2937;
+}
+
+.dashboard-table.risk-records-table .risk-rating-band--significant {
+  background: #ea580c;
+  color: #ffffff;
+}
+
+.dashboard-table.risk-records-table .risk-rating-band--high {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.dashboard-table.risk-records-table .risk-rating-band--default {
+  background: #475569;
+  color: #ffffff;
+}
+
 .dashboard-pagination {
   display: flex;
   align-items: center;

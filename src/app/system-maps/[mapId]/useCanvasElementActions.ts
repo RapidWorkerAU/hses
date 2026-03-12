@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { CanvasElementRow, DisciplineKey, DocumentNodeRow } from "./canvasShared";
-import { parseOrgChartPersonConfig } from "./canvasShared";
+import { boxesOverlap, parseOrgChartPersonConfig } from "./canvasShared";
 import type { MapCategoryId } from "./mapCategories";
 
 type UseCanvasElementActionsParams = {
@@ -48,6 +48,26 @@ type UseCanvasElementActionsParams = {
   imageMinHeight: number;
   textBoxDefaultWidth: number;
   textBoxDefaultHeight: number;
+  tableDefaultWidth: number;
+  tableDefaultHeight: number;
+  tableMinWidth: number;
+  tableMinHeight: number;
+  tableMinRows: number;
+  tableMinColumns: number;
+  shapeRectangleDefaultWidth: number;
+  shapeRectangleDefaultHeight: number;
+  shapeCircleDefaultSize: number;
+  shapePillDefaultWidth: number;
+  shapePillDefaultHeight: number;
+  shapePentagonDefaultWidth: number;
+  shapePentagonDefaultHeight: number;
+  shapeArrowDefaultWidth: number;
+  shapeArrowDefaultHeight: number;
+  shapeArrowMinWidth: number;
+  shapeArrowMinHeight: number;
+  shapeMinWidth: number;
+  shapeMinHeight: number;
+  shapeDefaultFillColor: string;
   bowtieDefaultWidth: number;
   bowtieHazardHeight: number;
   bowtieSquareHeight: number;
@@ -107,10 +127,33 @@ type UseCanvasElementActionsParams = {
   textBoxUnderlineDraft: boolean;
   textBoxAlignDraft: "left" | "center" | "right";
   textBoxFontSizeDraft: string;
+  selectedTableId: string | null;
+  tableRowsDraft: string;
+  tableColumnsDraft: string;
+  tableHeaderBgDraft: string;
+  tableBoldDraft: boolean;
+  tableItalicDraft: boolean;
+  tableUnderlineDraft: boolean;
+  tableAlignDraft: "left" | "center" | "right";
+  tableFontSizeDraft: string;
+  selectedFlowShapeId: string | null;
+  flowShapeTextDraft: string;
+  flowShapeAlignDraft: "left" | "center" | "right";
+  flowShapeBoldDraft: boolean;
+  flowShapeItalicDraft: boolean;
+  flowShapeUnderlineDraft: boolean;
+  flowShapeFontSizeDraft: string;
+  flowShapeColorDraft: string;
+  flowShapeFillModeDraft: "fill" | "outline";
+  flowShapeDirectionDraft: "left" | "right";
+  flowShapeRotationDraft: 0 | 90 | 180 | 270;
   elements: CanvasElementRow[];
+  nodes: DocumentNodeRow[];
   setSelectedStickyId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedImageId: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedTextBoxId: React.Dispatch<React.SetStateAction<string | null>>;
+  setSelectedTableId: React.Dispatch<React.SetStateAction<string | null>>;
+  setSelectedFlowShapeId: React.Dispatch<React.SetStateAction<string | null>>;
 };
 
 export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
@@ -156,6 +199,26 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     imageMinHeight,
     textBoxDefaultWidth,
     textBoxDefaultHeight,
+    tableDefaultWidth,
+    tableDefaultHeight,
+    tableMinWidth,
+    tableMinHeight,
+    tableMinRows,
+    tableMinColumns,
+    shapeRectangleDefaultWidth,
+    shapeRectangleDefaultHeight,
+    shapeCircleDefaultSize,
+    shapePillDefaultWidth,
+    shapePillDefaultHeight,
+    shapePentagonDefaultWidth,
+    shapePentagonDefaultHeight,
+    shapeArrowDefaultWidth,
+    shapeArrowDefaultHeight,
+    shapeArrowMinWidth,
+    shapeArrowMinHeight,
+    shapeMinWidth,
+    shapeMinHeight,
+    shapeDefaultFillColor,
     bowtieDefaultWidth,
     bowtieHazardHeight,
     bowtieSquareHeight,
@@ -212,10 +275,33 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     textBoxUnderlineDraft,
     textBoxAlignDraft,
     textBoxFontSizeDraft,
+    selectedTableId,
+    tableRowsDraft,
+    tableColumnsDraft,
+    tableHeaderBgDraft,
+    tableBoldDraft,
+    tableItalicDraft,
+    tableUnderlineDraft,
+    tableAlignDraft,
+    tableFontSizeDraft,
+    selectedFlowShapeId,
+    flowShapeTextDraft,
+    flowShapeAlignDraft,
+    flowShapeBoldDraft,
+    flowShapeItalicDraft,
+    flowShapeUnderlineDraft,
+    flowShapeFontSizeDraft,
+    flowShapeColorDraft,
+    flowShapeFillModeDraft,
+    flowShapeDirectionDraft,
+    flowShapeRotationDraft,
     elements,
+    nodes,
     setSelectedStickyId,
     setSelectedImageId,
     setSelectedTextBoxId,
+    setSelectedTableId,
+    setSelectedFlowShapeId,
   } = params;
 
   const normalizeColorHex = useCallback((value: string | null | undefined): string | null => {
@@ -231,6 +317,143 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     const center = rf.screenToFlowPosition({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
     return { x: snapToMinorGrid(center.x), y: snapToMinorGrid(center.y) };
   }, [rf, canvasRef, snapToMinorGrid]);
+
+  const getShapeDimensions = useCallback(
+    (element: CanvasElementRow) => {
+      const fallbackWidth =
+        element.element_type === "shape_circle"
+          ? shapeCircleDefaultSize
+          : element.element_type === "shape_pill"
+          ? shapePillDefaultWidth
+          : element.element_type === "shape_arrow"
+          ? shapeArrowDefaultWidth
+          : element.element_type === "shape_pentagon" || element.element_type === "shape_chevron_left"
+          ? shapePentagonDefaultWidth
+          : shapeRectangleDefaultWidth;
+      const fallbackHeight =
+        element.element_type === "shape_circle"
+          ? shapeCircleDefaultSize
+          : element.element_type === "shape_pill"
+          ? shapePillDefaultHeight
+          : element.element_type === "shape_arrow"
+          ? shapeArrowDefaultHeight
+          : element.element_type === "shape_pentagon" || element.element_type === "shape_chevron_left"
+          ? shapePentagonDefaultHeight
+          : shapeRectangleDefaultHeight;
+      const minWidth = element.element_type === "shape_arrow" ? shapeArrowMinWidth : shapeMinWidth;
+      const minHeight = element.element_type === "shape_arrow" ? shapeArrowMinHeight : shapeMinHeight;
+      let width = Math.max(minWidth, element.width || fallbackWidth);
+      let height = Math.max(minHeight, element.height || fallbackHeight);
+      if (element.element_type === "shape_circle") {
+        const side = Math.max(width, height);
+        width = side;
+        height = side;
+      }
+      return { width, height };
+    },
+    [
+      shapeArrowDefaultHeight,
+      shapeArrowDefaultWidth,
+      shapeArrowMinHeight,
+      shapeArrowMinWidth,
+      shapeCircleDefaultSize,
+      shapeMinHeight,
+      shapeMinWidth,
+      shapePentagonDefaultHeight,
+      shapePentagonDefaultWidth,
+      shapePillDefaultHeight,
+      shapePillDefaultWidth,
+      shapeRectangleDefaultHeight,
+      shapeRectangleDefaultWidth,
+    ]
+  );
+
+  const findNearestAvailableShapePosition = useCallback(
+    (x: number, y: number, width: number, height: number, movingType: CanvasElementRow["element_type"]) => {
+      const isPentagonChevronPair = (a: CanvasElementRow["element_type"], b: CanvasElementRow["element_type"]) =>
+        (a === "shape_pentagon" && b === "shape_chevron_left") || (a === "shape_chevron_left" && b === "shape_pentagon");
+      const exceedsAllowedOverlap = (
+        a: { x: number; y: number; width: number; height: number },
+        b: { x: number; y: number; width: number; height: number },
+        allowed: number
+      ) => {
+        if (!boxesOverlap(a, b, 0)) return false;
+        const overlapWidth = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+        const overlapHeight = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+        return overlapWidth > allowed && overlapHeight > allowed;
+      };
+      const blocked: Array<{ x: number; y: number; width: number; height: number; elementType?: CanvasElementRow["element_type"] }> =
+        movingType === "shape_arrow"
+          ? [
+              ...nodes
+                .map((n) => {
+                  const nodeWidth = Number(n.width ?? 0);
+                  const nodeHeight = Number(n.height ?? 0);
+                  if (!Number.isFinite(nodeWidth) || !Number.isFinite(nodeHeight) || nodeWidth <= 0 || nodeHeight <= 0) return null;
+                  return { x: n.pos_x, y: n.pos_y, width: nodeWidth, height: nodeHeight };
+                })
+                .filter((rect): rect is { x: number; y: number; width: number; height: number } => Boolean(rect)),
+              ...elements.map((el) => {
+                let dims: { width: number; height: number };
+                if (
+                  el.element_type === "shape_rectangle" ||
+                  el.element_type === "shape_circle" ||
+                  el.element_type === "shape_pill" ||
+                  el.element_type === "shape_pentagon" ||
+                  el.element_type === "shape_chevron_left" ||
+                  el.element_type === "shape_arrow"
+                ) {
+                  dims = getShapeDimensions(el);
+                } else {
+                  dims = {
+                    width: Math.max(shapeMinWidth, Number(el.width ?? shapeRectangleDefaultWidth)),
+                    height: Math.max(shapeMinHeight, Number(el.height ?? shapeRectangleDefaultHeight)),
+                  };
+                }
+                return { x: el.pos_x, y: el.pos_y, width: dims.width, height: dims.height };
+              }),
+            ]
+          : elements
+              .filter(
+                (el) =>
+                  el.element_type === "shape_rectangle" ||
+                  el.element_type === "shape_circle" ||
+                  el.element_type === "shape_pill" ||
+                  el.element_type === "shape_pentagon" ||
+                  el.element_type === "shape_chevron_left" ||
+                  el.element_type === "shape_arrow"
+              )
+              .map((el) => {
+                const dims = getShapeDimensions(el);
+                return { x: el.pos_x, y: el.pos_y, width: dims.width, height: dims.height, elementType: el.element_type };
+              });
+      const overlapsAt = (candidateX: number, candidateY: number) =>
+        blocked.some((box) => {
+          const candidate = { x: candidateX, y: candidateY, width, height };
+          if (!boxesOverlap(candidate, box, 0)) return false;
+          if (box.elementType && isPentagonChevronPair(movingType, box.elementType)) {
+            return exceedsAllowedOverlap(candidate, box, minorGridSize * 2);
+          }
+          return true;
+        });
+      const startX = snapToMinorGrid(x);
+      const startY = snapToMinorGrid(y);
+      if (!overlapsAt(startX, startY)) return { x: startX, y: startY };
+      const maxRing = 120;
+      for (let ring = 1; ring <= maxRing; ring += 1) {
+        for (let dx = -ring; dx <= ring; dx += 1) {
+          for (let dy = -ring; dy <= ring; dy += 1) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+            const candidateX = snapToMinorGrid(startX + dx * minorGridSize);
+            const candidateY = snapToMinorGrid(startY + dy * minorGridSize);
+            if (!overlapsAt(candidateX, candidateY)) return { x: candidateX, y: candidateY };
+          }
+        }
+      }
+      return null;
+    },
+    [elements, getShapeDimensions, minorGridSize, nodes, shapeMinHeight, shapeMinWidth, shapeRectangleDefaultHeight, shapeRectangleDefaultWidth, snapToMinorGrid]
+  );
 
   const handleAddBlankDocument = useCallback(async () => {
     if (!canWriteMap) {
@@ -430,6 +653,36 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     }, "Unable to create text box.");
   }, [canWriteMap, setError, getCenter, addElement, mapId, userId, textBoxDefaultWidth, textBoxDefaultHeight]);
 
+  const handleAddTable = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    await addElement(
+      {
+        map_id: mapId,
+        element_type: "table",
+        heading: "Table",
+        color_hex: null,
+        created_by_user_id: userId,
+        element_config: {
+          rows: 2,
+          columns: 2,
+          header_bg_color: null,
+          bold: false,
+          italic: false,
+          underline: false,
+          align: "center",
+          font_size: 10,
+        },
+        pos_x: center.x,
+        pos_y: center.y,
+        width: tableDefaultWidth,
+        height: tableDefaultHeight,
+      },
+      "Unable to create table."
+    );
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, tableDefaultWidth, tableDefaultHeight]);
+
   const handleAddImageAsset = useCallback(async (args: { storagePath: string; description: string; width?: number; height?: number }) => {
     if (!canWriteMap) return null;
     const center = getCenter();
@@ -450,6 +703,162 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
       height: Math.max(imageMinHeight, args.height ?? imageDefaultWidth),
     }, "Unable to create image.");
   }, [canWriteMap, getCenter, addElement, mapId, userId, imageDefaultWidth, imageMinWidth, imageMinHeight]);
+
+  const handleAddShapeRectangle = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    const position = findNearestAvailableShapePosition(
+      center.x,
+      center.y,
+      shapeRectangleDefaultWidth,
+      shapeRectangleDefaultHeight,
+      "shape_rectangle"
+    );
+    if (!position) return setError("No free space available for a new shape.");
+    await addElement({
+      map_id: mapId,
+      element_type: "shape_rectangle",
+      heading: "Shape text",
+      color_hex: shapeDefaultFillColor,
+      created_by_user_id: userId,
+      element_config: { bold: false, italic: false, underline: false, align: "center", font_size: 24, fill_mode: "fill" },
+      pos_x: position.x,
+      pos_y: position.y,
+      width: shapeRectangleDefaultWidth,
+      height: shapeRectangleDefaultHeight,
+    }, "Unable to create rectangle.");
+  }, [canWriteMap, setError, getCenter, findNearestAvailableShapePosition, addElement, mapId, userId, shapeDefaultFillColor, shapeRectangleDefaultWidth, shapeRectangleDefaultHeight]);
+
+  const handleAddShapeCircle = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    const position = findNearestAvailableShapePosition(
+      center.x,
+      center.y,
+      shapeCircleDefaultSize,
+      shapeCircleDefaultSize,
+      "shape_circle"
+    );
+    if (!position) return setError("No free space available for a new shape.");
+    await addElement({
+      map_id: mapId,
+      element_type: "shape_circle",
+      heading: "Shape text",
+      color_hex: shapeDefaultFillColor,
+      created_by_user_id: userId,
+      element_config: { bold: false, italic: false, underline: false, align: "center", font_size: 24, fill_mode: "fill" },
+      pos_x: position.x,
+      pos_y: position.y,
+      width: shapeCircleDefaultSize,
+      height: shapeCircleDefaultSize,
+    }, "Unable to create circle.");
+  }, [canWriteMap, setError, getCenter, findNearestAvailableShapePosition, addElement, mapId, userId, shapeDefaultFillColor, shapeCircleDefaultSize]);
+
+  const handleAddShapePill = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    const position = findNearestAvailableShapePosition(
+      center.x,
+      center.y,
+      shapePillDefaultWidth,
+      shapePillDefaultHeight,
+      "shape_pill"
+    );
+    if (!position) return setError("No free space available for a new shape.");
+    await addElement({
+      map_id: mapId,
+      element_type: "shape_pill",
+      heading: "Shape text",
+      color_hex: shapeDefaultFillColor,
+      created_by_user_id: userId,
+      element_config: { bold: false, italic: false, underline: false, align: "center", font_size: 24, fill_mode: "fill" },
+      pos_x: position.x,
+      pos_y: position.y,
+      width: shapePillDefaultWidth,
+      height: shapePillDefaultHeight,
+    }, "Unable to create pill.");
+  }, [canWriteMap, setError, getCenter, findNearestAvailableShapePosition, addElement, mapId, userId, shapeDefaultFillColor, shapePillDefaultWidth, shapePillDefaultHeight]);
+
+  const handleAddShapePentagon = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    const position = findNearestAvailableShapePosition(
+      center.x,
+      center.y,
+      shapePentagonDefaultWidth,
+      shapePentagonDefaultHeight,
+      "shape_pentagon"
+    );
+    if (!position) return setError("No free space available for a new shape.");
+    await addElement({
+      map_id: mapId,
+      element_type: "shape_pentagon",
+      heading: "Shape text",
+      color_hex: shapeDefaultFillColor,
+      created_by_user_id: userId,
+      element_config: { bold: false, italic: false, underline: false, align: "center", font_size: 24, direction: "right", fill_mode: "fill" },
+      pos_x: position.x,
+      pos_y: position.y,
+      width: shapePentagonDefaultWidth,
+      height: shapePentagonDefaultHeight,
+    }, "Unable to create pentagon.");
+  }, [canWriteMap, setError, getCenter, findNearestAvailableShapePosition, addElement, mapId, userId, shapeDefaultFillColor, shapePentagonDefaultWidth, shapePentagonDefaultHeight]);
+
+  const handleAddShapeChevronLeft = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    const position = findNearestAvailableShapePosition(
+      center.x,
+      center.y,
+      shapePentagonDefaultWidth,
+      shapePentagonDefaultHeight,
+      "shape_chevron_left"
+    );
+    if (!position) return setError("No free space available for a new shape.");
+    await addElement({
+      map_id: mapId,
+      element_type: "shape_chevron_left",
+      heading: "Shape text",
+      color_hex: shapeDefaultFillColor,
+      created_by_user_id: userId,
+      element_config: { bold: false, italic: false, underline: false, align: "center", font_size: 24, direction: "right", fill_mode: "fill" },
+      pos_x: position.x,
+      pos_y: position.y,
+      width: shapePentagonDefaultWidth,
+      height: shapePentagonDefaultHeight,
+    }, "Unable to create left chevron.");
+  }, [canWriteMap, setError, getCenter, findNearestAvailableShapePosition, addElement, mapId, userId, shapeDefaultFillColor, shapePentagonDefaultWidth, shapePentagonDefaultHeight]);
+
+  const handleAddShapeArrow = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    const position = findNearestAvailableShapePosition(
+      center.x,
+      center.y,
+      shapeArrowDefaultWidth,
+      shapeArrowDefaultHeight,
+      "shape_arrow"
+    );
+    if (!position) return setError("No free space available for a new shape.");
+    await addElement({
+      map_id: mapId,
+      element_type: "shape_arrow",
+      heading: "",
+      color_hex: shapeDefaultFillColor,
+      created_by_user_id: userId,
+      element_config: { fill_mode: "fill", rotation_deg: 0 },
+      pos_x: position.x,
+      pos_y: position.y,
+      width: shapeArrowDefaultWidth,
+      height: shapeArrowDefaultHeight,
+    }, "Unable to create arrow.");
+  }, [canWriteMap, setError, getCenter, findNearestAvailableShapePosition, addElement, mapId, userId, shapeDefaultFillColor, shapeArrowDefaultWidth, shapeArrowDefaultHeight]);
 
   const handleAddBowtieHazard = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -847,6 +1256,11 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
           evidence_type: "",
           description: "",
           source: "",
+          show_canvas_preview: false,
+          media_storage_path: "",
+          media_mime: "",
+          media_name: "",
+          media_rotation_deg: 0,
         },
         pos_x: center.x,
         pos_y: center.y,
@@ -1105,6 +1519,207 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     setSelectedTextBoxId(null);
   }, [canWriteMap, setError, selectedTextBoxId, textBoxContentDraft, textBoxBoldDraft, textBoxItalicDraft, textBoxUnderlineDraft, textBoxAlignDraft, textBoxFontSizeDraft, mapId, canvasElementSelectColumns, setElements, setSelectedTextBoxId]);
 
+  const handleSaveTable = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    if (!selectedTableId) return;
+    const current = elements.find((el) => el.id === selectedTableId && el.element_type === "table");
+    if (!current) return;
+    const parsedRows = Number(tableRowsDraft.trim());
+    const parsedColumns = Number(tableColumnsDraft.trim());
+    const rows = Number.isFinite(parsedRows) ? Math.max(tableMinRows, Math.floor(parsedRows)) : tableMinRows;
+    const columns = Number.isFinite(parsedColumns) ? Math.max(tableMinColumns, Math.floor(parsedColumns)) : tableMinColumns;
+    const currentCfg = (current.element_config as Record<string, unknown> | null) ?? {};
+    const currentRowsRaw = Number(currentCfg.rows ?? tableMinRows);
+    const currentColumnsRaw = Number(currentCfg.columns ?? tableMinColumns);
+    const currentRows = Number.isFinite(currentRowsRaw) ? Math.max(tableMinRows, Math.floor(currentRowsRaw)) : tableMinRows;
+    const currentColumns = Number.isFinite(currentColumnsRaw) ? Math.max(tableMinColumns, Math.floor(currentColumnsRaw)) : tableMinColumns;
+    const currentWidth = Math.max(tableMinWidth, Number(current.width ?? tableDefaultWidth));
+    const currentHeight = Math.max(tableMinHeight, Number(current.height ?? tableDefaultHeight));
+    const cellWidth = currentWidth / Math.max(1, currentColumns);
+    const cellHeight = currentHeight / Math.max(1, currentRows);
+    const nextWidth = Math.max(tableMinWidth, cellWidth * columns);
+    const nextHeight = Math.max(tableMinHeight, cellHeight * rows);
+    const headerBg = normalizeColorHex(tableHeaderBgDraft);
+    const parsedFontSize = Number(tableFontSizeDraft.trim());
+    const fontSize = Number.isFinite(parsedFontSize) ? Math.max(10, Math.min(72, Math.round(parsedFontSize))) : 10;
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update({
+        heading: current.heading || "Table",
+        width: nextWidth,
+        height: nextHeight,
+        element_config: {
+          ...((current.element_config as Record<string, unknown> | null) ?? {}),
+          rows,
+          columns,
+          header_bg_color: headerBg,
+          bold: tableBoldDraft,
+          italic: tableItalicDraft,
+          underline: tableUnderlineDraft,
+          align: tableAlignDraft,
+          font_size: fontSize,
+        },
+      })
+      .eq("id", selectedTableId)
+      .eq("map_id", mapId)
+      .select(canvasElementSelectColumns)
+      .single();
+    if (e || !data) return setError(e?.message || "Unable to save table.");
+    const updated = data as unknown as CanvasElementRow;
+    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+    setSelectedTableId(null);
+  }, [
+    canWriteMap,
+    setError,
+    selectedTableId,
+    elements,
+    tableRowsDraft,
+    tableColumnsDraft,
+    tableHeaderBgDraft,
+    tableBoldDraft,
+    tableItalicDraft,
+    tableUnderlineDraft,
+    tableAlignDraft,
+    tableFontSizeDraft,
+    tableMinWidth,
+    tableMinHeight,
+    tableDefaultWidth,
+    tableDefaultHeight,
+    tableMinRows,
+    tableMinColumns,
+    normalizeColorHex,
+    mapId,
+    canvasElementSelectColumns,
+    setElements,
+    setSelectedTableId,
+  ]);
+
+  const handleSaveFlowShape = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    if (!selectedFlowShapeId) return;
+    const current = elements.find((el) => el.id === selectedFlowShapeId);
+    if (
+      !current ||
+      !(
+        current.element_type === "shape_rectangle" ||
+        current.element_type === "shape_circle" ||
+        current.element_type === "shape_pill" ||
+        current.element_type === "shape_pentagon" ||
+        current.element_type === "shape_chevron_left" ||
+        current.element_type === "shape_arrow"
+      )
+    ) {
+      return;
+    }
+    const parsedFontSize = Number(flowShapeFontSizeDraft.trim());
+    const fontSize = Number.isFinite(parsedFontSize) ? Math.max(12, Math.min(168, Math.round(parsedFontSize))) : 24;
+    const normalizedColor = normalizeColorHex(flowShapeColorDraft) ?? shapeDefaultFillColor;
+    const canFlipDirection = current.element_type === "shape_pentagon" || current.element_type === "shape_chevron_left";
+    const isArrow = current.element_type === "shape_arrow";
+    const currentRotationRaw = Number(((current.element_config as Record<string, unknown> | null) ?? {}).rotation_deg ?? 0);
+    const currentRotation = currentRotationRaw === 90 || currentRotationRaw === 180 || currentRotationRaw === 270 ? currentRotationRaw : 0;
+    const currentIsVertical = currentRotation === 90 || currentRotation === 270;
+    const nextIsVertical = flowShapeRotationDraft === 90 || flowShapeRotationDraft === 270;
+    const payload: Partial<CanvasElementRow> = {
+      heading: isArrow ? "" : flowShapeTextDraft.trim() || "Shape text",
+      color_hex: normalizedColor,
+      element_config: {
+        ...((current.element_config as Record<string, unknown> | null) ?? {}),
+        bold: flowShapeBoldDraft,
+        italic: flowShapeItalicDraft,
+        underline: flowShapeUnderlineDraft,
+        align: flowShapeAlignDraft,
+        font_size: fontSize,
+        fill_mode: flowShapeFillModeDraft,
+        ...(canFlipDirection ? { direction: flowShapeDirectionDraft } : {}),
+        ...(current.element_type === "shape_arrow" ? { rotation_deg: flowShapeRotationDraft } : {}),
+      },
+      width: Math.max(
+        isArrow ? shapeArrowMinWidth : shapeMinWidth,
+        current.width ||
+          (isArrow
+            ? shapeArrowDefaultWidth
+            : current.element_type === "shape_pentagon" || current.element_type === "shape_chevron_left"
+            ? shapePentagonDefaultWidth
+            : current.element_type === "shape_pill"
+            ? shapePillDefaultWidth
+            : current.element_type === "shape_circle"
+            ? shapeCircleDefaultSize
+            : shapeRectangleDefaultWidth)
+      ),
+      height: Math.max(
+        isArrow ? shapeArrowMinHeight : shapeMinHeight,
+        current.height ||
+          (isArrow
+            ? shapeArrowDefaultHeight
+            : current.element_type === "shape_pentagon" || current.element_type === "shape_chevron_left"
+            ? shapePentagonDefaultHeight
+            : current.element_type === "shape_pill"
+            ? shapePillDefaultHeight
+            : current.element_type === "shape_circle"
+            ? shapeCircleDefaultSize
+            : shapeRectangleDefaultHeight)
+      ),
+    };
+    if (current.element_type === "shape_circle") {
+      const side = Math.max(shapeMinWidth, payload.width ?? shapeCircleDefaultSize, payload.height ?? shapeCircleDefaultSize);
+      payload.width = side;
+      payload.height = side;
+    } else if (isArrow && currentIsVertical !== nextIsVertical) {
+      const nextWidth = Math.max(shapeArrowMinWidth, payload.height ?? shapeArrowDefaultHeight);
+      const nextHeight = Math.max(shapeArrowMinHeight, payload.width ?? shapeArrowDefaultWidth);
+      payload.width = nextWidth;
+      payload.height = nextHeight;
+    }
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update(payload)
+      .eq("id", selectedFlowShapeId)
+      .eq("map_id", mapId)
+      .select(canvasElementSelectColumns)
+      .single();
+    if (e || !data) return setError(e?.message || "Unable to save shape.");
+    const updated = data as unknown as CanvasElementRow;
+    setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+    setSelectedFlowShapeId(null);
+  }, [
+    canWriteMap,
+    setError,
+    selectedFlowShapeId,
+    elements,
+    flowShapeFontSizeDraft,
+    flowShapeColorDraft,
+    flowShapeTextDraft,
+    flowShapeAlignDraft,
+    flowShapeBoldDraft,
+    flowShapeItalicDraft,
+    flowShapeUnderlineDraft,
+    normalizeColorHex,
+    shapeDefaultFillColor,
+    flowShapeFillModeDraft,
+    flowShapeDirectionDraft,
+    flowShapeRotationDraft,
+    shapeMinWidth,
+    shapeArrowMinWidth,
+    shapeArrowDefaultWidth,
+    shapePillDefaultWidth,
+    shapePentagonDefaultWidth,
+    shapeRectangleDefaultWidth,
+    shapeMinHeight,
+    shapeArrowMinHeight,
+    shapeArrowDefaultHeight,
+    shapePillDefaultHeight,
+    shapePentagonDefaultHeight,
+    shapeRectangleDefaultHeight,
+    shapeCircleDefaultSize,
+    mapId,
+    canvasElementSelectColumns,
+    setElements,
+    setSelectedFlowShapeId,
+  ]);
+
   return {
     handleAddBlankDocument,
     handleAddProcessHeading,
@@ -1114,6 +1729,13 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     handleAddGroupingContainer,
     handleAddStickyNote,
     handleAddTextBox,
+    handleAddTable,
+    handleAddShapeRectangle,
+    handleAddShapeCircle,
+    handleAddShapePill,
+    handleAddShapePentagon,
+    handleAddShapeChevronLeft,
+    handleAddShapeArrow,
     handleAddImageAsset,
     handleAddBowtieHazard,
     handleAddBowtieTopEvent,
@@ -1141,5 +1763,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     handleSaveStickyNote,
     handleSaveImageAsset,
     handleSaveTextBox,
+    handleSaveTable,
+    handleSaveFlowShape,
   };
 }

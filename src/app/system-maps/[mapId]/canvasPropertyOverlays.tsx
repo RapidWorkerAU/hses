@@ -4,12 +4,14 @@ import {
   BowtiePropertiesAside,
   CategoryPropertiesAside,
   DocumentPropertiesAside,
+  FlowShapeAside,
   GroupingContainerAside,
   ImageAssetAside,
   PersonPropertiesAside,
   ProcessPropertiesAside,
   StickyNoteAside,
   SystemPropertiesAside,
+  TableAside,
   TextBoxAside,
 } from "./canvasElementAsides";
 
@@ -23,6 +25,8 @@ type CanvasElementPropertyOverlaysProps = {
   stickyProps: Parameters<typeof StickyNoteAside>[0];
   imageProps: Parameters<typeof ImageAssetAside>[0];
   textBoxProps: Parameters<typeof TextBoxAside>[0];
+  tableProps: Parameters<typeof TableAside>[0];
+  flowShapeProps: Parameters<typeof FlowShapeAside>[0];
   documentProps: Parameters<typeof DocumentPropertiesAside>[0];
 };
 
@@ -36,6 +40,8 @@ export function CanvasElementPropertyOverlays({
   stickyProps,
   imageProps,
   textBoxProps,
+  tableProps,
+  flowShapeProps,
   documentProps,
 }: CanvasElementPropertyOverlaysProps) {
   return (
@@ -49,6 +55,8 @@ export function CanvasElementPropertyOverlays({
       <StickyNoteAside {...stickyProps} />
       <ImageAssetAside {...imageProps} />
       <TextBoxAside {...textBoxProps} />
+      <TableAside {...tableProps} />
+      <FlowShapeAside {...flowShapeProps} />
       <DocumentPropertiesAside {...documentProps} />
     </>
   );
