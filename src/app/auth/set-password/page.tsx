@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import SetPasswordClient from "./SetPasswordClient";
 
 export const metadata: Metadata = {
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function SetPasswordPage() {
-  return <SetPasswordClient />;
+  return (
+    <Suspense fallback={<div className="min-h-screen px-6 py-16 text-sm text-slate-600">Loading...</div>}>
+      <SetPasswordClient />
+    </Suspense>
+  );
 }

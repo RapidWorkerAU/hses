@@ -8,9 +8,7 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={<div className="min-h-screen bg-mist px-6 py-16 text-sm text-slate-600">Loading…</div>}
-    >
+    <Suspense fallback={<div className="min-h-screen px-6 py-16 text-sm text-slate-600">Loading...</div>}>
       <LoginClient />
     </Suspense>
   );

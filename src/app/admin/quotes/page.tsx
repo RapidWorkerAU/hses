@@ -1,50 +1,24 @@
-﻿import QuotesListClient from "./QuotesListClient";
-import DashboardSessionText from "@/app/sms-diagnostic/dashboard/DashboardSessionText";
+import type { Metadata } from "next";
+import HsesDashboardShell from "@/app/sms-diagnostic/dashboard/HsesDashboardShell";
+import PortalAccessGate from "@/app/sms-diagnostic/dashboard/PortalAccessGate";
+import QuotesListClient from "./QuotesListClient";
+
+export const metadata: Metadata = {
+  title: "Quotes & Proposals",
+};
 
 export default function QuotesListPage() {
   return (
-    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--no-sidebar dashboard-portal--admin-quotes">
-      <header className="site-header">
-        <div className="header-inner">
-          <div className="header-left">
-            <a href="/">
-              <img
-                src="/images/logo-white.png"
-                alt="HSES Industry Partners"
-                className="header-logo"
-              />
-            </a>
-          </div>
-          <div className="header-actions">
-            <div className="dashboard-session">
-              <DashboardSessionText />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main>
-        <section className="dashboard-section dashboard-main">
-          <div className="diagnostic-container">
-            <QuotesListClient />
-          </div>
-        </section>
-      </main>
-
-      <footer className="site-footer">
-        <div className="footer-inner">
-          <span className="footer-copy">&copy; 2025 HSES Industry Partners</span>
-          <div className="footer-links">
-            <a className="footer-link" href="/privacy">
-              Privacy Policy
-            </a>
-            <a className="footer-link" href="/disclaimer">
-              Website Disclaimer
-            </a>
-          </div>
-        </div>
-      </footer>
-    </div>
+    <HsesDashboardShell
+      eyebrow="Business Admin"
+      title="Quotes & Proposals"
+      subtitle="Create, manage, and resend proposal access from the same business administration workspace."
+      backHref="/dashboard/business-admin"
+      backLabel="Back"
+    >
+      <PortalAccessGate portalKey="business-admin">
+        <QuotesListClient />
+      </PortalAccessGate>
+    </HsesDashboardShell>
   );
 }
-

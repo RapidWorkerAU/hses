@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { fetchWithSession } from "../../../portalAuth";
+import { TableSkeleton } from "@/components/loading/HsesLoaders";
 
 type ResultRow = {
   criteria_id: string;
@@ -120,7 +121,7 @@ export default function DiagnosticResultsClient({ id }: { id: string }) {
   }, [data]);
 
   if (isLoading) {
-    return <div className="dashboard-empty">Loading results...</div>;
+    return <TableSkeleton rows={7} columns="20% 8% 28% 24% 20%" showToolbar={false} />;
   }
 
   if (error) {

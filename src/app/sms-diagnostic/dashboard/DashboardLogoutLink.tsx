@@ -1,17 +1,15 @@
 "use client";
 
+import { logoutPortalUser } from "@/lib/supabase/logout";
+
 type DashboardLogoutLinkProps = {
   className?: string;
 };
 
 export default function DashboardLogoutLink({ className }: DashboardLogoutLinkProps) {
-  const handleLogout = (event: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleLogout = async (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
-    localStorage.removeItem("hses_access_token");
-    localStorage.removeItem("hses_refresh_token");
-    localStorage.removeItem("hses_user_email");
-    localStorage.removeItem("hses_user_id");
-    window.location.assign("/login");
+    await logoutPortalUser();
   };
 
   return (
@@ -20,4 +18,3 @@ export default function DashboardLogoutLink({ className }: DashboardLogoutLinkPr
     </a>
   );
 }
-

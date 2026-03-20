@@ -8,7 +8,7 @@ type RefreshPayload = {
   user?: { email?: string; id?: string };
 };
 
-const setStoredSession = (payload: RefreshPayload) => {
+export const storePortalSession = (payload: RefreshPayload) => {
   if (payload.access_token) {
     localStorage.setItem("hses_access_token", payload.access_token);
   }
@@ -37,7 +37,7 @@ const refreshSessionFromApi = async () => {
 
   const payload = (await response.json()) as RefreshPayload;
   if (!payload.access_token || !payload.refresh_token) return null;
-  setStoredSession(payload);
+  storePortalSession(payload);
   return payload;
 };
 
@@ -81,4 +81,3 @@ export const ensurePortalSupabaseUser = async () => {
   if (error || !data.user?.id) return null;
   return data.user;
 };
-

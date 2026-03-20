@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchAdmin } from "../lib/adminFetch";
 import type { Contact, Organisation } from "./types";
+import PortalModal from "@/components/PortalModal";
+import modalStyles from "@/components/PortalModal.module.css";
 
 type ContactOrgPickerProps = {
   organisationId: string | null;
@@ -358,10 +360,30 @@ export default function ContactOrgPicker({
       )}
 
       {showOrgModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900">New organisation</h3>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <PortalModal
+          open={showOrgModal}
+          ariaLabel="Create organisation"
+          eyebrow="Organisation"
+          title="Create new organisation"
+          onClose={() => setShowOrgModal(false)}
+          size="lg"
+          footer={
+            <>
+              <button type="button" className={modalStyles.secondaryButton} onClick={() => setShowOrgModal(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={modalStyles.primaryButton}
+                onClick={createOrganisation}
+                disabled={!orgForm.name.trim()}
+              >
+                Save organisation
+              </button>
+            </>
+          }
+        >
+          <div className="grid gap-3 md:grid-cols-2">
               <input
                 className="qb-input"
                 placeholder="Organisation name"
@@ -390,33 +412,39 @@ export default function ContactOrgPicker({
                   setOrgForm({ ...orgForm, shipping_address: event.target.value })
                 }
               />
-            </div>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="qb-btn"
-                onClick={() => setShowOrgModal(false)}
-              >
+          </div>
+        </PortalModal>
+      )}
+
+      {showContactModal && (
+        <PortalModal
+          open={showContactModal}
+          ariaLabel="Create contact"
+          eyebrow="Contact"
+          title="Create new contact"
+          onClose={() => setShowContactModal(false)}
+          size="lg"
+          footer={
+            <>
+              <button type="button" className={modalStyles.secondaryButton} onClick={() => setShowContactModal(false)}>
                 Cancel
               </button>
               <button
                 type="button"
-                className="qb-btn qb-btn-primary"
-                onClick={createOrganisation}
-                disabled={!orgForm.name.trim()}
+                className={modalStyles.primaryButton}
+                onClick={createContact}
+                disabled={
+                  !(organisationId || contactForm.organisation_id) ||
+                  !contactForm.full_name.trim() ||
+                  !contactForm.email.trim()
+                }
               >
-                Save organisation
+                Save contact
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showContactModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900">New contact</h3>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            </>
+          }
+        >
+          <div className="grid gap-3 md:grid-cols-2">
               {!organisationId && (
                 <input
                   className="qb-input md:col-span-2"
@@ -455,30 +483,8 @@ export default function ContactOrgPicker({
                 value={contactForm.phone}
                 onChange={(event) => setContactForm({ ...contactForm, phone: event.target.value })}
               />
-            </div>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="qb-btn"
-                onClick={() => setShowContactModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="qb-btn qb-btn-primary"
-                onClick={createContact}
-                disabled={
-                  !(organisationId || contactForm.organisation_id) ||
-                  !contactForm.full_name.trim() ||
-                  !contactForm.email.trim()
-                }
-              >
-                Save contact
-              </button>
-            </div>
           </div>
-        </div>
+        </PortalModal>
       )}
     </div>
   );

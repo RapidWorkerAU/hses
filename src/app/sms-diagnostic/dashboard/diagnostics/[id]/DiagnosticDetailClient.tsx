@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { fetchWithSession } from "../../portalAuth";
+import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
+import PortalTableFooter from "@/components/table/PortalTableFooter";
 
 type DiagnosticRecord = {
   id: string;
@@ -29,6 +31,7 @@ type DiagnosticDetailClientProps = {
 };
 
 export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientProps) {
+  const pageSize = 7;
   const [diagnostic, setDiagnostic] = useState<DiagnosticRecord | null>(null);
   const [codes, setCodes] = useState<DiagnosticCode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +53,7 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
   const [isSending, setIsSending] = useState(false);
   const [showEmailView, setShowEmailView] = useState(false);
   const [sendingCodeId, setSendingCodeId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       value
@@ -413,8 +417,13 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
   const openEmailView = () => setShowEmailView(true);
   const closeEmailView = () => setShowEmailView(false);
 
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(codes.length / pageSize));
+    setPage((current) => Math.min(current, totalPages));
+  }, [codes.length]);
+
   if (isLoading) {
-    return <div className="dashboard-empty">Loading diagnostic...</div>;
+    return <DetailPageSkeleton />;
   }
 
   if (error) {
@@ -444,6 +453,9 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
         year: "numeric",
       })
     : "--";
+  const totalPages = Math.max(1, Math.ceil(codes.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedCodes = codes.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   if (showEmailView) {
     return (
@@ -586,7 +598,7 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                 </tr>
               </thead>
               <tbody>
-                {codes.map((entry) => {
+                {paginatedCodes.map((entry) => {
                   const isEditing = editingCodeId === entry.id;
                   const canEmail = Boolean(entry.issued_to_name && entry.issued_to_email);
                   const isRedeemed = Boolean(
@@ -718,13 +730,20 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                   );
                 })}
                 {codes.length === 0 && (
-                  <tr>
+                  <tr className="dashboard-table-empty-row">
                     <td colSpan={7}>No codes have been issued yet.</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+          <PortalTableFooter
+            total={codes.length}
+            page={safePage}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            label="codes"
+          />
           <div className="dashboard-table-actions">
             <button className="btn btn-primary" type="button" onClick={openEmailView}>
               Email invitations via HSES

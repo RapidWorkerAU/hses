@@ -3209,7 +3209,10 @@ body.mobile-menu-open {
 .dashboard-table-wrap {
   width: 100%;
   overflow: auto;
-  border: 1px solid rgba(10, 15, 26, 0.06);
+  border: 1px solid rgba(24, 29, 39, 0.08);
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(24, 29, 39, 0.05);
 }
 
 .dashboard-table-actions {
@@ -3219,45 +3222,228 @@ body.mobile-menu-open {
   margin-top: 12px;
 }
 
+.risk-assessments-toolbar {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.risk-assessments-toolbar-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.risk-assessments-toolbar-button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #243041;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 8px 18px rgba(24, 29, 39, 0.08);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
+  cursor: pointer;
+}
+
+.risk-assessments-toolbar-button:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 24px rgba(24, 29, 39, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.risk-assessments-toolbar-button--secondary {
+  background: #ffffff;
+  color: #243041;
+  border-color: #d7dee8;
+}
+
+.risk-assessments-toolbar-button--primary {
+  color: #ffffff;
+  border-color: #0d6179;
+  background: linear-gradient(180deg, #126f89 0%, #0d6179 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 10px 22px rgba(13, 97, 121, 0.2);
+}
+
+.risk-assessments-table-wrap {
+  margin-top: 0;
+}
+
+.management-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+
+.management-table-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.management-bulk-delete-button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  border: 1px solid #eceff4;
+  border-radius: 12px;
+  background: #f9fafb;
+  color: #cad0da;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: not-allowed;
+  box-shadow: none;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.management-bulk-delete-button:not(:disabled) {
+  cursor: pointer;
+  color: #8f1d12;
+  border-color: #8f1d12;
+  background: #fde8e6;
+  box-shadow:
+    0 8px 18px rgba(143, 29, 18, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.management-bulk-delete-button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 24px rgba(143, 29, 18, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.management-bulk-delete-button-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  opacity: 0.5;
+}
+
+.management-bulk-delete-button:not(:disabled) .management-bulk-delete-button-icon {
+  opacity: 0.88;
+}
+
+.management-checkbox-header,
+.management-checkbox-cell {
+  width: 5%;
+  text-align: center !important;
+  vertical-align: middle !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  white-space: nowrap !important;
+}
+
+.management-checkbox-header input,
+.management-checkbox-cell input {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 0 auto;
+  accent-color: #4b638f;
+}
+
+.management-cell-wrap {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.portal-table-empty-row td,
+.dashboard-table-empty-row td,
+.diagnostic-results-table-empty-row td {
+  padding: 30px 18px !important;
+  text-align: center !important;
+  color: #6d7786 !important;
+  vertical-align: middle !important;
+  background: #ffffff !important;
+}
+
 .dashboard-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 880px;
-  background: #ffffff;
+  background: transparent;
 }
 
 .dashboard-table th,
 .dashboard-table td {
   text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(10, 15, 26, 0.06);
+  padding: 14px 18px;
   vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dashboard-row-link {
   cursor: pointer;
+  transition: background 140ms ease;
 }
 
 .dashboard-row-link:hover {
-  background: rgba(15, 23, 42, 0.04);
+  background: rgba(248, 244, 239, 0.64);
+}
+
+.dashboard-row-link:hover td {
+  background: rgba(248, 244, 239, 0.64);
 }
 
 .dashboard-table thead th {
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #536273;
-  background: #f7f9fb;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #ffffff;
+  background: linear-gradient(180deg, #626b79 0%, #4f5866 100%);
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
+.dashboard-table tbody td {
+  color: #243041;
+  font-size: 0.8rem;
+  border-top: 1px solid rgba(24, 29, 39, 0.06);
+  background: #ffffff;
+}
+
 .dashboard-table.risk-records-table thead th {
   vertical-align: middle;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: #ffffff;
-  background: #0b1f3b;
+  background: linear-gradient(180deg, #626b79 0%, #4f5866 100%);
 }
 
 .dashboard-table.risk-records-table .risk-records-phase-row {
@@ -3340,26 +3526,33 @@ body.mobile-menu-open {
 .diagnostic-results-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 880px;
+  background: transparent;
   font-size: 0.8rem;
 }
 
 .diagnostic-results-table th,
 .diagnostic-results-table td {
-  border: 1px solid #101828;
-  padding: 6px 8px;
+  padding: 14px 18px;
   vertical-align: top;
 }
 
 .diagnostic-results-table th {
-  background: #0f172a;
+  background: linear-gradient(180deg, #626b79 0%, #4f5866 100%);
   color: #ffffff;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.diagnostic-results-table td {
+  border-top: 1px solid rgba(24, 29, 39, 0.06);
+  background: #ffffff;
 }
 
 .diagnostic-results-table .results-superhead th {
-  background: #0b0f19;
+  background: linear-gradient(180deg, #626b79 0%, #4f5866 100%);
   font-size: 1rem;
   text-transform: none;
   letter-spacing: 0.02em;
@@ -3372,9 +3565,9 @@ body.mobile-menu-open {
 }
 
 .diagnostic-results-table .results-subhead th {
-  background: #06b6d4;
-  color: #04121f;
-  font-size: 0.72rem;
+  background: linear-gradient(180deg, #626b79 0%, #4f5866 100%);
+  color: #ffffff;
+  font-size: 0.68rem;
   text-transform: none;
   letter-spacing: 0.02em;
   text-align: left;
@@ -3416,6 +3609,58 @@ body.mobile-menu-open {
   vertical-align: middle;
   padding: 0;
   position: relative;
+}
+
+.portal-table-shell {
+  overflow: hidden;
+  border: 1px solid rgba(24, 29, 39, 0.08);
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(24, 29, 39, 0.05);
+}
+
+.portal-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: transparent;
+}
+
+.portal-table th,
+.portal-table td {
+  text-align: left;
+  padding: 14px 18px;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.portal-table thead th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-transform: none;
+  letter-spacing: 0;
+  background: linear-gradient(180deg, #626b79 0%, #4f5866 100%);
+}
+
+.portal-table tbody td {
+  font-size: 0.8rem;
+  color: #243041;
+  border-top: 1px solid rgba(24, 29, 39, 0.06);
+  background: #ffffff;
+}
+
+.portal-table-row {
+  transition: background 140ms ease;
+}
+
+.portal-table-row:hover {
+  background: rgba(248, 244, 239, 0.64);
+}
+
+.portal-table-row:hover td {
+  background: rgba(248, 244, 239, 0.64);
 }
 
 .results-category > div {

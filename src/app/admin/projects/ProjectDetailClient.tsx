@@ -1,10 +1,13 @@
 ﻿"use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { fetchAdmin } from "../lib/adminFetch";
+import PortalModal from "@/components/PortalModal";
+import modalStyles from "@/components/PortalModal.module.css";
+import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
+import PortalTableFooter from "@/components/table/PortalTableFooter";
 
-const TIME_ENTRIES_PER_PAGE = 10;
+const TIME_ENTRIES_PER_PAGE = 7;
 const MONTH_OPTIONS = [
   "January",
   "February",
@@ -116,7 +119,6 @@ const getYearMonth = (value: string | null | undefined) => {
 
 export default function ProjectDetailClient({ projectId }: { projectId: string }) {
   const today = new Date();
-  const router = useRouter();
   const [payload, setPayload] = useState<ProjectPayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +163,11 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   });
   const [showEditModal, setShowEditModal] = useState(false);
   const [editEntryId, setEditEntryId] = useState<string | null>(null);
+  const [deleteEntryModal, setDeleteEntryModal] = useState<{
+    open: boolean;
+    entryId: string | null;
+    isDeleting: boolean;
+  }>({ open: false, entryId: null, isDeleting: false });
   const [editForm, setEditForm] = useState({
     deliverableId: "",
     milestoneId: "",
@@ -292,7 +299,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   };
 
   if (isLoading || !payload) {
-    return <div className="dashboard-panel">Loading project...</div>;
+    if (error && !payload) {
+      return <div className="dashboard-panel">{error}</div>;
+    }
+    return <DetailPageSkeleton />;
   }
 
   const { project, deliverables, milestones, time_entries } = payload;
@@ -578,14 +588,20 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   };
 
   const handleDeleteEntry = async (entryId: string) => {
-    const confirmed = window.confirm("Delete this time entry?");
-    if (!confirmed) return;
+    setDeleteEntryModal({ open: true, entryId, isDeleting: false });
+  };
+
+  const confirmDeleteEntry = async () => {
+    if (!deleteEntryModal.entryId) return;
+    const entryId = deleteEntryModal.entryId;
+    setDeleteEntryModal((prev) => ({ ...prev, isDeleting: true }));
     const response = await fetchAdmin(`/api/admin/projects/time/${entryId}`, {
       method: "DELETE",
     });
     if (!response.ok) {
       const message = await response.text();
       setError(message || "Unable to delete time entry.");
+      setDeleteEntryModal((prev) => ({ ...prev, isDeleting: false }));
       return;
     }
     setPayload((prev) => {
@@ -595,6 +611,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
         time_entries: prev.time_entries.filter((entry) => entry.id !== entryId),
       };
     });
+    setDeleteEntryModal({ open: false, entryId: null, isDeleting: false });
   };
 
   const saveMilestoneEstimatedDate = async (milestoneId: string) => {
@@ -640,14 +657,6 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   return (
     <div className="space-y-6">
       <div>
-        <button
-          type="button"
-          className="dashboard-back-link border-0 bg-transparent p-0"
-          onClick={() => router.push("/admin/projects")}
-        >
-          <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
-          <span>Back</span>
-        </button>
         <h1 className="text-2xl font-semibold text-slate-900">
           {project.name ?? project.quotes?.title ?? "Project"}
         </h1>
@@ -1166,57 +1175,31 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
             </tbody>
           </table>
         </div>
-        {timeEntries.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
-            <div>
-              Showing {timeLogRangeStart}-{timeLogRangeEnd} of {timeEntries.length}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => setTimeLogPage(Math.max(1, currentTimeLogPage - 1))}
-                disabled={currentTimeLogPage === 1}
-              >
-                Previous
-              </button>
-              <span className="text-xs font-semibold text-slate-500">
-                Page {currentTimeLogPage} of {totalTimeLogPages}
-              </span>
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => setTimeLogPage(Math.min(totalTimeLogPages, currentTimeLogPage + 1))}
-                disabled={currentTimeLogPage === totalTimeLogPages}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+        <PortalTableFooter
+          total={timeEntries.length}
+          page={currentTimeLogPage}
+          pageSize={TIME_ENTRIES_PER_PAGE}
+          onPageChange={setTimeLogPage}
+          label="time entries"
+        />
       </div>
 
       {showTimesheetModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-4xl rounded-2xl bg-white p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Timesheet Information
-                </h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Review billed hours by deliverable and milestone for the selected month.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
-                onClick={() => setShowTimesheetModal(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <PortalModal
+          open={showTimesheetModal}
+          ariaLabel="Timesheet information"
+          eyebrow="Project Timesheet"
+          title="Timesheet information"
+          description="Review billed hours by deliverable and milestone for the selected month."
+          onClose={() => setShowTimesheetModal(false)}
+          size="xl"
+          footer={
+            <button type="button" className={modalStyles.secondaryButton} onClick={() => setShowTimesheetModal(false)}>
+              Close
+            </button>
+          }
+        >
+            <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm text-slate-600">
                 Month
                 <select
@@ -1321,18 +1304,57 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
+        </PortalModal>
       )}
 
       {showLogModal && (
-        <div className="admin-log-modal fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="admin-log-modal-panel w-full max-w-md rounded-2xl bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900">Log time entry</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Add a time entry against a milestone.
-            </p>
-            <div className="mt-4 space-y-3">
+        <PortalModal
+          open={showLogModal}
+          ariaLabel="Log time entry"
+          eyebrow="Project Time"
+          title="Log time entry"
+          description="Add a time entry against a milestone."
+          onClose={() => {
+            setLogModalError(null);
+            setShowLogModal(false);
+          }}
+          footer={
+            <>
+              <button
+                type="button"
+                className={modalStyles.secondaryButton}
+                onClick={() => {
+                  setLogModalError(null);
+                  setShowLogModal(false);
+                }}
+              >
+                Cancel
+              </button>
+              {overHoursWarning.show && !allowOverHours ? (
+                <button
+                  type="button"
+                  className={modalStyles.dangerButton}
+                  onClick={() => {
+                    setAllowOverHours(true);
+                    setOverHoursWarning((prev) => ({ ...prev, show: false }));
+                  }}
+                >
+                  Confirm over hours
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={modalStyles.primaryButton}
+                  onClick={handleLogSubmit}
+                  disabled={isSaving.modal as unknown as boolean}
+                >
+                  {isSaving.modal ? "Saving..." : "Save entry"}
+                </button>
+              )}
+            </>
+          }
+        >
+            <div className="space-y-3">
               <label className="block text-sm text-slate-600">
                 Deliverable
                 <select
@@ -1440,7 +1462,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
               </div>
             )}
             {overHoursWarning.show && (
-              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              <div className={modalStyles.noticeError}>
                 <div className="font-semibold">Over hours allocation</div>
                 <div className="mt-1">
                   Requested {overHoursWarning.requested}h, only {overHoursWarning.remaining}h remaining.
@@ -1448,51 +1470,57 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 </div>
               </div>
             )}
-            <div className="mt-6 flex items-center justify-end gap-2">
+        </PortalModal>
+      )}
+
+      {showEditModal && (
+        <PortalModal
+          open={showEditModal}
+          ariaLabel="Edit time entry"
+          eyebrow="Project Time"
+          title="Edit time entry"
+          description="Update hours, date, or milestone."
+          onClose={() => {
+            setEditModalError(null);
+            setShowEditModal(false);
+          }}
+          footer={
+            <>
               <button
                 type="button"
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs"
+                className={modalStyles.secondaryButton}
                 onClick={() => {
-                  setLogModalError(null);
-                  setShowLogModal(false);
+                  setEditModalError(null);
+                  setShowEditModal(false);
                 }}
               >
                 Cancel
               </button>
-              {overHoursWarning.show && !allowOverHours ? (
+              {editOverHoursWarning.show && !allowOverHoursEdit ? (
                 <button
                   type="button"
-                  className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white"
+                  className={modalStyles.dangerButton}
                   onClick={() => {
-                    setAllowOverHours(true);
-                    setOverHoursWarning((prev) => ({ ...prev, show: false }));
+                    setAllowOverHoursEdit(true);
+                    setEditOverHoursWarning((prev) => ({ ...prev, show: false }));
                   }}
                 >
                   Confirm over hours
                 </button>
               ) : (
-              <button
-                type="button"
-                className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
-                onClick={handleLogSubmit}
-                disabled={isSaving.modal as unknown as boolean}
-              >
-                {isSaving.modal ? "Saving..." : "Save entry"}
-              </button>
+                <button
+                  type="button"
+                  className={modalStyles.primaryButton}
+                  onClick={handleEditSubmit}
+                  disabled={isSaving.edit as unknown as boolean}
+                >
+                  {isSaving.edit ? "Saving..." : "Save changes"}
+                </button>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900">Edit time entry</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Update hours, date, or milestone.
-            </p>
-            <div className="mt-4 space-y-3">
+            </>
+          }
+        >
+            <div className="space-y-3">
               <label className="block text-sm text-slate-600">
                 Deliverable
                 <select
@@ -1588,7 +1616,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
               </div>
             )}
             {editOverHoursWarning.show && (
-              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              <div className={modalStyles.noticeError}>
                 <div className="font-semibold">Over hours allocation</div>
                 <div className="mt-1">
                   Requested {editOverHoursWarning.requested}h, only{" "}
@@ -1597,42 +1625,39 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
                 </div>
               </div>
             )}
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs"
-                onClick={() => {
-                  setEditModalError(null);
-                  setShowEditModal(false);
-                }}
-              >
-                Cancel
-              </button>
-              {editOverHoursWarning.show && !allowOverHoursEdit ? (
-                <button
-                  type="button"
-                  className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white"
-                  onClick={() => {
-                    setAllowOverHoursEdit(true);
-                    setEditOverHoursWarning((prev) => ({ ...prev, show: false }));
-                  }}
-                >
-                  Confirm over hours
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
-                  onClick={handleEditSubmit}
-                  disabled={isSaving.edit as unknown as boolean}
-                >
-                  {isSaving.edit ? "Saving..." : "Save changes"}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        </PortalModal>
       )}
+
+      <PortalModal
+        open={deleteEntryModal.open}
+        ariaLabel="Delete time entry"
+        eyebrow="Project Time"
+        title="Delete this time entry?"
+        description="This entry will be removed from the project time log."
+        onClose={() => setDeleteEntryModal({ open: false, entryId: null, isDeleting: false })}
+        footer={
+          <>
+            <button
+              type="button"
+              className={modalStyles.secondaryButton}
+              onClick={() => setDeleteEntryModal({ open: false, entryId: null, isDeleting: false })}
+              disabled={deleteEntryModal.isDeleting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={modalStyles.dangerButton}
+              onClick={() => void confirmDeleteEntry()}
+              disabled={deleteEntryModal.isDeleting}
+            >
+              {deleteEntryModal.isDeleting ? "Deleting..." : "Delete entry"}
+            </button>
+          </>
+        }
+      >
+        <div className={modalStyles.noticeError}>This cannot be undone.</div>
+      </PortalModal>
     </div>
   );
 }

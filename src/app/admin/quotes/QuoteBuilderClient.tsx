@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchAdmin } from "../lib/adminFetch";
+import PortalModal from "@/components/PortalModal";
+import modalStyles from "@/components/PortalModal.module.css";
+import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
 import ContactOrgPicker from "./ContactOrgPicker";
 import DeliverableEditor from "./DeliverableEditor";
 import TotalsSidebar from "./TotalsSidebar";
@@ -246,19 +249,14 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
   };
 
   if (isLoading || !payload) {
-    return (
-      <div className="text-sm text-slate-600">
-        {error ? `Error: ${error}` : "Loading quote builder..."}
-      </div>
-    );
+    if (error) {
+      return <div className="text-sm text-slate-600">Error: {error}</div>;
+    }
+    return <DetailPageSkeleton />;
   }
 
   return (
     <div className="quote-builder">
-      <a className="dashboard-back-link" href="/admin/quotes">
-        <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
-        <span>Back</span>
-      </a>
       <div className="qb-topbar">
         <div>
           <div className="qb-title">Proposal Creator</div>
@@ -548,52 +546,79 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
       </div>
 
       {publishModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900">Publish quote</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Generate a client access code and share the quote link.
-            </p>
-            {publishError && (
-              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {publishError}
-              </div>
-            )}
-            {!publishModal.code && (
-              <label className="mt-4 block text-sm text-slate-600">
-                Expiry date (optional)
+        <PortalModal
+          open={publishModal.open}
+          ariaLabel="Publish quote"
+          eyebrow="Quote Publish"
+          title="Publish quote"
+          description="Generate a client access code and share the quote link."
+          onClose={() => {
+            setPublishModal({ open: false });
+            setPublishEmailStatus("idle");
+            setPublishEmailError(null);
+            router.push("/admin/quotes");
+          }}
+          footer={
+            <>
+              <button
+                type="button"
+                className={modalStyles.secondaryButton}
+                onClick={() => {
+                  setPublishModal({ open: false });
+                  setPublishEmailStatus("idle");
+                  setPublishEmailError(null);
+                  router.push("/admin/quotes");
+                }}
+              >
+                Close
+              </button>
+              {!publishModal.code ? (
+                <button
+                  type="button"
+                  className={modalStyles.primaryButton}
+                  onClick={publishQuote}
+                  disabled={isPublishing}
+                >
+                  {isPublishing ? "Publishing..." : "Publish now"}
+                </button>
+              ) : null}
+            </>
+          }
+        >
+          <div className={modalStyles.stack}>
+            {publishError ? <div className={modalStyles.noticeError}>{publishError}</div> : null}
+            {!publishModal.code ? (
+              <div className={modalStyles.field}>
+                <span className={modalStyles.fieldLabel}>Expiry date</span>
                 <input
                   type="date"
-                  className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className={modalStyles.input}
                   value={publishModal.expiresAt ?? ""}
-                  onChange={(event) =>
-                    setPublishModal((prev) => ({ ...prev, expiresAt: event.target.value }))
-                  }
+                  onChange={(event) => setPublishModal((prev) => ({ ...prev, expiresAt: event.target.value }))}
                 />
-              </label>
-            )}
+              </div>
+            ) : null}
 
-            {publishModal.code && (
+            {publishModal.code ? (
               <>
-                <div className="mt-4 space-y-4 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Public link</p>
-                    <div className="mt-1 text-slate-700">/quote</div>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Access code</p>
-                    <div className="mt-1 text-base font-semibold text-slate-900">
-                      {publishModal.code}
+                <div className={modalStyles.surface}>
+                  <div className={modalStyles.stack}>
+                    <div>
+                      <p className={modalStyles.fieldLabel}>Public link</p>
+                      <div className="mt-2 text-slate-700">/quote</div>
+                    </div>
+                    <div>
+                      <p className={modalStyles.fieldLabel}>Access code</p>
+                      <div className="mt-2 text-base font-semibold text-slate-900">{publishModal.code}</div>
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Send access email</p>
-                  <label className="mt-2 block text-xs text-slate-500">
-                    Recipient email
+                <div className={modalStyles.stack}>
+                  <div className={modalStyles.field}>
+                    <span className={modalStyles.fieldLabel}>Recipient email</span>
                     <input
                       type="email"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                      className={modalStyles.input}
                       placeholder="client@example.com"
                       value={publishEmail}
                       onChange={(event) => {
@@ -604,12 +629,12 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
                         }
                       }}
                     />
-                  </label>
-                  <label className="mt-3 block text-xs text-slate-500">
-                    CC (comma separated)
+                  </div>
+                  <div className={modalStyles.field}>
+                    <span className={modalStyles.fieldLabel}>CC</span>
                     <input
                       type="text"
-                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                      className={modalStyles.input}
                       placeholder="manager@example.com, ops@example.com"
                       value={publishCcEmail}
                       onChange={(event) => {
@@ -620,54 +645,22 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
                         }
                       }}
                     />
-                  </label>
-                  {publishEmailError && (
-                    <div className="mt-2 text-xs text-rose-600">{publishEmailError}</div>
-                  )}
-                  {publishEmailStatus === "sent" && (
-                    <div className="mt-2 text-xs text-emerald-600">Email sent.</div>
-                  )}
-                  <div className="mt-3 flex items-center justify-end">
-                    <button
-                      type="button"
-                      className="w-full rounded-full px-4 py-2 text-xs font-semibold"
-                      style={{ backgroundColor: "#0b2f4a", color: "#ffffff" }}
-                      onClick={sendPublishEmail}
-                      disabled={publishEmailStatus === "sending"}
-                    >
-                      {publishEmailStatus === "sending" ? "Sending..." : "Send email"}
-                    </button>
                   </div>
+                  {publishEmailError ? <div className={modalStyles.noticeError}>{publishEmailError}</div> : null}
+                  {publishEmailStatus === "sent" ? <div className={modalStyles.noticeSuccess}>Email sent.</div> : null}
+                  <button
+                    type="button"
+                    className={modalStyles.primaryButton}
+                    onClick={sendPublishEmail}
+                    disabled={publishEmailStatus === "sending"}
+                  >
+                    {publishEmailStatus === "sending" ? "Sending..." : "Send email"}
+                  </button>
                 </div>
               </>
-            )}
-
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs"
-                onClick={() => {
-                  setPublishModal({ open: false });
-                  setPublishEmailStatus("idle");
-                  setPublishEmailError(null);
-                  router.push("/admin/quotes");
-                }}
-              >
-                Close
-              </button>
-              {!publishModal.code && (
-                <button
-                  type="button"
-                  className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
-                  onClick={publishQuote}
-                  disabled={isPublishing}
-                >
-                  {isPublishing ? "Publishing..." : "Publish now"}
-                </button>
-              )}
-            </div>
+            ) : null}
           </div>
-        </div>
+        </PortalModal>
       )}
     </div>
   );

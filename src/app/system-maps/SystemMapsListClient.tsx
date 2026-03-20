@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
+import { TableSkeleton } from "@/components/loading/HsesLoaders";
+import PortalTableFooter from "@/components/table/PortalTableFooter";
+import styles from "./SystemMapsListClient.module.css";
 
 type SystemMapRow = {
   id: string;
@@ -111,13 +114,66 @@ const formatDateTime = (value: string) =>
     minute: "2-digit",
   });
 
+const getDefaultTitle = (category: MapCategoryOption["id"]) => {
+  if (category === "bow_tie") return "Untitled Bow Tie Map";
+  if (category === "incident_investigation") return "Untitled Investigation";
+  if (category === "org_chart") return "Untitled Org Chart";
+  if (category === "process_flow") return "Untitled Process Flow Map";
+  return "Untitled System Map";
+};
+
+const getCreateModalEyebrow = (category: MapCategoryOption["id"]) => {
+  if (category === "incident_investigation") return "New investigation";
+  if (category === "document_map") return "New document map";
+  if (category === "bow_tie") return "New bow tie";
+  if (category === "org_chart") return "New org chart";
+  return "New process flow";
+};
+
+const getCreateModalTitle = (category: MapCategoryOption["id"]) => {
+  if (category === "incident_investigation") return "Create your investigation";
+  if (category === "document_map") return "Create your document map";
+  if (category === "bow_tie") return "Create your bow tie map";
+  if (category === "org_chart") return "Create your org chart";
+  return "Create your process flow";
+};
+
+const getTitlePlaceholder = (category: MapCategoryOption["id"]) => {
+  if (category === "incident_investigation") return "Example: Forklift collision in warehouse";
+  if (category === "document_map") return "Example: Contractor onboarding document map";
+  if (category === "bow_tie") return "Example: Working at heights bow tie";
+  if (category === "org_chart") return "Example: Operations team structure";
+  return "Example: Incident notification workflow";
+};
+
+const getDescriptionPlaceholder = (category: MapCategoryOption["id"]) => {
+  if (category === "incident_investigation") {
+    return "Summarise what happened, who is involved, and what the investigation needs to establish.";
+  }
+  if (category === "document_map") {
+    return "Outline the documents, relationships, and structure this map needs to capture.";
+  }
+  if (category === "bow_tie") {
+    return "Summarise the hazard, key controls, escalation factors, and consequences this bow tie will cover.";
+  }
+  if (category === "org_chart") {
+    return "Describe the team, reporting lines, and organisational structure this chart should present.";
+  }
+  return "Describe the process, steps, decision points, and outputs this flow should represent.";
+};
+
 export default function SystemMapsListClient() {
   const router = useRouter();
+  const pageSize = 7;
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedCreateCategory, setSelectedCreateCategory] = useState<MapCategoryOption["id"] | null>(null);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [deletingMapId, setDeletingMapId] = useState<string | null>(null);
   const [duplicatingMapId, setDuplicatingMapId] = useState<string | null>(null);
   const [duplicateProgress, setDuplicateProgress] = useState<{ percent: number; message: string; status: "idle" | "running" | "success" | "error" | "aborted" }>({
@@ -133,11 +189,20 @@ export default function SystemMapsListClient() {
   const [mapCodeInput, setMapCodeInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<SystemMapRow[]>([]);
+  const [selectedMapIds, setSelectedMapIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const duplicateAbortRef = useRef(false);
 
   const redirectToLogin = useMemo(
     () => `/login?returnTo=${encodeURIComponent("/system-maps")}`,
     []
+  );
+
+  const selectedCreateOption = useMemo(
+    () => mapCategoryOptions.find((option) => option.id === selectedCreateCategory) ?? null,
+    [selectedCreateCategory]
   );
 
   const loadMaps = async () => {
@@ -185,6 +250,7 @@ export default function SystemMapsListClient() {
       role: memberByMapId.get(row.id)?.role ?? "read",
     }));
     setRows(mergedRows);
+    setSelectedMapIds((current) => current.filter((id) => mergedRows.some((row) => row.id === id)));
   };
 
   useEffect(() => {
@@ -203,7 +269,30 @@ export default function SystemMapsListClient() {
     run();
   }, []);
 
-  const handleCreateMap = async (mapCategory: MapCategoryOption["id"]) => {
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    setPage((current) => Math.min(current, totalPages));
+  }, [rows.length]);
+
+  const openCreateModal = (mapCategory: MapCategoryOption["id"]) => {
+    setSelectedCreateCategory(mapCategory);
+    setNewTitle("");
+    setNewDescription("");
+    setShowCreateMenu(false);
+    setIsCreateModalOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    if (isCreating) return;
+    setIsCreateModalOpen(false);
+    setSelectedCreateCategory(null);
+    setNewTitle("");
+    setNewDescription("");
+  };
+
+  const handleCreateMap = async () => {
+    if (!selectedCreateCategory) return;
+
     try {
       setIsCreating(true);
       setError(null);
@@ -220,8 +309,9 @@ export default function SystemMapsListClient() {
         .from("system_maps")
         .insert({
           owner_id: user.id,
-          title: mapCategory === "bow_tie" ? "Untitled Bow Tie Map" : mapCategory === "process_flow" ? "Untitled Process Flow Map" : "Untitled System Map",
-          map_category: mapCategory,
+          title: newTitle.trim() || getDefaultTitle(selectedCreateCategory),
+          description: newDescription.trim() || null,
+          map_category: selectedCreateCategory,
         })
         .select("id")
         .single();
@@ -235,8 +325,9 @@ export default function SystemMapsListClient() {
           .from("system_maps")
           .insert({
             owner_id: user.id,
-            title: mapCategory === "bow_tie" ? "Untitled Bow Tie Map" : mapCategory === "process_flow" ? "Untitled Process Flow Map" : "Untitled System Map",
-            map_category: mapCategory,
+            title: newTitle.trim() || getDefaultTitle(selectedCreateCategory),
+            description: newDescription.trim() || null,
+            map_category: selectedCreateCategory,
           });
 
         if (insertWithoutReturning.error) {
@@ -373,6 +464,58 @@ export default function SystemMapsListClient() {
       setError("Unable to delete system map.");
     } finally {
       setDeletingMapId(null);
+    }
+  };
+
+  const selectedOwnedMapIds = selectedMapIds.filter((mapId) =>
+    rows.some((row) => row.id === mapId && row.owner_id === currentUserId)
+  );
+  const ownRows = rows.filter((row) => row.owner_id === currentUserId);
+  const allOwnedSelected =
+    ownRows.length > 0 && ownRows.every((row) => selectedMapIds.includes(row.id));
+
+  const toggleSelectAllOwned = () => {
+    if (allOwnedSelected) {
+      setSelectedMapIds((current) => current.filter((id) => !ownRows.some((row) => row.id === id)));
+      return;
+    }
+    setSelectedMapIds((current) => {
+      const next = new Set(current);
+      ownRows.forEach((row) => next.add(row.id));
+      return [...next];
+    });
+  };
+
+  const toggleRowSelection = (mapId: string) => {
+    setSelectedMapIds((current) =>
+      current.includes(mapId) ? current.filter((id) => id !== mapId) : [...current, mapId]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedOwnedMapIds.length || !currentUserId) return;
+    try {
+      setIsBulkDeleting(true);
+      setError(null);
+      const { error: deleteError } = await supabaseBrowser
+        .schema("ms")
+        .from("system_maps")
+        .delete()
+        .eq("owner_id", currentUserId)
+        .in("id", selectedOwnedMapIds);
+
+      if (deleteError) {
+        setError(deleteError.message || "Unable to bulk delete maps.");
+        return;
+      }
+
+      setRows((current) => current.filter((row) => !selectedOwnedMapIds.includes(row.id)));
+      setSelectedMapIds((current) => current.filter((id) => !selectedOwnedMapIds.includes(id)));
+      setShowBulkDeleteConfirm(false);
+    } catch {
+      setError("Unable to bulk delete maps.");
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -781,15 +924,27 @@ export default function SystemMapsListClient() {
   };
 
   if (isLoading) {
-    return <div className="dashboard-empty">Loading system maps...</div>;
+    return <TableSkeleton rows={pageSize} columns="18% 20% 12% 10% 10% 12% 10% 8%" showToolbar />;
   }
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
     <>
       <div className="dashboard-panel">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-slate-900">Your maps</h2>
-          <div className="flex items-center gap-2">
+        <div className="management-table-toolbar">
+          <button
+            type="button"
+            className="management-bulk-delete-button"
+            onClick={() => setShowBulkDeleteConfirm(true)}
+            disabled={!selectedOwnedMapIds.length || isBulkDeleting}
+          >
+            <img src="/icons/delete.svg" alt="" className="management-bulk-delete-button-icon" />
+            <span>{isBulkDeleting ? "Deleting..." : "Bulk Delete"}</span>
+          </button>
+          <div className="management-table-toolbar-actions">
             <button
               type="button"
               className="btn btn-outline"
@@ -815,7 +970,7 @@ export default function SystemMapsListClient() {
                         key={option.id}
                         type="button"
                         className="w-full rounded-none border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
-                        onClick={() => void handleCreateMap(option.id)}
+                        onClick={() => openCreateModal(option.id)}
                         disabled={isCreating}
                       >
                         <div className="text-sm font-semibold text-slate-900">{option.label}</div>
@@ -861,46 +1016,69 @@ export default function SystemMapsListClient() {
         )}
       </div>
 
-      <div className="dashboard-panel mt-4" style={{ overflowX: "auto" }}>
-        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+      <div className="dashboard-table-wrap mt-4" role="region" aria-label="System maps table">
+        <table className="dashboard-table w-full min-w-[760px] text-left text-sm">
+          <colgroup>
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "15%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "12.5%" }} />
+            <col style={{ width: "12.5%" }} />
+            <col style={{ width: "10%" }} />
+          </colgroup>
           <thead>
-            <tr className="border-b border-slate-200 text-slate-600">
-              <th className="px-3 py-3">Title</th>
-              <th className="px-3 py-3">Description</th>
-              <th className="px-3 py-3">Category</th>
-              <th className="px-3 py-3">Access</th>
-              <th className="px-3 py-3">Map Code</th>
-              <th className="px-3 py-3">Updated</th>
-              <th className="px-3 py-3">Created</th>
-              <th className="px-3 py-3 text-right">Actions</th>
+            <tr>
+              <th className="management-checkbox-header">
+                <input type="checkbox" checked={allOwnedSelected} onChange={toggleSelectAllOwned} aria-label="Select all owned maps" />
+              </th>
+              <th>Title</th>
+              <th>Description</th>
+              <th>Category</th>
+              <th>Access</th>
+              <th>Map Code</th>
+              <th>Updated</th>
+              <th>Created</th>
+              <th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr>
-                <td className="px-3 py-5 text-slate-600" colSpan={8}>
+              <tr className="dashboard-table-empty-row">
+                <td colSpan={9}>
                   No maps have been added. Create a new map or link one to your profile.
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              paginatedRows.map((row) => (
                 <tr
                   key={row.id}
-                  className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
+                  className="dashboard-row-link"
                   onClick={() => router.push(`/system-maps/${row.id}`)}
                 >
-                  <td className="px-3 py-3 font-semibold text-slate-900">{row.title}</td>
-                  <td className="max-w-[260px] truncate px-3 py-3 text-slate-600" title={row.description || "-"}>
+                  <td className="management-checkbox-cell" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedMapIds.includes(row.id)}
+                      disabled={row.owner_id !== currentUserId}
+                      onChange={() => toggleRowSelection(row.id)}
+                      aria-label={`Select ${row.title}`}
+                    />
+                  </td>
+                  <td className="font-semibold text-slate-900 management-cell-wrap">{row.title}</td>
+                  <td className="text-slate-600 management-cell-wrap" title={row.description || "-"}>
                     {row.description || "-"}
                   </td>
-                  <td className="max-w-[180px] truncate px-3 py-3 text-slate-600" title={getCategoryLabel(row)}>
+                  <td className="text-slate-600 management-cell-wrap" title={getCategoryLabel(row)}>
                     {getCategoryLabel(row)}
                   </td>
-                  <td className="px-3 py-3 text-slate-600">{getAccessLabel(row)}</td>
-                  <td className="px-3 py-3 text-slate-600">{row.owner_id === currentUserId ? row.map_code || "-" : "-"}</td>
-                  <td className="px-3 py-3 text-slate-600">{formatDateTime(row.updated_at)}</td>
-                  <td className="px-3 py-3 text-slate-600">{formatDateTime(row.created_at)}</td>
-                  <td className="px-3 py-3">
+                  <td className="text-slate-600">{getAccessLabel(row)}</td>
+                  <td className="text-slate-600">{row.owner_id === currentUserId ? row.map_code || "-" : "-"}</td>
+                  <td className="text-slate-600">{formatDateTime(row.updated_at)}</td>
+                  <td className="text-slate-600">{formatDateTime(row.created_at)}</td>
+                  <td>
                     <div className="flex items-center justify-end gap-2">
                       {(() => {
                         const canCopy = row.owner_id === currentUserId && !!row.map_code;
@@ -914,8 +1092,8 @@ export default function SystemMapsListClient() {
                             type="button"
                             title={copyTitle}
                             aria-label={copyTitle}
-                            className={`flex h-9 w-9 items-center justify-center rounded-none border border-black bg-white ${
-                              canCopy ? "text-black hover:bg-slate-100" : "cursor-not-allowed text-slate-400 opacity-60"
+                            className={`flex h-9 w-9 items-center justify-center rounded-none border border-black bg-white shadow-[0_8px_16px_rgba(24,29,39,0.08)] transition ${
+                              canCopy ? "text-black hover:-translate-y-px hover:bg-slate-100 hover:shadow-[0_12px_22px_rgba(24,29,39,0.12)]" : "cursor-not-allowed text-slate-400 opacity-60 shadow-none"
                             }`}
                             disabled={!canCopy}
                             onClick={(event) => {
@@ -935,8 +1113,8 @@ export default function SystemMapsListClient() {
                             type="button"
                             title={duplicateTitle}
                             aria-label={duplicateTitle}
-                            className={`flex h-9 w-9 items-center justify-center rounded-none border border-black bg-white ${
-                              canDuplicate ? "text-black hover:bg-slate-100" : "cursor-not-allowed text-slate-400 opacity-60"
+                            className={`flex h-9 w-9 items-center justify-center rounded-none border border-black bg-white shadow-[0_8px_16px_rgba(24,29,39,0.08)] transition ${
+                              canDuplicate ? "text-black hover:-translate-y-px hover:bg-slate-100 hover:shadow-[0_12px_22px_rgba(24,29,39,0.12)]" : "cursor-not-allowed text-slate-400 opacity-60 shadow-none"
                             }`}
                             disabled={!canDuplicate || duplicatingMapId === row.id}
                             onClick={(event) => {
@@ -959,8 +1137,8 @@ export default function SystemMapsListClient() {
                             type="button"
                             title={deleteTitle}
                             aria-label={deleteTitle}
-                            className={`flex h-9 w-9 items-center justify-center rounded-none border border-black bg-white ${
-                              canDelete ? "text-rose-700 hover:bg-slate-100" : "cursor-not-allowed text-slate-400 opacity-60"
+                            className={`flex h-9 w-9 items-center justify-center rounded-none border border-black bg-white shadow-[0_8px_16px_rgba(24,29,39,0.08)] transition ${
+                              canDelete ? "text-rose-700 hover:-translate-y-px hover:bg-slate-100 hover:shadow-[0_12px_22px_rgba(24,29,39,0.12)]" : "cursor-not-allowed text-slate-400 opacity-60 shadow-none"
                             }`}
                             disabled={!canDelete || deletingMapId === row.id}
                             onClick={(event) => {
@@ -980,88 +1158,198 @@ export default function SystemMapsListClient() {
           </tbody>
         </table>
       </div>
+      <PortalTableFooter
+        total={rows.length}
+        page={safePage}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        label="maps"
+      />
 
-      {pendingDuplicateRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <div className="w-full max-w-lg rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-semibold text-slate-900">Duplicate map?</h2>
-            <p className="mt-2 text-sm text-slate-700">
-              You are about to duplicate <span className="font-semibold">"{pendingDuplicateRow.title}"</span>.
-            </p>
-            <div className="mt-3 text-sm text-slate-700">
-              The duplicate will include document nodes, canvas components, relationships, and structure content.
-            </div>
-            <p className="mt-2 text-sm text-slate-700">
-              You will be set as the owner of the new map.
-            </p>
-            {duplicateProgress.status !== "idle" ? (
-              <div className="mt-4">
-                <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
-                  <span>{duplicateProgress.message}</span>
-                  <span>{duplicateProgress.percent}%</span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded bg-slate-200">
-                  <div
-                    className={`h-full transition-all ${
-                      duplicateProgress.status === "error"
-                        ? "bg-rose-600"
-                        : duplicateProgress.status === "success"
-                        ? "bg-emerald-600"
-                        : duplicateProgress.status === "aborted"
-                        ? "bg-amber-600"
-                        : "bg-slate-900"
-                    }`}
-                    style={{ width: `${Math.max(0, Math.min(100, duplicateProgress.percent))}%` }}
-                  />
+      {showBulkDeleteConfirm ? (
+        <>
+          <button type="button" className={styles.modalBackdrop} aria-label="Close bulk delete modal" onClick={() => setShowBulkDeleteConfirm(false)} />
+          <div className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Bulk delete maps">
+            <div className={styles.modalHeader}>
+              <div className={styles.modalBrand}>
+                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.modalLogo} />
+                <div className={styles.modalBrandCopy}>
+                  <span className={styles.modalEyebrow}>Bulk delete</span>
+                  <h2 className={styles.modalTitle}>Bulk delete maps?</h2>
                 </div>
               </div>
-            ) : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                onClick={() => {
-                  if (duplicatingMapId === pendingDuplicateRow.id) {
-                    duplicateAbortRef.current = true;
-                    setDuplicateCancelRequested(true);
-                    setDuplicateProgress((prev) => ({
-                      percent: prev.percent,
-                      message: "Cancellation requested...",
-                      status: "running",
-                    }));
-                    return;
-                  }
-                  setPendingDuplicateRow(null);
-                }}
-                disabled={duplicatingMapId === pendingDuplicateRow.id && duplicateCancelRequested}
-              >
-                {duplicatingMapId === pendingDuplicateRow.id ? (duplicateCancelRequested ? "Stopping..." : "Cancel duplication") : "Cancel"}
-              </button>
-              <button
-                type="button"
-                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => {
-                  void handleDuplicateMap(pendingDuplicateRow);
-                }}
-                disabled={duplicatingMapId === pendingDuplicateRow.id}
-              >
-                {duplicatingMapId === pendingDuplicateRow.id ? "Duplicating..." : "Duplicate map"}
-              </button>
+            </div>
+            <div className={styles.modalBody}>
+              <p className={styles.modalText}>
+                You are about to permanently delete <strong>{selectedOwnedMapIds.length}</strong> selected map{selectedOwnedMapIds.length === 1 ? "" : "s"}.
+              </p>
+              <p className={styles.warning}>This cannot be undone.</p>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={() => setShowBulkDeleteConfirm(false)}
+                  disabled={isBulkDeleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonDanger}`}
+                  onClick={() => void handleBulkDelete()}
+                  disabled={isBulkDeleting}
+                >
+                  {isBulkDeleting ? "Deleting..." : "Delete selected"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        </>
+      ) : null}
 
-      {pendingDeleteRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <div className="w-full max-w-lg rounded-none border border-slate-300 bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-semibold text-slate-900">Delete map?</h2>
-            <p className="mt-2 text-sm text-slate-700">
-              You are about to permanently delete <span className="font-semibold">"{pendingDeleteRow.title}"</span>.
-            </p>
-            <div className="mt-3 text-sm text-slate-700">
-              <div>This will delete:</div>
-              <ul className="mt-1 list-disc pl-5">
+      {isCreateModalOpen && selectedCreateOption ? (
+        <>
+          <button type="button" className={styles.modalBackdrop} aria-label="Close create map modal" onClick={closeCreateModal} />
+          <div className={styles.modalCard} role="dialog" aria-modal="true" aria-label={`Create ${selectedCreateOption.label}`}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalBrand}>
+                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.modalLogo} />
+                <div className={styles.modalBrandCopy}>
+                  <span className={styles.modalEyebrow}>{getCreateModalEyebrow(selectedCreateOption.id)}</span>
+                  <h2 className={styles.modalTitle}>{getCreateModalTitle(selectedCreateOption.id)}</h2>
+                </div>
+              </div>
+            </div>
+            <div className={styles.modalBody}>
+              <label className={styles.field}>
+                <span>{selectedCreateOption.id === "incident_investigation" ? "Investigation title" : "Title"}</span>
+                <input
+                  className={styles.input}
+                  value={newTitle}
+                  onChange={(event) => setNewTitle(event.target.value)}
+                  placeholder={getTitlePlaceholder(selectedCreateOption.id)}
+                />
+              </label>
+              <label className={styles.field}>
+                <span>Description</span>
+                <textarea
+                  className={`${styles.input} ${styles.textarea}`}
+                  value={newDescription}
+                  onChange={(event) => setNewDescription(event.target.value)}
+                  placeholder={getDescriptionPlaceholder(selectedCreateOption.id)}
+                  rows={5}
+                />
+              </label>
+              <div className={styles.modalActions}>
+                <button type="button" className={`${styles.button} ${styles.buttonSecondary}`} onClick={closeCreateModal} disabled={isCreating}>
+                  Cancel
+                </button>
+                <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} onClick={() => void handleCreateMap()} disabled={isCreating}>
+                  {isCreating ? "Creating..." : selectedCreateOption.id === "incident_investigation" ? "Create investigation" : "Create new"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {pendingDuplicateRow ? (
+        <>
+          <button type="button" className={styles.modalBackdrop} aria-label="Close duplicate map modal" onClick={() => setPendingDuplicateRow(null)} />
+          <div className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Duplicate map">
+            <div className={styles.modalHeader}>
+              <div className={styles.modalBrand}>
+                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.modalLogo} />
+                <div className={styles.modalBrandCopy}>
+                  <span className={styles.modalEyebrow}>Duplicate map</span>
+                  <h2 className={styles.modalTitle}>Duplicate map?</h2>
+                </div>
+              </div>
+            </div>
+            <div className={styles.modalBody}>
+              <p className={styles.modalText}>
+                You are about to duplicate <strong>&quot;{pendingDuplicateRow.title}&quot;</strong>.
+              </p>
+              <p className={styles.modalText}>
+                The duplicate will include document nodes, canvas components, relationships, and structure content. You will be set as the owner of the new map.
+              </p>
+              {duplicateProgress.status !== "idle" ? (
+                <div className={styles.progressBlock}>
+                  <div className={styles.progressHeader}>
+                    <span>{duplicateProgress.message}</span>
+                    <span>{duplicateProgress.percent}%</span>
+                  </div>
+                  <div className={styles.progressTrack}>
+                    <div
+                      className={`${styles.progressFill} ${
+                        duplicateProgress.status === "error"
+                          ? styles.progressFillError
+                          : duplicateProgress.status === "success"
+                            ? styles.progressFillSuccess
+                            : duplicateProgress.status === "aborted"
+                              ? styles.progressFillAborted
+                              : ""
+                      }`}
+                      style={{ width: `${Math.max(0, Math.min(100, duplicateProgress.percent))}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={() => {
+                    if (duplicatingMapId === pendingDuplicateRow.id) {
+                      duplicateAbortRef.current = true;
+                      setDuplicateCancelRequested(true);
+                      setDuplicateProgress((prev) => ({
+                        percent: prev.percent,
+                        message: "Cancellation requested...",
+                        status: "running",
+                      }));
+                      return;
+                    }
+                    setPendingDuplicateRow(null);
+                  }}
+                  disabled={duplicatingMapId === pendingDuplicateRow.id && duplicateCancelRequested}
+                >
+                  {duplicatingMapId === pendingDuplicateRow.id ? (duplicateCancelRequested ? "Stopping..." : "Cancel duplication") : "Cancel"}
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonPrimary}`}
+                  onClick={() => {
+                    void handleDuplicateMap(pendingDuplicateRow);
+                  }}
+                  disabled={duplicatingMapId === pendingDuplicateRow.id}
+                >
+                  {duplicatingMapId === pendingDuplicateRow.id ? "Duplicating..." : "Duplicate map"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {pendingDeleteRow ? (
+        <>
+          <button type="button" className={styles.modalBackdrop} aria-label="Close delete map modal" onClick={() => setPendingDeleteRow(null)} />
+          <div className={styles.modalCard} role="dialog" aria-modal="true" aria-label="Delete map">
+            <div className={styles.modalHeader}>
+              <div className={styles.modalBrand}>
+                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.modalLogo} />
+                <div className={styles.modalBrandCopy}>
+                  <span className={styles.modalEyebrow}>Delete map</span>
+                  <h2 className={styles.modalTitle}>Delete map?</h2>
+                </div>
+              </div>
+            </div>
+            <div className={styles.modalBody}>
+              <p className={styles.modalText}>
+                You are about to permanently delete <strong>&quot;{pendingDeleteRow.title}&quot;</strong>.
+              </p>
+              <ul className={styles.modalList}>
                 <li>The system map</li>
                 <li>All document nodes</li>
                 <li>All canvas components</li>
@@ -1069,29 +1357,29 @@ export default function SystemMapsListClient() {
                 <li>All document structure content</li>
                 <li>All linked map member access for this map</li>
               </ul>
-            </div>
-            <p className="mt-3 text-sm font-semibold text-rose-700">This cannot be undone.</p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-black hover:bg-slate-100"
-                onClick={() => setPendingDeleteRow(null)}
-                disabled={deletingMapId === pendingDeleteRow.id}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-none border border-black bg-white px-3 py-2 text-sm text-rose-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={() => void handleDeleteMap(pendingDeleteRow)}
-                disabled={deletingMapId === pendingDeleteRow.id}
-              >
-                {deletingMapId === pendingDeleteRow.id ? "Deleting..." : "Delete map"}
-              </button>
+              <p className={styles.warning}>This cannot be undone.</p>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={() => setPendingDeleteRow(null)}
+                  disabled={deletingMapId === pendingDeleteRow.id}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonDanger}`}
+                  onClick={() => void handleDeleteMap(pendingDeleteRow)}
+                  disabled={deletingMapId === pendingDeleteRow.id}
+                >
+                  {deletingMapId === pendingDeleteRow.id ? "Deleting..." : "Delete map"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        </>
+      ) : null}
     </>
   );
 }

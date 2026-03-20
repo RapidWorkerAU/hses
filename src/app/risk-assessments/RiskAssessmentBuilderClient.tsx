@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
+import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
 
 type LookupOption = { id: string; label: string };
 type RiskMatrixCell = { likelihood_id: string; consequence_id: number; ranking_code: string; ranking_label: string };
@@ -507,7 +508,7 @@ export default function RiskAssessmentBuilderClient({ initialAssessmentId }: { i
     }
   };
 
-  if (isLoading) return <div className="dashboard-empty">Loading risk builder...</div>;
+  if (isLoading) return <DetailPageSkeleton />;
 
   return (
     <>
@@ -791,7 +792,7 @@ export default function RiskAssessmentBuilderClient({ initialAssessmentId }: { i
             onClick={cancelAssessmentEdit}
           />
           <aside
-            className="fixed bottom-0 left-0 top-[70px] z-[72] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300"
+            className="fixed bottom-0 left-0 top-0 z-[72] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300"
             style={{ transform: isAssessmentDrawerOpen ? "translateX(0)" : "translateX(-100%)" }}
           >
             <div className="flex h-full flex-col overflow-auto p-4">
@@ -882,7 +883,7 @@ export default function RiskAssessmentBuilderClient({ initialAssessmentId }: { i
             onClick={() => setIsRecordDrawerOpen(false)}
           />
           <aside
-            className="fixed bottom-0 left-0 top-[70px] z-[74] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300"
+            className="fixed bottom-0 left-0 top-0 z-[74] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300"
             style={{ transform: isRecordDrawerOpen ? "translateX(0)" : "translateX(-100%)" }}
           >
             <div className="flex h-full flex-col overflow-auto p-4">

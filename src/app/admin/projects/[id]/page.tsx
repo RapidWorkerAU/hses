@@ -1,5 +1,6 @@
-﻿import type { Metadata } from "next";
-import DashboardSessionText from "@/app/sms-diagnostic/dashboard/DashboardSessionText";
+import type { Metadata } from "next";
+import HsesDashboardShell from "@/app/sms-diagnostic/dashboard/HsesDashboardShell";
+import PortalAccessGate from "@/app/sms-diagnostic/dashboard/PortalAccessGate";
 import ProjectDetailClient from "../ProjectDetailClient";
 
 export const metadata: Metadata = {
@@ -13,53 +14,18 @@ export default async function ProjectDetailPage({
 }) {
   const resolvedParams = await Promise.resolve(params);
   const id = resolvedParams?.id;
+
   return (
-    <div className="diagnostic-body page-stack dashboard-portal dashboard-portal--no-sidebar dashboard-portal--admin-project-detail">
-      <header className="site-header">
-        <div className="header-inner">
-          <div className="header-left">
-            <a href="/">
-              <img
-                src="/images/logo-black.png"
-                alt="HSES Industry Partners"
-                className="header-logo"
-              />
-            </a>
-          </div>
-          <div className="header-actions">
-            <div className="dashboard-session">
-              <DashboardSessionText />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main>
-        <section className="dashboard-section dashboard-main">
-          <div className="diagnostic-container">
-            {id ? (
-              <ProjectDetailClient projectId={id} />
-            ) : (
-              <div className="dashboard-panel">Missing project id.</div>
-            )}
-          </div>
-        </section>
-      </main>
-
-      <footer className="site-footer">
-        <div className="footer-inner">
-          <span className="footer-copy">&copy; 2025 HSES Industry Partners</span>
-          <div className="footer-links">
-            <a className="footer-link" href="/privacy">
-              Privacy Policy
-            </a>
-            <a className="footer-link" href="/disclaimer">
-              Website Disclaimer
-            </a>
-          </div>
-        </div>
-      </footer>
-    </div>
+    <HsesDashboardShell
+      eyebrow="Business Admin"
+      title="Project Schedule Builder"
+      subtitle="Review project milestones, delivery status, and logged time inside the shared admin workspace."
+      backHref="/admin/projects"
+      backLabel="Back"
+    >
+      <PortalAccessGate portalKey="business-admin">
+        {id ? <ProjectDetailClient projectId={id} /> : <div className="dashboard-panel">Missing project id.</div>}
+      </PortalAccessGate>
+    </HsesDashboardShell>
   );
 }
-

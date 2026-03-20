@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchAdmin } from "../lib/adminFetch";
+import PortalModal from "@/components/PortalModal";
+import modalStyles from "@/components/PortalModal.module.css";
+import { TableSkeleton } from "@/components/loading/HsesLoaders";
+import PortalTableFooter from "@/components/table/PortalTableFooter";
 
 type ProjectRow = {
   id: string;
@@ -35,9 +39,11 @@ const formatStatus = (value: string | null | undefined) => {
 
 export default function ProjectsListClient() {
   const router = useRouter();
+  const pageSize = 7;
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [resendModal, setResendModal] = useState<{
     open: boolean;
     projectId?: string;
@@ -67,6 +73,19 @@ export default function ProjectsListClient() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(projects.length / pageSize));
+    setPage((current) => Math.min(current, totalPages));
+  }, [projects.length]);
+
+  if (isLoading) {
+    return <TableSkeleton rows={pageSize} columns="14% 18% 16% 18% 12% 10% 12%" showToolbar={false} />;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(projects.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedProjects = projects.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const openResend = (event: React.MouseEvent, project: ProjectRow) => {
     event.stopPropagation();
@@ -123,26 +142,15 @@ export default function ProjectsListClient() {
 
   return (
     <div className="space-y-6">
-      <div className="admin-projects-header">
-        <a className="dashboard-back-link" href="/dashboard/business-admin">
-          <img src="/icons/back.svg" alt="" className="dashboard-back-icon" />
-          <span>Back</span>
-        </a>
-        <h1 className="text-2xl font-semibold text-slate-900">Project Schedule Builder</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Quotes accepted by clients are listed here as projects ready for scheduling.
-        </p>
-      </div>
-
       {error && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="admin-projects-table w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+      <div className="portal-table-shell">
+        <table className="admin-projects-table portal-table w-full text-left text-sm">
+          <thead>
             <tr>
               <th className="px-4 py-3">Project ID</th>
               <th className="px-4 py-3">Proposal name</th>
@@ -154,25 +162,17 @@ export default function ProjectsListClient() {
             </tr>
           </thead>
           <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
-                  Loading projects...
-                </td>
-              </tr>
-            )}
-            {!isLoading && projects.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+            {projects.length === 0 && (
+              <tr className="portal-table-empty-row">
+                <td colSpan={7}>
                   No accepted projects yet.
                 </td>
               </tr>
             )}
-            {!isLoading &&
-              projects.map((project) => (
+            {paginatedProjects.map((project) => (
                 <tr
                   key={project.id}
-                  className="admin-projects-row cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                  className="admin-projects-row portal-table-row cursor-pointer"
                   onClick={() => router.push(`/admin/projects/${project.id}`)}
                 >
                   <td className="px-4 py-3" data-label="Project ID">
@@ -214,55 +214,35 @@ export default function ProjectsListClient() {
                     </button>
                   </td>
                 </tr>
-              ))}
+            ))}
           </tbody>
         </table>
       </div>
+      <PortalTableFooter
+        total={projects.length}
+        page={safePage}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        label="projects"
+      />
 
       {resendModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900">Send project access email</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Send the existing access code to the recipient below.
-            </p>
-            <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Access code</p>
-              <div className="mt-1 text-base font-semibold text-slate-900">
-                {resendModal.code ?? "-"}
-              </div>
-              <label className="mt-3 block text-xs text-slate-500">
-                Recipient email
-                <input
-                  type="email"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-                  value={resendModal.email ?? ""}
-                  onChange={(event) =>
-                    setResendModal((prev) => ({ ...prev, email: event.target.value }))
-                  }
-                />
-              </label>
-              <label className="mt-3 block text-xs text-slate-500">
-                CC (comma separated)
-                <input
-                  type="text"
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-                  value={resendModal.cc ?? ""}
-                  placeholder="manager@example.com, ops@example.com"
-                  onChange={(event) =>
-                    setResendModal((prev) => ({ ...prev, cc: event.target.value }))
-                  }
-                />
-              </label>
-              {resendError && <div className="mt-2 text-xs text-rose-600">{resendError}</div>}
-              {resendStatus === "sent" && (
-                <div className="mt-2 text-xs text-emerald-600">Email sent.</div>
-              )}
-            </div>
-            <div className="mt-6 flex items-center justify-end gap-2">
+        <PortalModal
+          open={resendModal.open}
+          ariaLabel="Send project access email"
+          eyebrow="Project Access"
+          title="Send project access email"
+          description="Send the existing access code to the recipient below."
+          onClose={() => {
+            setResendModal({ open: false });
+            setResendStatus("idle");
+            setResendError(null);
+          }}
+          footer={
+            <>
               <button
                 type="button"
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs"
+                className={modalStyles.secondaryButton}
                 onClick={() => {
                   setResendModal({ open: false });
                   setResendStatus("idle");
@@ -273,16 +253,44 @@ export default function ProjectsListClient() {
               </button>
               <button
                 type="button"
-                className="rounded-full px-4 py-2 text-xs font-semibold"
-                style={{ backgroundColor: "#0b2f4a", color: "#ffffff" }}
+                className={modalStyles.primaryButton}
                 onClick={sendResendEmail}
                 disabled={resendStatus === "sending"}
               >
                 {resendStatus === "sending" ? "Sending..." : "Send email"}
               </button>
+            </>
+          }
+        >
+          <div className={modalStyles.stack}>
+            <div className={modalStyles.surface}>
+              <p className={modalStyles.fieldLabel}>Access code</p>
+              <div className="mt-2 text-base font-semibold text-slate-900">{resendModal.code ?? "-"}</div>
             </div>
+            <div className={modalStyles.field}>
+              <span className={modalStyles.fieldLabel}>Recipient email</span>
+              <input
+                type="email"
+                className={modalStyles.input}
+                value={resendModal.email ?? ""}
+                placeholder="client@example.com"
+                onChange={(event) => setResendModal((prev) => ({ ...prev, email: event.target.value }))}
+              />
+            </div>
+            <div className={modalStyles.field}>
+              <span className={modalStyles.fieldLabel}>CC</span>
+              <input
+                type="text"
+                className={modalStyles.input}
+                value={resendModal.cc ?? ""}
+                placeholder="manager@example.com, ops@example.com"
+                onChange={(event) => setResendModal((prev) => ({ ...prev, cc: event.target.value }))}
+              />
+            </div>
+            {resendError ? <div className={modalStyles.noticeError}>{resendError}</div> : null}
+            {resendStatus === "sent" ? <div className={modalStyles.noticeSuccess}>Email sent.</div> : null}
           </div>
-        </div>
+        </PortalModal>
       )}
     </div>
   );

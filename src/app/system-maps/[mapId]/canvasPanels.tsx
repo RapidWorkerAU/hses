@@ -6,6 +6,8 @@ import type { MapMemberProfileRow, SystemMap } from "./canvasShared";
 import type { NodePaletteKind } from "./mapCategories";
 
 type CanvasActionButtonsProps = {
+  backHref: string;
+  backLabel: string;
   showMapInfoAside: boolean;
   rf: {
     fitView: (opts?: { duration?: number; padding?: number }) => void;
@@ -67,6 +69,8 @@ type CanvasActionButtonsProps = {
 };
 
 export function CanvasActionButtons({
+  backHref,
+  backLabel,
   showMapInfoAside,
   rf,
   setShowAddMenu,
@@ -127,9 +131,9 @@ export function CanvasActionButtons({
   return (
     <>
       <Link
-        href="/system-maps"
-        aria-label="Back to all system maps"
-        title="All system maps"
+        href={backHref}
+        aria-label={backLabel}
+        title={backLabel}
         className="fixed left-[20px] top-[82px] z-[74] group flex h-[62px] w-[62px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-black shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#102a43] hover:text-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
       >
         <span

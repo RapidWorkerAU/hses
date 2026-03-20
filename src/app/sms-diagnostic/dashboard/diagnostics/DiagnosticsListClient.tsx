@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchWithSession } from "../portalAuth";
+import { CardGridSkeleton } from "@/components/loading/HsesLoaders";
 
 type DiagnosticRow = {
   id: string;
@@ -54,7 +55,7 @@ export default function DiagnosticsListClient() {
   }, []);
 
   if (isLoading) {
-    return <div className="dashboard-empty">Loading diagnostics...</div>;
+    return <CardGridSkeleton cards={3} />;
   }
 
   if (error) {

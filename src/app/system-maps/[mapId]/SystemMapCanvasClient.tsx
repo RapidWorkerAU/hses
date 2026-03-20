@@ -15,6 +15,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
+import { hasMapCategoryAccess } from "@/app/sms-diagnostic/dashboard/dashboardPortals";
 import {
   A4_RATIO,
   bowtieControlHeight,
@@ -154,7 +155,7 @@ import { MobileAddRelationshipModal, MobileNodeActionSheet } from "./canvasMobil
 import { CanvasDrilldownOverlays } from "./canvasDrilldownAsides";
 import { CanvasConfirmDialogs } from "./canvasDialogs";
 import { CanvasElementPropertyOverlays } from "./canvasPropertyOverlays";
-import { defaultMapCategoryId, getAllowedNodeKindsForCategory, type MapCategoryId } from "./mapCategories";
+import { defaultMapCategoryId, getAllowedNodeKindsForCategory, mapCategoryConfigs, type MapCategoryId } from "./mapCategories";
 import { useCanvasRelationNodeActions } from "./useCanvasRelationNodeActions";
 import { useCanvasElementActions } from "./useCanvasElementActions";
 import { useCanvasDeleteSelectionActions } from "./useCanvasDeleteSelectionActions";
@@ -322,6 +323,23 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     }
     return printSelectionRect;
   }, [printSelectionDraft, printSelectionRect]);
+  const loadingLabel = useMemo(() => {
+    const mapCategory = map?.map_category as MapCategoryId | null | undefined;
+    if (mapCategory && mapCategory in mapCategoryConfigs) {
+      return mapCategoryConfigs[mapCategory].label;
+    }
+    return mapCategoryConfigs[mapCategoryId]?.label ?? "Map";
+  }, [map?.map_category, mapCategoryId]);
+  const backHref = useMemo(() => {
+    const category = (map?.map_category as MapCategoryId | null | undefined) ?? mapCategoryId;
+    if (category === "document_map") return "/dashboard/map-builders/document-maps";
+    if (category === "bow_tie") return "/dashboard/map-builders/bow-ties";
+    if (category === "incident_investigation") return "/dashboard/map-builders/investigation-maps";
+    if (category === "org_chart") return "/dashboard/map-builders/org-charts";
+    if (category === "process_flow") return "/dashboard/map-builders/process-flows";
+    return "/dashboard";
+  }, [map?.map_category, mapCategoryId]);
+  const backLabel = useMemo(() => `Back to ${loadingLabel}`, [loadingLabel]);
   const exitPrintSelectionMode = useCallback(() => {
     setPrintSelectionMode(false);
     setPrintSelectionDraft(null);
@@ -2030,8 +2048,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
 
         setMapRole(memberRes.data.role as "read" | "partial_write" | "full_write");
         const loadedMap = mapRes.data as SystemMap;
-        setMap(loadedMap);
         const nextCategory = (loadedMap.map_category || defaultMapCategoryId) as MapCategoryId;
+        if (!hasMapCategoryAccess(user.email ?? localStorage.getItem("hses_user_email"), nextCategory)) {
+          window.location.replace("/dashboard");
+          return;
+        }
+        setMap(loadedMap);
         setMapCategoryId(nextCategory);
         await loadMapMembers(loadedMap.owner_id);
         let loadedTypes = (typeRes.data ?? []) as DocumentTypeRow[];
@@ -3683,7 +3705,16 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   );
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading map...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
+        <div className="w-full max-w-xl border border-slate-200 bg-white px-8 py-10 text-center shadow-sm">
+          <img src="/images/logo-black.png" alt="HSES Industry Partners" className="mx-auto mb-5 h-auto w-28" />
+          <div className="mx-auto mb-4 h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#6686c7]" aria-hidden="true" />
+          <h1 className="mb-2 text-2xl font-bold text-slate-900">Loading {loadingLabel}</h1>
+          <p className="text-sm text-slate-600">Preparing your canvas and map data.</p>
+        </div>
+      </div>
+    );
   }
 
   if (!map) {
@@ -3711,6 +3742,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       />
 
       <CanvasActionButtons
+        backHref={backHref}
+        backLabel={backLabel}
         showMapInfoAside={showMapInfoAside}
         rf={rf}
         setShowAddMenu={setShowAddMenu}

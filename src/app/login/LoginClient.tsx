@@ -1,543 +1,353 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { storePortalSession } from "@/lib/supabase/portalSession";
+import styles from "../auth/AuthPage.module.css";
+
+type NoticeTone = "error" | "success" | "info";
+
+type Notice = {
+  tone: NoticeTone;
+  title: string;
+  body: string;
+  allowResend?: boolean;
+  resent?: boolean;
+};
+
+const getSiteUrl = () => process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
 
 export default function LoginClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
   const searchParams = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/dashboard";
+  const queryEmail = searchParams.get("email") || "";
 
-  const recoverRedirectTo = useMemo(() => {
-    if (!siteUrl) return undefined;
-    return `${siteUrl}/auth/set-password`;
-  }, [siteUrl]);
-
-  const [mode, setMode] = useState<"login" | "forgot">("login");
-  const [email, setEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [email, setEmail] = useState(queryEmail);
+  const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
-  const [emailStatus, setEmailStatus] = useState<
-    "idle" | "checking" | "not_found" | "unconfirmed" | "confirmed" | "error"
-  >("idle");
-  const [statusCheckedEmail, setStatusCheckedEmail] = useState("");
-  const [notice, setNotice] = useState<{
-    tone: "info" | "success" | "error";
-    title: string;
-    body: string;
-  } | null>(null);
-  const [loginNotice, setLoginNotice] = useState<{
-    tone: "info" | "success" | "error";
-    title: string;
-    body: string;
-  } | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [isResending, setIsResending] = useState(false);
 
-  const canCallSupabase = Boolean(supabaseUrl && supabaseAnonKey);
   const emailTrimmed = email.trim();
-  const showResendAuth = mode === "forgot" && emailStatus === "unconfirmed";
-
-  const handleLoginSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setLoginNotice(null);
-
-    if (!emailTrimmed || !loginPassword) {
-      setLoginNotice({
-        tone: "error",
-        title: "Enter your email and password",
-        body: "Use the diagnostic owner email and the password you set.",
-      });
-      return;
-    }
-
-    if (!canCallSupabase) {
-      setLoginNotice({
-        tone: "error",
-        title: "Login is not configured",
-        body: "Supabase environment variables are missing. Please contact HSES.",
-      });
-      return;
-    }
-
-    try {
-      setIsLoginSubmitting(true);
-      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
-        email: emailTrimmed,
-        password: loginPassword,
-      });
-
-      if (error || !data.session) {
-        setLoginNotice({
-          tone: "error",
-          title: "We could not log you in",
-          body:
-            "Check your email and password. If you have not set a password yet, use the reset flow.",
-        });
-        return;
-      }
-
-      localStorage.setItem("hses_access_token", data.session.access_token);
-      if (data.session.refresh_token) {
-        localStorage.setItem("hses_refresh_token", data.session.refresh_token);
-      }
-      if (data.session.user?.email) {
-        localStorage.setItem("hses_user_email", data.session.user.email);
-      }
-      if (data.session.user?.id) {
-        localStorage.setItem("hses_user_id", data.session.user.id);
-      }
-
-      const returnTo = searchParams.get("returnTo");
-      window.location.assign(returnTo || "/dashboard");
-    } catch (error) {
-      setLoginNotice({
-        tone: "error",
-        title: "Something went wrong",
-        body: "Please try again. If the issue continues, contact ask@hses.com.au.",
-      });
-    } finally {
-      setIsLoginSubmitting(false);
-    }
-  };
 
   useEffect(() => {
-    if (mode !== "forgot") return;
-    if (!emailTrimmed || emailTrimmed.length < 5) {
-      setEmailStatus("idle");
-      setStatusCheckedEmail("");
-      return;
-    }
+    setEmail((current) => current || queryEmail);
+  }, [queryEmail]);
 
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      try {
-        setEmailStatus("checking");
-        const response = await fetch(
-          `/api/auth/user-status?email=${encodeURIComponent(emailTrimmed)}`,
-          { signal: controller.signal }
-        );
+  useEffect(() => {
+    let active = true;
 
-        if (!response.ok) {
-          setEmailStatus("error");
-          return;
-        }
+    const routeAuthenticatedUser = async () => {
+      const {
+        data: { session },
+      } = await supabaseBrowser.auth.getSession();
 
-        const payload = (await response.json()) as {
-          exists?: boolean;
-          confirmed?: boolean;
-        };
+      if (!active) return;
 
-        setStatusCheckedEmail(emailTrimmed);
-        if (!payload.exists) {
-          setEmailStatus("not_found");
-          return;
-        }
-        setEmailStatus(payload.confirmed ? "confirmed" : "unconfirmed");
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        setEmailStatus("error");
+      if (!session) {
+        setIsCheckingSession(false);
+        return;
       }
-    }, 400);
+
+      storePortalSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        user: {
+          email: session.user.email,
+          id: session.user.id,
+        },
+      });
+      window.location.replace(returnTo);
+    };
+
+    void routeAuthenticatedUser();
 
     return () => {
-      controller.abort();
-      clearTimeout(timer);
+      active = false;
     };
-  }, [emailTrimmed, mode]);
+  }, [returnTo]);
 
-  const ensureEmailStatus = async () => {
-    if (!emailTrimmed || emailTrimmed.length < 5) {
-      setEmailStatus("idle");
-      setStatusCheckedEmail("");
-      return { status: "idle" as const };
-    }
-
-    if (statusCheckedEmail === emailTrimmed && emailStatus !== "checking") {
-      return { status: emailStatus };
-    }
+  const resendConfirmation = async () => {
+    if (!emailTrimmed || isResending) return;
 
     try {
-      setEmailStatus("checking");
-      const response = await fetch(
-        `/api/auth/user-status?email=${encodeURIComponent(emailTrimmed)}`
-      );
-
-      if (!response.ok) {
-        setEmailStatus("error");
-        return { status: "error" as const };
-      }
-
-      const payload = (await response.json()) as {
-        exists?: boolean;
-        confirmed?: boolean;
-      };
-
-      setStatusCheckedEmail(emailTrimmed);
-      if (!payload.exists) {
-        setEmailStatus("not_found");
-        return { status: "not_found" as const };
-      }
-
-      const nextStatus = payload.confirmed ? ("confirmed" as const) : ("unconfirmed" as const);
-      setEmailStatus(nextStatus);
-      return { status: nextStatus };
-    } catch (error) {
-      setEmailStatus("error");
-      return { status: "error" as const };
-    }
-  };
-
-  const handleRecover = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setNotice(null);
-
-    if (!emailTrimmed) {
-      setNotice({
-        tone: "error",
-        title: "Add your email",
-        body: "Enter the email address used for your diagnostic owner account.",
-      });
-      return;
-    }
-
-    if (!canCallSupabase) {
-      setNotice({
-        tone: "error",
-        title: "Login is not configured",
-        body: "Supabase environment variables are missing. Please contact HSES.",
-      });
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-
-      const statusResult = await ensureEmailStatus();
-      if (statusResult.status === "not_found") {
-        setNotice({
-          tone: "error",
-          title: "We cannot find that client account",
-          body:
-            "This portal is only for diagnostic clients. Check the email used at purchase or contact ask@hses.com.au.",
-        });
-        return;
-      }
-      if (statusResult.status === "unconfirmed") {
-        setNotice({
-          tone: "info",
-          title: "Your account is not authenticated yet",
-          body:
-            "Use the resend option below to verify your email first, then request a reset link.",
-        });
-        return;
-      }
-      if (statusResult.status === "error") {
-        setNotice({
-          tone: "error",
-          title: "We could not check that account",
-          body: "Please try again in a moment, or contact ask@hses.com.au.",
-        });
-        return;
-      }
-
-      const response = await fetch(`${supabaseUrl}/auth/v1/recover`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnonKey as string,
-          Authorization: `Bearer ${supabaseAnonKey}`,
+      setIsResending(true);
+      const { error } = await supabaseBrowser.auth.resend({
+        type: "signup",
+        email: emailTrimmed,
+        options: {
+          emailRedirectTo: `${getSiteUrl()}/auth/set-password`,
         },
-        body: JSON.stringify({
-          email: emailTrimmed,
-          redirect_to: recoverRedirectTo,
-        }),
       });
 
-      if (!response.ok) {
+      if (error) {
         setNotice({
           tone: "error",
-          title: "We could not send that reset link",
-          body: "Please check the email and try again, or contact ask@hses.com.au.",
+          title: "We could not resend that email",
+          body: error.message,
+          allowResend: true,
         });
         return;
       }
 
       setNotice({
         tone: "success",
-        title: "Check your inbox",
-        body:
-          "If that email matches a client account, a reset link is on its way. It can take a few minutes.",
-      });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        title: "Something went wrong",
-        body: "Please try again. If it keeps happening, contact ask@hses.com.au.",
+        title: "Confirmation email sent",
+        body: "Check your inbox and spam folder for a fresh confirmation link.",
+        resent: true,
       });
     } finally {
-      setIsSubmitting(false);
+      setIsResending(false);
     }
   };
 
-  const handleResendVerification = async () => {
+  const handleLoginSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setNotice(null);
 
-    if (!emailTrimmed) {
+    if (!emailTrimmed || !password) {
       setNotice({
         tone: "error",
-        title: "Add your email",
-        body: "Enter your email first so we can resend the authentication email.",
-      });
-      return;
-    }
-
-    if (!canCallSupabase) {
-      setNotice({
-        tone: "error",
-        title: "Login is not configured",
-        body: "Supabase environment variables are missing. Please contact HSES.",
+        title: "Enter your email and password",
+        body: "Use the HSES email and password for your portal account.",
       });
       return;
     }
 
     try {
       setIsSubmitting(true);
-
-      const statusResult = await ensureEmailStatus();
-      if (statusResult.status !== "unconfirmed") {
-        setNotice({
-          tone: "info",
-          title: "Authentication resend is not needed",
-          body:
-            statusResult.status === "confirmed"
-              ? "This account is already authenticated. You can request a reset link."
-              : "We could not confirm that this email belongs to a pending client account.",
-        });
-        return;
-      }
-
-      const response = await fetch(`${supabaseUrl}/auth/v1/resend`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: supabaseAnonKey as string,
-          Authorization: `Bearer ${supabaseAnonKey}`,
-        },
-        body: JSON.stringify({
-          type: "signup",
-          email: emailTrimmed,
-        }),
+      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
+        email: emailTrimmed,
+        password,
       });
 
-      if (!response.ok) {
+      if (error || !data.session) {
+        const normalized = error?.message.toLowerCase() || "";
+        const needsConfirmation =
+          normalized.includes("email not confirmed") ||
+          normalized.includes("not confirmed") ||
+          normalized.includes("confirm your email");
+
         setNotice({
           tone: "error",
-          title: "We could not resend that email",
-          body: "Please check the email and try again, or contact ask@hses.com.au.",
+          title: needsConfirmation ? "Confirm your email first" : "We could not log you in",
+          body: needsConfirmation
+            ? "Your account exists, but the email confirmation step is still pending."
+            : "Check your email and password. If you have not set a password yet, use the reset flow.",
+          allowResend: needsConfirmation,
         });
         return;
       }
 
-      setNotice({
-        tone: "info",
-        title: "Authentication email sent",
-        body:
-          "If your account exists but is not verified yet, we have sent a fresh authentication email.",
+      storePortalSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        user: {
+          email: data.session.user.email,
+          id: data.session.user.id,
+        },
       });
-    } catch (error) {
+
+      if (!rememberMe) {
+        sessionStorage.setItem("hses_session_only", "true");
+      } else {
+        sessionStorage.removeItem("hses_session_only");
+      }
+
+      window.location.assign(returnTo);
+    } catch {
       setNotice({
         tone: "error",
         title: "Something went wrong",
-        body: "Please try again. If it keeps happening, contact ask@hses.com.au.",
+        body: "Please try again. If the issue continues, contact ask@hses.com.au.",
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (isCheckingSession) {
+    return <div className={styles.loading}>Loading portal access...</div>;
+  }
+
+  const submitLabel = isSubmitting ? "Please wait..." : "Log in";
+
+  const forgotHref = emailTrimmed
+    ? `/forgot-password?email=${encodeURIComponent(emailTrimmed)}`
+    : "/forgot-password";
+
   return (
-    <div className="login-body page-stack">
-      <header className="site-header">
-        <div className="header-inner">
-          <div className="header-left">
-            <a href="/">
-              <img
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <section className={styles.panel}>
+          <div className={styles.panelInner}>
+            <div className={styles.brandRow}>
+              <Image
                 src="/images/logo-black.png"
                 alt="HSES Industry Partners"
-                className="header-logo"
+                width={128}
+                height={44}
+                className={styles.brandImage}
               />
-            </a>
-          </div>
-          <div className="header-actions">
-            <a className="btn btn-primary" href="/consult">
-              Book discovery call
-            </a>
-            <a className="btn btn-outline" href="/login">
-              Client portal login
-            </a>
-          </div>
-        </div>
-      </header>
-
-      <main>
-        <section className="login-hero">
-          <div className="login-container login-grid login-grid--single">
-            <div className="login-panel">
-              <img
-                src="/images/login-icon.png"
-                alt=""
-                className="login-panel-logo"
-              />
-              {mode === "login" ? (
-                <>
-                  <h2>Client portal login</h2>
-                  <p>Use login details that your HSES Representative has provided you</p>
-                  <form className="login-form" onSubmit={handleLoginSubmit}>
-                    <label className="field">
-                      <span>Email</span>
-                      <input
-                        type="email"
-                        name="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        required
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Password</span>
-                      <div className="set-password-input-row">
-                        <input
-                          type={showLoginPassword ? "text" : "password"}
-                          name="password"
-                          autoComplete="current-password"
-                          value={loginPassword}
-                          onChange={(event) => setLoginPassword(event.target.value)}
-                          required
-                        />
-                        <button
-                          type="button"
-                          className="set-password-toggle"
-                          onClick={() => setShowLoginPassword((value) => !value)}
-                          aria-pressed={showLoginPassword}
-                          aria-label={showLoginPassword ? "Hide password" : "Show password"}
-                        >
-                          {showLoginPassword ? "Hide" : "Show"}
-                        </button>
-                      </div>
-                    </label>
-                    {loginNotice && (
-                      <div className={`login-notice login-notice--${loginNotice.tone}`} role="status">
-                        <strong>{loginNotice.title}</strong>
-                        <span>{loginNotice.body}</span>
-                      </div>
-                    )}
-                    <button type="submit" className="btn btn-primary" disabled={isLoginSubmitting}>
-                      {isLoginSubmitting ? "Logging in..." : "Log in"}
-                    </button>
-                    <button
-                      type="button"
-                      className="login-link"
-                      onClick={() => {
-                        setLoginNotice(null);
-                        setNotice(null);
-                        setMode("forgot");
-                      }}
-                    >
-                      Forgot your password?
-                    </button>
-                    <div className="login-form-divider" role="presentation">
-                      <span></span>
-                      <span>Secure access</span>
-                      <span></span>
-                    </div>
-                    <p className="form-note">
-                      Need help? Email ask@hses.com.au.
-                    </p>
-                  </form>
-                </>
-              ) : (
-                <>
-                  <h2>Reset your password</h2>
-                  <p>
-                    Enter your diagnostic owner email and we will send a secure reset link.
-                  </p>
-                  <form className="login-form" onSubmit={handleRecover}>
-                    <label className="field">
-                      <span>Email</span>
-                      <input
-                        type="email"
-                        name="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(event) => {
-                          setEmail(event.target.value);
-                          setNotice(null);
-                        }}
-                        required
-                      />
-                    </label>
-                    {mode === "forgot" && emailStatus === "checking" && (
-                      <div className="login-hint" role="status">
-                        Checking your account...
-                      </div>
-                    )}
-                    {notice && (
-                      <div className={`login-notice login-notice--${notice.tone}`} role="status">
-                        <strong>{notice.title}</strong>
-                        <span>{notice.body}</span>
-                      </div>
-                    )}
-                    <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                      {isSubmitting ? "Sending link..." : "Send reset link"}
-                    </button>
-                    {showResendAuth && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={handleResendVerification}
-                        disabled={isSubmitting}
-                      >
-                        Resend authentication email
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="login-link"
-                      onClick={() => {
-                        setNotice(null);
-                        setMode("login");
-                      }}
-                    >
-                      Back to login
-                    </button>
-                    <p className="form-note">
-                      If you do not receive an email, check spam or contact ask@hses.com.au.
-                    </p>
-                  </form>
-                </>
-              )}
+              <span className={styles.brandText}>Client Portal</span>
             </div>
+
+            <div className={styles.copyBlock}>
+              <h1>Secure access for HSES clients.</h1>
+              <p>
+                Sign in to access your dashboard, diagnostics, reporting, and map builder tools.
+              </p>
+            </div>
+
+            <form
+              onSubmit={handleLoginSubmit}
+              className={styles.form}
+            >
+              <label className={styles.field}>
+                <span className={styles.visuallyHidden}>Email address</span>
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+                <Image
+                  src="/icons/email.svg"
+                  alt=""
+                  aria-hidden="true"
+                  width={18}
+                  height={18}
+                  className={styles.fieldIcon}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.visuallyHidden}>Password</span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  <Image
+                    src={showPassword ? "/icons/visible.svg" : "/icons/hidden.svg"}
+                    alt=""
+                    aria-hidden="true"
+                    width={18}
+                    height={18}
+                  />
+                </button>
+              </label>
+
+              <div className={styles.formMeta}>
+                <label className={styles.checkbox}>
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(event) => setRememberMe(event.target.checked)}
+                  />
+                  <span>Remember me</span>
+                </label>
+
+                <Link href={forgotHref} className={styles.metaLink}>
+                  Forgot password?
+                </Link>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className={styles.submitButton}
+              >
+                {submitLabel}
+              </button>
+            </form>
+
+            {notice ? (
+              <div
+                className={`${styles.notice} ${
+                  notice.tone === "error"
+                    ? styles.noticeError
+                    : notice.tone === "success"
+                      ? styles.noticeSuccess
+                      : ""
+                }`}
+                role="status"
+              >
+                <p className={styles.noticeTitle}>{notice.title}</p>
+                <p className={styles.noticeText}>{notice.body}</p>
+                {notice.allowResend && !notice.resent ? (
+                  <button
+                    type="button"
+                    className={styles.inlineButton}
+                    onClick={() => void resendConfirmation()}
+                    disabled={isResending}
+                  >
+                    {isResending ? "Resending..." : "Resend confirmation email"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <p className={styles.authPrompt}>Accounts are created by HSES administrators only.</p>
+
+            <p className={styles.footnote}>
+              By continuing you agree to the <Link href="/privacy">Privacy Policy</Link> and{" "}
+              <Link href="/disclaimer">Website Disclaimer</Link>.
+            </p>
           </div>
         </section>
-      </main>
 
-      <footer className="site-footer">
-        <div className="footer-inner">
-          <span className="footer-copy">&copy; 2025 HSES Industry Partners</span>
-          <div className="footer-links">
-            <a className="footer-link" href="/privacy">
-              Privacy Policy
-            </a>
-            <a className="footer-link" href="/disclaimer">
-              Website Disclaimer
-            </a>
+        <aside className={styles.visualPanel} aria-hidden="true">
+          <div className={styles.visualGlow} />
+          <div className={styles.visualLines} />
+          <div className={styles.visualContent}>
+            <div className={styles.visualIntro}>
+              <p className={styles.visualEyebrow}>HSES Industry Partners</p>
+              <h2 className={styles.visualHeading}>Built for practical safety, systems, and delivery work.</h2>
+              <p className={styles.visualText}>
+                HSES is evolving into a sharper suite of tools for safety professionals who need to plan systems clearly, keep records current, investigate well, assess risk with confidence, and present stronger operational insight.
+              </p>
+              <ul className={styles.visualList}>
+                <li>Bring planning, investigations, risk work, and supporting records into one connected workspace.</li>
+                <li>Track what matters with tools designed to make safety activity easier to structure, review, and communicate.</li>
+                <li>Deliver more polished outputs for leaders, clients, and risk owners without relying on fragmented files.</li>
+              </ul>
+              <div className={styles.visualStats}>
+                <div className={styles.visualStat}>
+                  <span className={styles.visualStatValue}>Connected tools</span>
+                  <span className={styles.visualStatLabel}>A growing workspace for practical safety delivery, not a collection of isolated forms.</span>
+                </div>
+                <div className={styles.visualStat}>
+                  <span className={styles.visualStatValue}>Sharper insight</span>
+                  <span className={styles.visualStatLabel}>Structure data and activity in ways that are easier to review, explain, and act on.</span>
+                </div>
+                <div className={styles.visualStat}>
+                  <span className={styles.visualStatValue}>Professional output</span>
+                  <span className={styles.visualStatLabel}>Present clearer evidence of work, progress, and control to the people relying on it.</span>
+                </div>
+              </div>
+            </div>
+
           </div>
-        </div>
-      </footer>
+        </aside>
+      </div>
     </div>
   );
 }

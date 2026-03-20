@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
+import PortalModal from "@/components/PortalModal";
+import modalStyles from "@/components/PortalModal.module.css";
+import { TableSkeleton } from "@/components/loading/HsesLoaders";
+import PortalTableFooter from "@/components/table/PortalTableFooter";
 
 type RiskAssessmentRow = {
   id: string;
@@ -25,23 +29,26 @@ const formatDateTime = (value: string) =>
   });
 
 export default function RiskAssessmentsListClient() {
+  const pageSize = 7;
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userLabel, setUserLabel] = useState("Current User");
   const [rows, setRows] = useState<RiskAssessmentRow[]>([]);
+  const [selectedAssessmentIds, setSelectedAssessmentIds] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<LookupOption[]>([]);
   const [industries, setIndustries] = useState<LookupOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newStatusId, setNewStatusId] = useState("");
   const [newIndustryId, setNewIndustryId] = useState("");
   const [newIsPublic, setNewIsPublic] = useState(false);
-
-  const rowCountLabel = useMemo(() => `${rows.length} record${rows.length === 1 ? "" : "s"}`, [rows.length]);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const run = async () => {
@@ -100,6 +107,7 @@ export default function RiskAssessmentsListClient() {
         });
 
         setRows(mapped);
+        setSelectedAssessmentIds((current) => current.filter((id) => mapped.some((row) => row.id === id)));
       } catch {
         setError("Unable to load risk assessments.");
       } finally {
@@ -109,6 +117,11 @@ export default function RiskAssessmentsListClient() {
 
     void run();
   }, []);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    setPage((current) => Math.min(current, totalPages));
+  }, [rows.length]);
 
   const formatLabel = (label: string) =>
     (label || "")
@@ -125,6 +138,24 @@ export default function RiskAssessmentsListClient() {
     setNewIndustryId("");
     setNewIsPublic(false);
     setIsCreateModalOpen(true);
+  };
+
+  const allSelected = rows.length > 0 && rows.every((row) => selectedAssessmentIds.includes(row.id));
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedAssessmentIds([]);
+      return;
+    }
+    setSelectedAssessmentIds(rows.map((row) => row.id));
+  };
+
+  const toggleAssessmentSelection = (assessmentId: string) => {
+    setSelectedAssessmentIds((current) =>
+      current.includes(assessmentId)
+        ? current.filter((id) => id !== assessmentId)
+        : [...current, assessmentId]
+    );
   };
 
   const createRiskAssessment = async () => {
@@ -159,18 +190,63 @@ export default function RiskAssessmentsListClient() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!currentUserId || selectedAssessmentIds.length === 0) return;
+    setIsBulkDeleting(true);
+    setError(null);
+    try {
+      const { error: deleteError } = await supabaseBrowser
+        .schema("risk")
+        .from("risk_assessments")
+        .delete()
+        .in("id", selectedAssessmentIds)
+        .eq("owner_user_id", currentUserId);
+
+      if (deleteError) {
+        setError(deleteError.message || "Unable to delete selected risk assessments.");
+        return;
+      }
+
+      setRows((current) => current.filter((row) => !selectedAssessmentIds.includes(row.id)));
+      setSelectedAssessmentIds([]);
+      setIsDeleteModalOpen(false);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  if (isLoading) {
+    return <TableSkeleton rows={pageSize} columns="22% 26% 12% 12% 14% 14%" showToolbar />;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
     <>
-      <div className="dashboard-panel">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-slate-900">Your risk assessments</h2>
-          <div className="flex items-center gap-2">
-            <button type="button" className="btn btn-outline">
-              Search Risk Records
-            </button>
-            <button type="button" className="btn btn-primary" onClick={openCreateModal}>
-              Add New Risk Assessment
-            </button>
+      <div className="risk-assessments-toolbar">
+        <div className="management-table-toolbar">
+          <button
+            type="button"
+            className="management-bulk-delete-button"
+            onClick={() => setIsDeleteModalOpen(true)}
+            disabled={!selectedAssessmentIds.length || isBulkDeleting}
+          >
+            <img src="/icons/delete.svg" alt="" className="management-bulk-delete-button-icon" />
+            <span>{isBulkDeleting ? "Deleting..." : "Bulk Delete"}</span>
+          </button>
+          <div className="management-table-toolbar-actions">
+          <button type="button" className="risk-assessments-toolbar-button risk-assessments-toolbar-button--secondary">
+            Search Risk Records
+          </button>
+          <button
+            type="button"
+            className="risk-assessments-toolbar-button risk-assessments-toolbar-button--primary"
+            onClick={openCreateModal}
+          >
+            Add New Risk Assessment
+          </button>
           </div>
         </div>
         {error ? (
@@ -178,41 +254,55 @@ export default function RiskAssessmentsListClient() {
         ) : null}
       </div>
 
-      <div className="dashboard-panel mt-4" style={{ overflowX: "auto" }}>
-        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+      <div className="dashboard-table-wrap risk-assessments-table-wrap" role="region" aria-label="Risk assessments table">
+        <table className="dashboard-table w-full min-w-[760px] text-left text-sm">
+          <colgroup>
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "17%" }} />
+            <col style={{ width: "21%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "16.5%" }} />
+            <col style={{ width: "16.5%" }} />
+          </colgroup>
           <thead>
-            <tr className="border-b border-slate-200 text-slate-600">
-              <th className="px-3 py-3">Title</th>
-              <th className="px-3 py-3">Description</th>
-              <th className="px-3 py-3">Status</th>
-              <th className="px-3 py-3">Owner</th>
-              <th className="px-3 py-3">Updated</th>
-              <th className="px-3 py-3">Created</th>
+            <tr>
+              <th className="management-checkbox-header">
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all risk assessments" />
+              </th>
+              <th>Title</th>
+              <th>Description</th>
+              <th>Status</th>
+              <th>Owner</th>
+              <th>Updated</th>
+              <th>Created</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
-              <tr>
-                <td className="px-3 py-5 text-slate-600" colSpan={6}>
-                  Loading risk assessments...
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td className="px-3 py-5 text-slate-600" colSpan={6}>
+            {rows.length === 0 ? (
+              <tr className="dashboard-table-empty-row">
+                <td colSpan={7}>
                   No risk assessments have been added yet.
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              paginatedRows.map((row) => (
                 <tr
                   key={row.id}
-                  className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50"
+                  className="dashboard-row-link"
                   onClick={() => {
                     window.location.assign(`/risk-assessments/${row.id}`);
                   }}
                 >
-                  <td className="px-3 py-3 font-semibold text-slate-900">
+                  <td className="management-checkbox-cell" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedAssessmentIds.includes(row.id)}
+                      onChange={() => toggleAssessmentSelection(row.id)}
+                      aria-label={`Select ${row.title}`}
+                    />
+                  </td>
+                  <td className="font-semibold text-slate-900 management-cell-wrap">
                     {row.title}
                     {row.isPublic ? (
                       <span className="ml-2 rounded border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
@@ -220,56 +310,115 @@ export default function RiskAssessmentsListClient() {
                       </span>
                     ) : null}
                   </td>
-                  <td className="max-w-[260px] truncate px-3 py-3 text-slate-600" title={row.description ?? undefined}>
+                  <td className="text-slate-600 management-cell-wrap">
                     {row.description || "-"}
                   </td>
-                  <td className="px-3 py-3 text-slate-600">{row.statusLabel}</td>
-                  <td className="px-3 py-3 text-slate-600">{userLabel}</td>
-                  <td className="px-3 py-3 text-slate-600">{formatDateTime(row.updatedAt)}</td>
-                  <td className="px-3 py-3 text-slate-600">{formatDateTime(row.createdAt)}</td>
+                  <td className="text-slate-600">{row.statusLabel}</td>
+                  <td className="text-slate-600">{userLabel}</td>
+                  <td className="text-slate-600">{formatDateTime(row.updatedAt)}</td>
+                  <td className="text-slate-600">{formatDateTime(row.createdAt)}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-sm text-slate-600">
-        Showing {rowCountLabel} for <strong>{userLabel}</strong>.
-      </p>
-
-      <button
-        type="button"
-        aria-label="Close create risk assessment modal"
-        className={`fixed inset-0 z-[72] bg-slate-900/35 transition-opacity duration-200 ${
-          isCreateModalOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-        }`}
-        onClick={() => setIsCreateModalOpen(false)}
+      <PortalTableFooter
+        total={rows.length}
+        page={safePage}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        label="risk assessments"
       />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Create risk assessment"
-        className={`fixed left-1/2 top-1/2 z-[73] w-full max-w-[680px] -translate-x-1/2 -translate-y-1/2 rounded-none border border-slate-300 bg-white p-5 shadow-xl transition-all duration-200 ${
-          isCreateModalOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-        }`}
+
+      <PortalModal
+        open={isDeleteModalOpen}
+        ariaLabel="Delete selected risk assessments"
+        eyebrow="Bulk Delete"
+        title="Delete selected risk assessments?"
+        description={`You are about to permanently delete ${selectedAssessmentIds.length} selected risk assessment${selectedAssessmentIds.length === 1 ? "" : "s"}.`}
+        onClose={() => {
+          if (isBulkDeleting) return;
+          setIsDeleteModalOpen(false);
+        }}
+        footer={
+          <>
+            <button
+              type="button"
+              className={modalStyles.secondaryButton}
+              onClick={() => setIsDeleteModalOpen(false)}
+              disabled={isBulkDeleting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={modalStyles.dangerButton}
+              onClick={() => void handleBulkDelete()}
+              disabled={isBulkDeleting}
+            >
+              {isBulkDeleting ? "Deleting..." : "Delete selected"}
+            </button>
+          </>
+        }
       >
-        <div className="border-b border-slate-200 pb-3">
-          <h3 className="text-xl font-semibold text-slate-900">Create New Risk Assessment</h3>
-          <p className="mt-1 text-sm text-slate-600">Enter assessment details, then select Create or Cancel.</p>
+        <div className={modalStyles.stack}>
+          <div className={modalStyles.noticeError}>This cannot be undone.</div>
         </div>
-        <div className="mt-4 dashboard-input-stack">
-          <label className="dashboard-field">
-            <span>Risk Assessment Title</span>
-            <input className="dashboard-input" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-          </label>
-          <label className="dashboard-field">
-            <span>Description</span>
-            <textarea className="dashboard-textarea" rows={3} value={newDescription} onChange={(e) => setNewDescription(e.target.value)} />
-          </label>
-          <div className="dashboard-input-row">
-            <label className="dashboard-field">
-              <span>Status</span>
-              <select className="dashboard-input" value={newStatusId} onChange={(e) => setNewStatusId(e.target.value)}>
+      </PortalModal>
+
+      <PortalModal
+        open={isCreateModalOpen}
+        ariaLabel="Create risk assessment"
+        eyebrow="New Risk Assessment"
+        title="Create your risk assessment"
+        description="Add the core assessment details, then create the record."
+        onClose={() => setIsCreateModalOpen(false)}
+        footer={
+          <>
+            <button
+              type="button"
+              className={modalStyles.secondaryButton}
+              onClick={() => setIsCreateModalOpen(false)}
+              disabled={isCreating}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={modalStyles.primaryButton}
+              onClick={() => void createRiskAssessment()}
+              disabled={isCreating}
+            >
+              {isCreating ? "Creating..." : "Create new"}
+            </button>
+          </>
+        }
+      >
+        <div className={modalStyles.stack}>
+          <div className={modalStyles.field}>
+            <span className={modalStyles.fieldLabel}>Title</span>
+            <input
+              className={modalStyles.input}
+              placeholder="Example: Construction site mobilisation risk assessment"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+            />
+          </div>
+          <div className={modalStyles.field}>
+            <span className={modalStyles.fieldLabel}>Description</span>
+            <textarea
+              className={modalStyles.textarea}
+              rows={4}
+              placeholder="Describe the scope, work area, or purpose of this assessment."
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+            />
+          </div>
+          <div className={modalStyles.row}>
+            <div className={modalStyles.field}>
+              <span className={modalStyles.fieldLabel}>Status</span>
+              <select className={modalStyles.select} value={newStatusId} onChange={(e) => setNewStatusId(e.target.value)}>
                 <option value="">Select status</option>
                 {statuses.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -277,10 +426,10 @@ export default function RiskAssessmentsListClient() {
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="dashboard-field">
-              <span>Industry</span>
-              <select className="dashboard-input" value={newIndustryId} onChange={(e) => setNewIndustryId(e.target.value)}>
+            </div>
+            <div className={modalStyles.field}>
+              <span className={modalStyles.fieldLabel}>Industry</span>
+              <select className={modalStyles.select} value={newIndustryId} onChange={(e) => setNewIndustryId(e.target.value)}>
                 <option value="">Select industry</option>
                 {industries.map((i) => (
                   <option key={i.id} value={i.id}>
@@ -288,23 +437,15 @@ export default function RiskAssessmentsListClient() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           </div>
-          <label className="dashboard-checkbox">
+          <label className={modalStyles.checkboxRow}>
             <input type="checkbox" checked={newIsPublic} onChange={(e) => setNewIsPublic(e.target.checked)} />
             <span>Public risk assessment</span>
           </label>
-          {createError ? <p className="dashboard-form-error">{createError}</p> : null}
-          <div className="flex items-center gap-2">
-            <button type="button" className="btn btn-primary" onClick={() => void createRiskAssessment()} disabled={isCreating}>
-              {isCreating ? "Creating..." : "Create"}
-            </button>
-            <button type="button" className="btn btn-outline" onClick={() => setIsCreateModalOpen(false)} disabled={isCreating}>
-              Cancel
-            </button>
-          </div>
+          {createError ? <div className={modalStyles.noticeError}>{createError}</div> : null}
         </div>
-      </div>
+      </PortalModal>
     </>
   );
 }

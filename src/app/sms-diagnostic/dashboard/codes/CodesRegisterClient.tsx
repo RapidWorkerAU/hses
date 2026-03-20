@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { fetchWithSession } from "../portalAuth";
+import { TableSkeleton } from "@/components/loading/HsesLoaders";
+import PortalTableFooter from "@/components/table/PortalTableFooter";
 
 type CodeRow = {
   id: string;
@@ -42,7 +44,7 @@ export default function CodesRegisterClient() {
   const [searchTerm, setSearchTerm] = useState("");
   const [codeTypeFilter, setCodeTypeFilter] = useState("All");
   const [usageFilter, setUsageFilter] = useState("All");
-  const [pageSize, setPageSize] = useState(10);
+  const pageSize = 7;
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -342,7 +344,7 @@ export default function CodesRegisterClient() {
   );
 
   if (isLoading) {
-    return <div className="dashboard-empty">Loading codes...</div>;
+    return <TableSkeleton rows={pageSize} columns="18% 14% 18% 16% 14%" showToolbar />;
   }
 
   if (error) {
@@ -415,21 +417,6 @@ export default function CodesRegisterClient() {
                 onChange={(event) => setSearchTerm(event.target.value)}
               />
             </label>
-            <label className="dashboard-filter">
-              <span>Rows</span>
-              <select
-                className="dashboard-select"
-                value={pageSize}
-                onChange={(event) => {
-                  setPageSize(Number(event.target.value));
-                  setCurrentPage(1);
-                }}
-              >
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-              </select>
-            </label>
           </div>
         </div>
 
@@ -483,7 +470,7 @@ export default function CodesRegisterClient() {
                 );
               })}
               {filteredCodes.length === 0 && (
-                <tr>
+                <tr className="dashboard-table-empty-row">
                   <td colSpan={5}>No codes available yet.</td>
                 </tr>
               )}
@@ -491,29 +478,13 @@ export default function CodesRegisterClient() {
           </table>
         </div>
 
-        {filteredCodes.length > 0 && (
-          <div className="dashboard-pagination">
-            <button
-              className="btn btn-outline btn-small"
-              type="button"
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={safePage === 1}
-            >
-              Prev
-            </button>
-            <span className="dashboard-pagination-label">
-              Page {safePage} of {totalPages}
-            </span>
-            <button
-              className="btn btn-outline btn-small"
-              type="button"
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={safePage === totalPages}
-            >
-              Next
-            </button>
-          </div>
-        )}
+        <PortalTableFooter
+          total={filteredCodes.length}
+          page={safePage}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          label="codes"
+        />
       </section>
     </div>
   );
