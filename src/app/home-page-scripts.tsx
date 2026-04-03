@@ -20,9 +20,15 @@ export default function HomePageScripts() {
     const dialog = modal.querySelector<HTMLElement>(".modal-dialog");
     const openers = document.querySelectorAll<HTMLElement>(".js-open-modal");
     const closers = modal.querySelectorAll<HTMLElement>(".js-close-modal");
-    const trustTrack = document.querySelector<HTMLElement>(".trust-logos");
-    const trustPrev = document.querySelector<HTMLElement>(".trust-nav--prev");
-    const trustNext = document.querySelector<HTMLElement>(".trust-nav--next");
+    const trustTrack =
+      document.querySelector<HTMLElement>("[data-trust-track]") ??
+      document.querySelector<HTMLElement>(".trust-logos");
+    const trustPrev =
+      document.querySelector<HTMLElement>("[data-trust-prev]") ??
+      document.querySelector<HTMLElement>(".trust-nav--prev");
+    const trustNext =
+      document.querySelector<HTMLElement>("[data-trust-next]") ??
+      document.querySelector<HTMLElement>(".trust-nav--next");
     let trustIndex = 0;
 
     const open = () => {
@@ -58,7 +64,11 @@ export default function HomePageScripts() {
 
     const updateTrustSlide = () => {
       if (!trustTrack) return;
-      const totalSlides = Math.ceil(trustTrack.querySelectorAll("img").length / 2);
+      const slideCount = trustTrack.querySelectorAll<HTMLElement>("[data-trust-slide]").length;
+      const totalSlides =
+        slideCount > 0
+          ? slideCount
+          : Math.ceil(trustTrack.querySelectorAll("img").length / 2);
       if (trustIndex >= totalSlides) trustIndex = 0;
       if (trustIndex < 0) trustIndex = totalSlides - 1;
       trustTrack.style.transform = `translateX(-${trustIndex * 100}%)`;
@@ -84,7 +94,9 @@ export default function HomePageScripts() {
     }
 
     const mobileMenu = document.querySelector<HTMLElement>("[data-mobile-menu]");
-    const mobileMenuToggle = document.querySelector<HTMLElement>(".js-mobile-menu-toggle");
+    const mobileMenuToggle =
+      document.querySelector<HTMLElement>("[data-mobile-menu-toggle]") ??
+      document.querySelector<HTMLElement>(".js-mobile-menu-toggle");
     const mobileMenuClosers = mobileMenu?.querySelectorAll<HTMLElement>(".js-close-mobile-menu");
     const openMobileMenu = () => {
       if (!mobileMenu) return;

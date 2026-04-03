@@ -63,6 +63,7 @@ type AsideShellProps = {
 function AsideShell({ isMobile, leftAsideSlideIn, title, onClose, children }: AsideShellProps) {
   return (
     <aside
+      data-left-aside="true"
       className={`fixed z-[75] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300 ${
         isMobile ? "inset-0 w-full max-w-full" : "bottom-0 left-0 top-[70px] w-full max-w-[420px]"
       }`}
@@ -656,6 +657,8 @@ type TableAsideProps = {
   setTableColumnsDraft: (value: string) => void;
   tableHeaderBgDraft: string;
   setTableHeaderBgDraft: (value: string) => void;
+  tableHeaderFillModeDraft: "fill" | "outline";
+  setTableHeaderFillModeDraft: (value: "fill" | "outline") => void;
   tableBoldDraft: boolean;
   setTableBoldDraft: (value: boolean) => void;
   tableItalicDraft: boolean;
@@ -683,6 +686,8 @@ export function TableAside({
   setTableColumnsDraft,
   tableHeaderBgDraft,
   setTableHeaderBgDraft,
+  tableHeaderFillModeDraft,
+  setTableHeaderFillModeDraft,
   tableMinRows,
   tableMinColumns,
   onDelete,
@@ -780,6 +785,26 @@ export function TableAside({
         </div>
         <div className="text-sm text-white">
           <div className="mb-2">Top Row Background (optional)</div>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className={`rounded-none border px-3 py-2 text-sm ${
+                tableHeaderFillModeDraft === "fill" ? "border-white bg-white text-black" : "border-slate-300 bg-transparent text-white"
+              }`}
+              onClick={() => setTableHeaderFillModeDraft("fill")}
+            >
+              Filled
+            </button>
+            <button
+              type="button"
+              className={`rounded-none border px-3 py-2 text-sm ${
+                tableHeaderFillModeDraft === "outline" ? "border-white bg-white text-black" : "border-slate-300 bg-transparent text-white"
+              }`}
+              onClick={() => setTableHeaderFillModeDraft("outline")}
+            >
+              Outline
+            </button>
+          </div>
           <div className="mt-2 w-full border border-slate-300 bg-white p-[2px]">
             {squarePaletteRows.map((row, rowIndex) => (
               <div
@@ -1245,6 +1270,7 @@ type PersonPropertiesAsideProps = {
   isMobile: boolean;
   leftAsideSlideIn: boolean;
   mapCategoryId: MapCategoryId;
+  selectedPersonElementType: "person" | "org_chart_person" | null;
   personRoleDraft: string;
   setPersonRoleDraft: (value: string) => void;
   personRoleIdDraft: string;
@@ -1280,6 +1306,7 @@ export function PersonPropertiesAside({
   isMobile,
   leftAsideSlideIn,
   mapCategoryId,
+  selectedPersonElementType,
   personRoleDraft,
   setPersonRoleDraft,
   personRoleIdDraft,
@@ -1310,7 +1337,7 @@ export function PersonPropertiesAside({
   relationshipSectionProps,
 }: PersonPropertiesAsideProps) {
   if (!open) return null;
-  const isOrgChart = mapCategoryId === "org_chart";
+  const isOrgChart = selectedPersonElementType === "org_chart_person";
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Person Properties" onClose={onClose}>
       <div className="mt-3">
@@ -1580,21 +1607,13 @@ export function BowtiePropertiesAside({
         </button>
       </div>
       <div className="mt-4 space-y-3">
-        {!isIncidentElement && !isRiskRating ? (
-          <label className="text-sm text-white">Label
-            <input
-              className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-black"
-              value={bowtieHeadingDraft}
-              onChange={(e) => setBowtieHeadingDraft(e.target.value)}
-            />
-          </label>
-        ) : isRiskRating ? (
+        {isRiskRating ? (
           <div className="text-sm text-white">Label
             <div className="mt-1 rounded border border-slate-300 bg-[#0f2942] px-3 py-2 text-white">{riskLevelLabel}</div>
           </div>
         ) : (
           <div className="text-sm text-white">Label
-            <div className="mt-1 rounded border border-slate-300 bg-[#0f2942] px-3 py-2 text-white">{bowtieHeadingDraft || title}</div>
+            <div className="mt-1 rounded border border-slate-300 bg-[#0f2942] px-3 py-2 text-white">{title}</div>
           </div>
         )}
         {!isRiskRating ? (
@@ -2247,6 +2266,7 @@ export function DocumentPropertiesAside({
   if (!open) return null;
   return (
     <aside
+      data-left-aside="true"
       className="fixed bottom-0 left-0 top-[70px] z-[75] w-full max-w-[420px] border-r border-[#0b1f33] bg-[#102a43] text-slate-100 shadow-[12px_0_30px_rgba(2,12,27,0.45)] transition-transform duration-300"
       style={{ transform: leftAsideSlideIn ? "translateX(0)" : "translateX(-100%)" }}
     >

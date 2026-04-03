@@ -12,8 +12,7 @@ import type {
 } from "./canvasShared";
 import {
   getDefaultRelationshipCategoryForMap,
-  incidentRelationshipCategoryOptions,
-  orgChartRelationshipCategoryOptions,
+  getRelationshipCategoryLabel,
 } from "./canvasShared";
 import type { MapCategoryId } from "./mapCategories";
 
@@ -118,52 +117,38 @@ export function useCanvasRelationNodeActions({
 }: UseCanvasRelationNodeActionsParams) {
   const getRelationshipPersistenceFields = useCallback(
     (category: RelationshipCategory, customType: string) => {
-      if (mapCategoryId !== "incident_investigation") {
-        if (mapCategoryId === "org_chart") {
-          return {
-            relationship_category: "other" as const,
-            relationship_custom_type: "direct_report",
-          };
-        }
-        return {
-          relationship_category: category,
-          relationship_custom_type: category === "other" ? customType.trim() || null : null,
-        };
-      }
-
+      const directCategories = new Set<RelationshipCategory>([
+        "information",
+        "systems",
+        "process",
+        "data",
+        "leads_to",
+        "contributes_to",
+        "evidence_for",
+        "barrier_for",
+        "recommends",
+        "reports_to",
+        "other",
+      ]);
       if (category === "other") {
         return {
           relationship_category: "other" as const,
           relationship_custom_type: customType.trim() || null,
         };
       }
-
-      const mappedLabel =
-        incidentRelationshipCategoryOptions.find((option) => option.value === category)?.label ?? category;
-
+      if (directCategories.has(category)) {
+        return {
+          relationship_category: category,
+          relationship_custom_type: null,
+        };
+      }
       return {
         relationship_category: "other" as const,
-        relationship_custom_type: mappedLabel,
+        relationship_custom_type: getRelationshipCategoryLabel(category, null),
       };
     },
-    [mapCategoryId]
+    []
   );
-
-  const getRelationTypeByKinds = useCallback((sourceKind: string, targetKind: string) => {
-    const key = `${sourceKind}->${targetKind}`;
-    const table: Record<string, string> = {
-      "bowtie_hazard->bowtie_top_event": "contains",
-      "bowtie_threat->bowtie_top_event": "leads_to",
-      "bowtie_threat->bowtie_control": "controlled_by",
-      "bowtie_top_event->bowtie_consequence": "results_in",
-      "bowtie_consequence->bowtie_control": "mitigated_by",
-      "bowtie_control->bowtie_escalation_factor": "degraded_by",
-      "bowtie_escalation_factor->bowtie_control": "managed_by",
-      "bowtie_control->bowtie_degradation_indicator": "indicated_by",
-      "bowtie_control->person": "owned_by",
-    };
-    return table[key] || null;
-  }, []);
 
   const handleAddRelation = useCallback(async () => {
     if (!canWriteMap) {
@@ -177,67 +162,32 @@ export function useCanvasRelationNodeActions({
     const hasGroupingTarget = !!relationshipTargetGroupingId;
     const hasDocumentTarget = !!relationshipTargetDocumentId;
     const hasSystemTarget = !!relationshipTargetSystemId;
-    if (hasGroupingSource) {
-      if (!hasGroupingTarget) return;
-    } else if (hasSystemSource) {
-      if (!hasDocumentTarget && !hasSystemTarget) return;
-    } else if (!hasDocumentTarget && !hasSystemTarget) {
+    if (!hasGroupingTarget && !hasDocumentTarget && !hasSystemTarget) {
       return;
     }
-    const exists = hasGroupingSource
-      ? relations.some(
-          (r) =>
-            (r.source_grouping_element_id === relationshipSourceGroupingId && r.target_grouping_element_id === relationshipTargetGroupingId) ||
-            (r.source_grouping_element_id === relationshipTargetGroupingId && r.target_grouping_element_id === relationshipSourceGroupingId)
-        )
-      : hasNodeSource
-        ? hasDocumentTarget
-        ? relations.some(
-            (r) =>
-              (r.from_node_id === relationshipSourceNodeId && r.to_node_id === relationshipTargetDocumentId) ||
-              (r.from_node_id === relationshipTargetDocumentId && r.to_node_id === relationshipSourceNodeId)
-          )
-        : relations.some(
-            (r) =>
-              r.from_node_id === relationshipSourceNodeId &&
-              r.target_system_element_id === relationshipTargetSystemId
-          )
-        : hasDocumentTarget
-          ? relations.some(
-              (r) =>
-                (r.source_system_element_id === relationshipSourceSystemId && r.to_node_id === relationshipTargetDocumentId) ||
-                (r.from_node_id === relationshipTargetDocumentId && r.target_system_element_id === relationshipSourceSystemId)
-            )
-          : relations.some(
-              (r) =>
-                (r.source_system_element_id === relationshipSourceSystemId && r.target_system_element_id === relationshipTargetSystemId) ||
-                (r.source_system_element_id === relationshipTargetSystemId && r.target_system_element_id === relationshipSourceSystemId)
-            );
+    const sourceEndpoint = hasNodeSource
+      ? { kind: "document" as const, id: relationshipSourceNodeId }
+      : hasSystemSource
+      ? { kind: "system" as const, id: relationshipSourceSystemId }
+      : { kind: "grouping" as const, id: relationshipSourceGroupingId };
+    const targetEndpoint = hasDocumentTarget
+      ? { kind: "document" as const, id: relationshipTargetDocumentId }
+      : hasSystemTarget
+      ? { kind: "system" as const, id: relationshipTargetSystemId }
+      : { kind: "grouping" as const, id: relationshipTargetGroupingId };
+    const rowHasEndpoint = (
+      row: NodeRelationRow,
+      endpoint: { kind: "document" | "system" | "grouping"; id: string | null }
+    ) => {
+      if (!endpoint.id) return false;
+      if (endpoint.kind === "document") return row.from_node_id === endpoint.id || row.to_node_id === endpoint.id;
+      if (endpoint.kind === "system") return row.source_system_element_id === endpoint.id || row.target_system_element_id === endpoint.id;
+      return row.source_grouping_element_id === endpoint.id || row.target_grouping_element_id === endpoint.id;
+    };
+    const exists = relations.some((row) => rowHasEndpoint(row, sourceEndpoint) && rowHasEndpoint(row, targetEndpoint));
     if (exists) {
       setError("Relationship already exists for this target.");
       return;
-    }
-    const sourceElement = hasSystemSource ? elements.find((el) => el.id === relationshipSourceSystemId) : null;
-    const targetElement = hasSystemTarget ? elements.find((el) => el.id === relationshipTargetSystemId) : null;
-    const sourceKind = hasNodeSource ? "document" : sourceElement?.element_type || (hasGroupingSource ? "grouping_container" : "");
-    const targetKind = hasDocumentTarget ? "document" : targetElement?.element_type || (hasGroupingTarget ? "grouping_container" : "");
-    const bowTieRelationType = getRelationTypeByKinds(sourceKind, targetKind);
-    const isImageRelation = sourceKind === "image_asset" || targetKind === "image_asset";
-    if (mapCategoryId === "bow_tie") {
-      if (!bowTieRelationType && !isImageRelation) {
-        setError("This relationship is not allowed in Bow Tie maps.");
-        return;
-      }
-    }
-    if (mapCategoryId === "org_chart") {
-      if (hasNodeSource || hasGroupingSource || hasDocumentTarget || !hasSystemSource || !hasSystemTarget) {
-        setError("Org Chart relationships must be person-to-person.");
-        return;
-      }
-      if (sourceElement?.element_type !== "person" || targetElement?.element_type !== "person") {
-        setError("Only person nodes can be linked in Org Chart maps.");
-        return;
-      }
     }
     const persistedRelationship = getRelationshipPersistenceFields(relationshipCategory, relationshipCustomType);
     const { data, error: e } = await supabaseBrowser
@@ -249,9 +199,9 @@ export function useCanvasRelationNodeActions({
         source_system_element_id: hasSystemSource ? relationshipSourceSystemId : null,
         to_node_id: hasDocumentTarget ? relationshipTargetDocumentId : null,
         source_grouping_element_id: hasGroupingSource ? relationshipSourceGroupingId : null,
-        target_grouping_element_id: hasGroupingSource && hasGroupingTarget ? relationshipTargetGroupingId : null,
+        target_grouping_element_id: hasGroupingTarget ? relationshipTargetGroupingId : null,
         target_system_element_id: hasSystemTarget ? relationshipTargetSystemId : null,
-        relation_type: mapCategoryId === "bow_tie" ? (bowTieRelationType || "related") : mapCategoryId === "org_chart" ? "reports_to" : "related",
+        relation_type: "related",
         relationship_description: relationshipDescription.trim() || null,
         relationship_disciplines: relationshipDisciplineSelection.length ? relationshipDisciplineSelection : null,
         relationship_category: persistedRelationship.relationship_category,
@@ -272,7 +222,6 @@ export function useCanvasRelationNodeActions({
     mapCategoryId,
     relations,
     elements,
-    getRelationTypeByKinds,
     relationshipCategory,
     relationshipCustomType,
     relationshipDescription,
@@ -310,19 +259,6 @@ export function useCanvasRelationNodeActions({
       setError("Please enter a custom relationship type.");
       return;
     }
-    if (mapCategoryId === "org_chart") {
-      const current = relations.find((r) => r.id === id);
-      if (!current || !current.source_system_element_id || !current.target_system_element_id) {
-        setError("Org Chart relationships must be person-to-person.");
-        return;
-      }
-      const sourcePerson = elements.find((el) => el.id === current.source_system_element_id)?.element_type === "person";
-      const targetPerson = elements.find((el) => el.id === current.target_system_element_id)?.element_type === "person";
-      if (!sourcePerson || !targetPerson) {
-        setError("Only person nodes can be linked in Org Chart maps.");
-        return;
-      }
-    }
     const persistedRelationship = getRelationshipPersistenceFields(editingRelationCategory, editingRelationCustomType);
     const updatePayload: Record<string, unknown> = {
       relationship_description: editingRelationDescription.trim() || null,
@@ -330,7 +266,6 @@ export function useCanvasRelationNodeActions({
       relationship_custom_type: persistedRelationship.relationship_custom_type,
       relationship_disciplines: editingRelationDisciplines.length ? editingRelationDisciplines : null,
     };
-    if (mapCategoryId === "org_chart") updatePayload.relation_type = "reports_to";
     const { data, error: e } = await supabaseBrowser
       .schema("ms")
       .from("node_relations")
@@ -356,7 +291,6 @@ export function useCanvasRelationNodeActions({
     editingRelationCustomType,
     editingRelationDescription,
     editingRelationDisciplines,
-    elements,
     mapId,
     mapCategoryId,
     relations,
@@ -407,7 +341,7 @@ export function useCanvasRelationNodeActions({
     setSelectedNodeId,
   ]);
 
-  const handleSaveNode = useCallback(async () => {
+  const handleSaveNode = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) {
       setError("You have view access only for this map.");
       return;
@@ -445,7 +379,7 @@ export function useCanvasRelationNodeActions({
     }
     const updated = data as DocumentNodeRow;
     setNodes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
-    setSelectedNodeId(null);
+    if (options?.closeAfterSave !== false) setSelectedNodeId(null);
   }, [
     canWriteMap,
     disciplineSelection,

@@ -162,6 +162,7 @@ export type FlowData = {
   typeName: string;
   title: string;
   description?: string;
+  showInfoButton?: boolean;
   metaLabel?: string;
   metaSubLabel?: string;
   metaLabelSecondary?: string;
@@ -178,6 +179,15 @@ export type FlowData = {
   disciplineKeys: string[];
   bannerBg: string;
   bannerText: string;
+  incidentTags?: Array<{
+    key: string;
+    label: string;
+    iconSrc: string;
+    pillBg: string;
+    pillText: string;
+  }>;
+  incidentDetailOpen?: boolean;
+  onToggleIncidentDetail?: (nextOpen: boolean) => void;
   isLandscape: boolean;
   isUnconfigured: boolean;
   isCritical?: boolean;
@@ -204,6 +214,7 @@ export type FlowData = {
     rows: number;
     columns: number;
     headerRowBg: string | null;
+    headerRowMode?: "fill" | "outline";
     cellTexts?: string[][];
     cellStyles?: Array<Array<{
       bold?: boolean;
@@ -244,7 +255,16 @@ export type RelationshipCategory =
   | "systems"
   | "process"
   | "data"
+  | "influenced_by"
+  | "influences"
+  | "responsible_for"
+  | "controls"
+  | "controlled_by"
+  | "risk_level"
+  | "energy_type"
   | "leads_to"
+  | "mitigated_by"
+  | "mitigates"
   | "contributes_to"
   | "evidence_for"
   | "barrier_for"
@@ -252,6 +272,10 @@ export type RelationshipCategory =
   | "reports_to"
   | "other";
 export type RelationshipCategoryOption = { value: RelationshipCategory; label: string };
+export type RelationshipCategoryGroup = {
+  label: string;
+  options: RelationshipCategoryOption[];
+};
 export type SelectionMarquee = {
   active: boolean;
   startClientX: number;
@@ -342,6 +366,8 @@ export const bowtieSquareHeight = minorGridSize * 4;
 export const bowtieControlHeight = minorGridSize * 4;
 export const bowtieRiskRatingHeight = minorGridSize * 3;
 export const incidentDefaultWidth = minorGridSize * 6;
+export const incidentCardWidth = minorGridSize * 9;
+export const incidentCardHeight = minorGridSize * 6;
 export const incidentThreeTwoHeight = Math.round((incidentDefaultWidth * 2) / 3);
 export const incidentSquareSize = incidentDefaultWidth;
 export const incidentFourThreeHeight = Math.round((incidentDefaultWidth * 3) / 4);
@@ -390,6 +416,7 @@ export const parsePersonLabels = (heading: string | null | undefined) => {
 };
 export const buildPersonHeading = (role: string, department: string) =>
   `${role.trim() || "Role Name"}\n${department.trim() || "Department"}`;
+export const isPersonElementType = (elementType: CanvasElementRow["element_type"]) => elementType === "person";
 export type OrgChartEmploymentType = "fte" | "contractor";
 export type OrgChartPersonConfig = {
   position_title: string;
@@ -454,6 +481,13 @@ export const parseOrgChartPersonConfig = (value: unknown): OrgChartPersonConfig 
     proposed_role: Boolean(raw.proposed_role),
     direct_report_count: Number.isFinite(directReportRaw) ? Math.max(0, Math.floor(directReportRaw)) : 0,
   };
+};
+export const isOrgChartPersonElement = (element: Pick<CanvasElementRow, "element_type" | "element_config"> | null | undefined) => {
+  if (!element || element.element_type !== "person") return false;
+  const raw = (element.element_config && typeof element.element_config === "object"
+    ? (element.element_config as Record<string, unknown>)
+    : null);
+  return String(raw?.display_variant ?? "").trim().toLowerCase() === "org_chart";
 };
 export const getOrgChartPersonLabel = (cfg: OrgChartPersonConfig) => {
   if (cfg.occupant_name) return cfg.occupant_name;
@@ -577,7 +611,16 @@ export const getRelationshipCategoryLabel = (category: string | null | undefined
     systems: "Systems",
     process: "Process",
     data: "Data",
+    influenced_by: "Influenced By",
+    influences: "Influences",
+    responsible_for: "Responsible For",
+    controls: "Controls",
+    controlled_by: "Controlled By",
+    risk_level: "Risk Level",
+    energy_type: "Energy Type",
     leads_to: "Leads To",
+    mitigated_by: "Mitigated By",
+    mitigates: "Mitigates",
     contributes_to: "Contributes To",
     evidence_for: "Evidence For",
     barrier_for: "Barrier For",
@@ -587,36 +630,72 @@ export const getRelationshipCategoryLabel = (category: string | null | undefined
   if (!normalized) return "Information";
   return labelByCategory[normalized] || (normalized.charAt(0).toUpperCase() + normalized.slice(1));
 };
-
 export const defaultRelationshipCategoryOptions: RelationshipCategoryOption[] = [
   { value: "information", label: "Information" },
   { value: "systems", label: "Systems" },
   { value: "process", label: "Process" },
   { value: "data", label: "Data" },
-  { value: "other", label: "Other" },
 ];
 
-export const incidentRelationshipCategoryOptions: RelationshipCategoryOption[] = [
+export const bowtieIncidentRelationshipCategoryOptions: RelationshipCategoryOption[] = [
+  { value: "influenced_by", label: "Influenced By" },
+  { value: "influences", label: "Influences" },
+  { value: "responsible_for", label: "Responsible For" },
+  { value: "controls", label: "Controls" },
+  { value: "controlled_by", label: "Controlled By" },
+  { value: "risk_level", label: "Risk Level" },
+  { value: "energy_type", label: "Energy Type" },
   { value: "leads_to", label: "Leads To" },
+  { value: "mitigated_by", label: "Mitigated By" },
+  { value: "mitigates", label: "Mitigates" },
   { value: "contributes_to", label: "Contributes To" },
   { value: "evidence_for", label: "Evidence For" },
   { value: "barrier_for", label: "Barrier For" },
   { value: "recommends", label: "Recommends" },
-  { value: "other", label: "Other" },
 ];
+export const incidentRelationshipCategoryOptions = bowtieIncidentRelationshipCategoryOptions;
 export const orgChartRelationshipCategoryOptions: RelationshipCategoryOption[] = [
   { value: "reports_to", label: "Reports To" },
 ];
+export const customRelationshipCategoryOptions: RelationshipCategoryOption[] = [
+  { value: "other", label: "Other" },
+];
+export const allRelationshipCategoryGroups: RelationshipCategoryGroup[] = [
+  { label: "General", options: defaultRelationshipCategoryOptions },
+  { label: "Bow Tie / Incident", options: bowtieIncidentRelationshipCategoryOptions },
+  { label: "Org Chart", options: orgChartRelationshipCategoryOptions },
+  { label: "Custom", options: customRelationshipCategoryOptions },
+];
 
-export const getRelationshipCategoryOptions = (mapCategoryId: string | null | undefined): RelationshipCategoryOption[] =>
-  mapCategoryId === "incident_investigation"
-    ? incidentRelationshipCategoryOptions
-    : mapCategoryId === "org_chart"
-    ? orgChartRelationshipCategoryOptions
-    : defaultRelationshipCategoryOptions;
+export const getRelationshipCategoryOptions = (mapCategoryId: string | null | undefined): RelationshipCategoryOption[] => {
+  const preferredOrder =
+    mapCategoryId === "incident_investigation" || mapCategoryId === "bow_tie"
+      ? ["Bow Tie / Incident", "General", "Org Chart", "Custom"]
+      : mapCategoryId === "org_chart"
+      ? ["Org Chart", "General", "Bow Tie / Incident", "Custom"]
+      : ["General", "Bow Tie / Incident", "Org Chart", "Custom"];
+  return preferredOrder
+    .flatMap((groupLabel) => allRelationshipCategoryGroups.find((group) => group.label === groupLabel)?.options ?? []);
+};
+
+export const getRelationshipCategoryGroups = (mapCategoryId: string | null | undefined): RelationshipCategoryGroup[] => {
+  const preferredOrder =
+    mapCategoryId === "incident_investigation" || mapCategoryId === "bow_tie"
+      ? ["Bow Tie / Incident", "General", "Org Chart", "Custom"]
+      : mapCategoryId === "org_chart"
+      ? ["Org Chart", "General", "Bow Tie / Incident", "Custom"]
+      : ["General", "Bow Tie / Incident", "Org Chart", "Custom"];
+  return preferredOrder
+    .map((groupLabel) => allRelationshipCategoryGroups.find((group) => group.label === groupLabel))
+    .filter((group): group is RelationshipCategoryGroup => !!group);
+};
 
 export const getDefaultRelationshipCategoryForMap = (mapCategoryId: string | null | undefined): RelationshipCategory =>
-  mapCategoryId === "incident_investigation" ? "leads_to" : mapCategoryId === "org_chart" ? "reports_to" : "information";
+  mapCategoryId === "incident_investigation" || mapCategoryId === "bow_tie"
+    ? "leads_to"
+    : mapCategoryId === "org_chart"
+    ? "reports_to"
+    : "information";
 
 export const normalizeRelationshipCategoryForMap = (
   value: string | null | undefined,
@@ -625,15 +704,14 @@ export const normalizeRelationshipCategoryForMap = (
 ): RelationshipCategory => {
   const normalized = (value || "").trim().toLowerCase() as RelationshipCategory;
   const options = getRelationshipCategoryOptions(mapCategoryId);
-  if (mapCategoryId === "incident_investigation" && normalized === "other" && customType?.trim()) {
-    const normalizedCustom = customType.trim().toLowerCase();
-    const match = incidentRelationshipCategoryOptions.find(
-      (option) => option.value !== "other" && option.label.trim().toLowerCase() === normalizedCustom
-    );
-    if (match) return match.value;
-  }
-  if (mapCategoryId === "org_chart" && normalized === "other" && customType?.trim().toLowerCase() === "reports to") {
+  if (normalized === "other" && customType?.trim().toLowerCase() === "reports to") {
     return "reports_to";
+  }
+  if (normalized === "other" && customType?.trim()) {
+    const normalizedCustom = customType.trim().toLowerCase();
+    const flattenedOptions = allRelationshipCategoryGroups.flatMap((group) => group.options).filter((option) => option.value !== "other");
+    const match = flattenedOptions.find((option) => option.label.trim().toLowerCase() === normalizedCustom);
+    if (match) return match.value;
   }
   if (options.some((option) => option.value === normalized)) return normalized;
   return getDefaultRelationshipCategoryForMap(mapCategoryId);
@@ -682,9 +760,18 @@ export const getElementRelationshipTypeLabel = (elementType: CanvasElementRow["e
   return "Component";
 };
 export const getElementDisplayName = (element: CanvasElementRow) => {
+  if (isOrgChartPersonElement(element)) {
+    const cfg = parseOrgChartPersonConfig(element.element_config);
+    return cfg.position_title || "Position Title";
+  }
   if (element.element_type === "person") {
     const labels = parsePersonLabels(element.heading);
     return labels.role;
+  }
+  if (element.element_type.startsWith("bowtie_") || element.element_type.startsWith("incident_")) {
+    const cfg = (element.element_config as Record<string, unknown> | null) ?? {};
+    const description = String(cfg.description ?? "").trim();
+    if (description) return description;
   }
   return element.heading || "Untitled";
 };

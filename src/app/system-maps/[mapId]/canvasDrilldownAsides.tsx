@@ -6,6 +6,7 @@ import {
   type DocumentNodeRow,
   type OutlineItemRow,
   type RelationshipCategory,
+  type RelationshipCategoryGroup,
   type RelationshipCategoryOption,
   getElementDisplayName,
   getElementRelationshipTypeLabel,
@@ -20,6 +21,7 @@ type AddRelationshipAsideProps = {
   relationshipSourceGroupingHeading: string;
   allowDocumentTargets: boolean;
   allowSystemTargets: boolean;
+  allowGroupingTargets: boolean;
   relationshipGroupingQuery: string;
   setRelationshipGroupingQuery: (value: string) => void;
   groupingRelationCandidateIdByLabel: Map<string, string>;
@@ -56,6 +58,7 @@ type AddRelationshipAsideProps = {
   setRelationshipDisciplineSelection: (updater: (prev: DisciplineKey[]) => DisciplineKey[]) => void;
   relationshipCategory: RelationshipCategory;
   setRelationshipCategory: (value: RelationshipCategory) => void;
+  relationshipCategoryGroups: RelationshipCategoryGroup[];
   relationshipCategoryOptions: RelationshipCategoryOption[];
   relationshipCustomType: string;
   setRelationshipCustomType: (value: string) => void;
@@ -76,6 +79,7 @@ export function AddRelationshipAside({
   relationshipSourceGroupingHeading,
   allowDocumentTargets,
   allowSystemTargets,
+  allowGroupingTargets,
   relationshipGroupingQuery,
   setRelationshipGroupingQuery,
   groupingRelationCandidateIdByLabel,
@@ -112,6 +116,7 @@ export function AddRelationshipAside({
   setRelationshipDisciplineSelection,
   relationshipCategory,
   setRelationshipCategory,
+  relationshipCategoryGroups,
   relationshipCategoryOptions,
   relationshipCustomType,
   setRelationshipCustomType,
@@ -128,7 +133,7 @@ export function AddRelationshipAside({
   const showDocumentOptions = showRelationshipDocumentOptions;
   const showSystemOptions = showRelationshipSystemOptions;
   return (
-    <aside className="fixed bottom-0 left-[420px] top-[70px] z-[74] w-full max-w-[420px] border-l border-r border-slate-300 bg-white shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform">
+    <aside data-left-aside="true" className="fixed bottom-0 left-[420px] top-[70px] z-[74] w-full max-w-[420px] border-l border-r border-slate-300 bg-white shadow-[-14px_0_28px_rgba(15,23,42,0.24),0_8px_22px_rgba(15,23,42,0.12)] transition-transform">
       <div className="flex h-full flex-col overflow-auto p-4">
         <div className="flex items-center justify-between border-b border-slate-300 pb-3">
           <h2 className="text-base font-semibold">Add Relationship</h2>
@@ -136,7 +141,7 @@ export function AddRelationshipAside({
         </div>
         <p className="mt-3 text-sm text-slate-600">From: {relationshipSourceLabel || relationshipSourceNodeTitle || relationshipSourceGroupingHeading || "Unknown source"}</p>
         <div className="mt-3 grid gap-3">
-          {relationshipModeGrouping ? (
+          {allowGroupingTargets ? (
             <div className="relative">
               <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Grouping Containers</div>
               <div className="relative flex">
@@ -148,12 +153,18 @@ export function AddRelationshipAside({
                     setRelationshipGroupingQuery(e.target.value);
                     setRelationshipTargetGroupingId("");
                     setShowRelationshipGroupingOptions(() => true);
+                    setShowRelationshipDocumentOptions(() => false);
+                    setShowRelationshipSystemOptions(() => false);
                   }}
                 />
                 <button
                   type="button"
                   className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                  onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
+                  onClick={() => {
+                    setShowRelationshipGroupingOptions((prev) => !prev);
+                    setShowRelationshipDocumentOptions(() => false);
+                    setShowRelationshipSystemOptions(() => false);
+                  }}
                 >
                   {showRelationshipGroupingOptions ? "▲" : "▼"}
                 </button>
@@ -171,13 +182,15 @@ export function AddRelationshipAside({
                           isDisabled ? "cursor-not-allowed bg-slate-50 text-slate-400" : "text-slate-800 hover:bg-slate-50"
                         }`}
                         disabled={isDisabled}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          if (isDisabled) return;
-                          setRelationshipTargetGroupingId(el.id);
-                          setRelationshipGroupingQuery(title);
-                          setShowRelationshipGroupingOptions(() => false);
-                        }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            if (isDisabled) return;
+                            setRelationshipTargetGroupingId(el.id);
+                            setRelationshipTargetDocumentId("");
+                            setRelationshipTargetSystemId("");
+                            setRelationshipGroupingQuery(title);
+                            setShowRelationshipGroupingOptions(() => false);
+                          }}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -194,7 +207,8 @@ export function AddRelationshipAside({
                 </div>
               )}
             </div>
-          ) : (
+          ) : null}
+          {!relationshipModeGrouping ? (
             <>
               {allowDocumentTargets ? <div className="relative">
                 <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
@@ -240,6 +254,7 @@ export function AddRelationshipAside({
                             if (isDisabled) return;
                             setRelationshipTargetDocumentId(n.id);
                             setRelationshipTargetSystemId("");
+                            setRelationshipTargetGroupingId("");
                             setRelationshipDocumentQuery(title);
                             setShowRelationshipDocumentOptions(() => false);
                           }}
@@ -303,8 +318,9 @@ export function AddRelationshipAside({
                             if (isDisabled) return;
                             setRelationshipTargetSystemId(el.id);
                             setRelationshipTargetDocumentId("");
+                            setRelationshipTargetGroupingId("");
                             setRelationshipSystemQuery(title);
-                      setShowRelationshipSystemOptions(() => false);
+                            setShowRelationshipSystemOptions(() => false);
                           }}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -322,13 +338,13 @@ export function AddRelationshipAside({
                   </div>
                 )}
               </div> : null}
-              {!allowDocumentTargets && !allowSystemTargets ? (
+              {!allowDocumentTargets && !allowSystemTargets && !allowGroupingTargets ? (
                 <div className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  No valid target component types are available for this source in Bow Tie mode.
+                  No valid target component types are available for this source.
                 </div>
               ) : null}
             </>
-          )}
+          ) : null}
           <div>
             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Disciplines</div>
             <div className="relative">
@@ -376,10 +392,14 @@ export function AddRelationshipAside({
                 value={relationshipCategory}
                 onChange={(e) => setRelationshipCategory(e.target.value as RelationshipCategory)}
               >
-                {relationshipCategoryOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                {relationshipCategoryGroups.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">▼</span>
@@ -406,9 +426,8 @@ export function AddRelationshipAside({
             <button
               className="rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={
-                (!relationshipModeGrouping && (!allowDocumentTargets && !allowSystemTargets)) ||
-                (!relationshipModeGrouping && !relationshipTargetDocumentId && !relationshipTargetSystemId) ||
-                (relationshipModeGrouping && !relationshipTargetGroupingId) ||
+                (!allowDocumentTargets && !allowSystemTargets && !allowGroupingTargets) ||
+                (!relationshipTargetDocumentId && !relationshipTargetSystemId && !relationshipTargetGroupingId) ||
                 (relationshipCategory === "other" && !relationshipCustomType.trim())
               }
               onClick={() => void onAdd()}

@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import HomePageScripts from "./home-page-scripts";
+import styles from "./HomePage.module.css";
+import PricingEstimator from "./PricingEstimator";
+import HeroRotatingWord from "./HeroRotatingWord";
+import HomePageHeaderActions from "./HomePageHeaderActions";
 
 export const metadata: Metadata = {
   title: "HSES Industry Partners",
@@ -7,377 +11,589 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <div className="home-page">
-      <header className="site-header">
-        <div className="header-inner">
-          <div className="header-left">
-            <a href="/">
+    <div className={styles.page}>
+      <header className={styles.hero}>
+        <div className={`${styles.shell} ${styles.header}`}>
+          <div className={styles.headerRow}>
+            <a href="/" className={styles.logoLink}>
               <img
-                src="/images/logo-black.png"
+                src="/images/logo-original-black.png"
                 alt="HSES Industry Partners"
-                className="header-logo"
+                className={styles.logo}
               />
             </a>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-primary js-open-modal" type="button">
-              Book discovery call
+
+            <nav className={styles.desktopNav} aria-label="Primary">
+              <a className={styles.desktopNavLink} href="#documents">
+                Documents
+              </a>
+              <a className={styles.desktopNavLink} href="#systems">
+                Systems
+              </a>
+              <a className={styles.desktopNavLink} href="#technology">
+                Technology
+              </a>
+            </nav>
+
+            <div className={styles.desktopActions}>
+              <HomePageHeaderActions />
+            </div>
+
+            <button
+              className={styles.menuToggle}
+              type="button"
+              aria-label="Open menu"
+              aria-expanded="false"
+              data-mobile-menu-toggle
+            >
+              <span className={styles.menuToggleInner}>
+                <span className={styles.menuToggleLine}></span>
+                <span className={styles.menuToggleLine}></span>
+                <span className={styles.menuToggleLine}></span>
+              </span>
             </button>
-            <a className="btn btn-outline" href="/login">
-              Client portal login
-            </a>
           </div>
-          <button
-            className="header-menu-toggle js-mobile-menu-toggle"
-            type="button"
-            aria-label="Open menu"
-            aria-expanded="false"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
+        </div>
+
+        <div className={`${styles.shell} ${styles.heroInner}`}>
+          <div className={styles.heroPanel}>
+            <div className={styles.heroPanelCopy}>
+              <h1 className={styles.heroTitle}>
+                <span className={styles.heroTitleTopLine}>
+                  Safety{" "}
+                  <HeroRotatingWord
+                    words={["documents", "systems", "apps", "communications"]}
+                    className={styles.heroTitleRotatingWord}
+                  />
+                </span>
+                <span className={styles.heroTitleBottomLine}>
+                  that make your business look good
+                </span>
+              </h1>
+
+              <div className={styles.heroActions}>
+                <button
+                  className={`${styles.heroButton} ${styles.heroButtonPrimary} js-open-modal`}
+                  type="button"
+                >
+                  Let&apos;s Talk
+                </button>
+                <a
+                  className={`${styles.heroButton} ${styles.heroButtonSecondary}`}
+                  href="#pricing"
+                >
+                  Get a cost estimate
+                </a>
+              </div>
+
+              <a className={styles.heroEmailLink} href="mailto:ask@hses.com.au">
+                Email us directly at ask@hses.com.au
+                <span className={styles.heroEmailArrow} aria-hidden="true">
+                  →
+                </span>
+              </a>
+            </div>
+          </div>
         </div>
       </header>
 
       <main>
-        <section className="hero" id="top">
-          <div className="hero-bg"></div>
-          <div className="hero-overlay"></div>
-          <div className="hero-grid">
-            <div className="hero-copy">
-              <p className="eyebrow">
-                Work Health &amp; Safety (WHS) management systems suited to
-                operational risk.
-              </p>
-              <h1>
-                Health &amp; Safety Management Systems for fast-growing,
-                high-risk businesses in Australia.
-              </h1>
-              <p className="hero-lede">
-                We design, build, document, and implement Work Health &amp;
-                Safety (WHS) Management Systems your clients will accept.
-              </p>
-              <div className="hero-ctas">
-                <button className="btn btn-primary js-open-modal" type="button">
-                  Book a discovery call
-                </button>
-              </div>
-            </div>
-            <div className="hero-visual">
-              <img
-                src="/images/filestransparent.png"
-                alt="Safety system files"
-                className="hero-visual-img"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="trust-strip" aria-label="Clients and standards">
-          <div className="trust-inner logos-only">
-            <h2 className="trust-heading">
-              Projects/ teams we've influenced. Problems we've helped solve.
-              Names you'll recognise.
+        <section className={styles.trust} aria-label="Projects and teams influenced">
+          <div className={`${styles.shell} ${styles.trustInner}`}>
+            <h2 className={styles.trustHeading}>
+              <span className={styles.trustHeadingPrimary}>Teams we&apos;ve influenced.</span>
+              <span className={styles.trustHeadingSecondary}>Names you&apos;ll recognise.</span>
             </h2>
-            <div className="trust-logos-wrap">
-              <button
-                className="trust-nav trust-nav--prev"
-                type="button"
-                aria-label="Previous logos"
-              >
-                &lsaquo;
-              </button>
-              <div className="trust-logos">
-                <img src="/images/rio.png" alt="Rio Tinto logo" />
-                <img src="/images/airport.png" alt="Airport logo" />
-                <img src="/images/enerpac.png" alt="Enerpac logo" />
-                <img src="/images/chevron.png" alt="Chevron logo" />
-                <img src="/images/inpex.png" alt="Inpex logo" />
+
+            <div className={styles.trustCarousel} aria-label="Client logos">
+              <div className={styles.trustTrack}>
+                <div className={styles.trustSlide}>
+                  <img
+                    src="/images/rio.png"
+                    alt="Rio Tinto logo"
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/airport.png"
+                    alt="Perth Airport logo"
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/enerpac.png"
+                    alt="Enerpac logo"
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/chevron.png"
+                    alt="Chevron logo"
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/inpex.png"
+                    alt="Inpex logo"
+                    className={styles.trustLogo}
+                  />
+                </div>
+                <div className={styles.trustSlide} aria-hidden="true">
+                  <img
+                    src="/images/rio.png"
+                    alt=""
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/airport.png"
+                    alt=""
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/enerpac.png"
+                    alt=""
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/chevron.png"
+                    alt=""
+                    className={styles.trustLogo}
+                  />
+                  <img
+                    src="/images/inpex.png"
+                    alt=""
+                    className={styles.trustLogo}
+                  />
+                </div>
               </div>
-              <button
-                className="trust-nav trust-nav--next"
-                type="button"
-                aria-label="Next logos"
-              >
-                &rsaquo;
-              </button>
             </div>
           </div>
         </section>
 
-        <section
-          className="systems-led"
-          aria-label="Safety Management Systems introduction"
-        >
-          <div className="container systems-led-inner systems-led-split">
-            <div className="systems-led-left">
+        <section className={styles.documents} id="documents">
+          <div className={`${styles.shell} ${styles.documentsInner}`}>
+            <div className={styles.documentsIntro}>
+              <p className={styles.documentsEyebrow}>Documents</p>
+              <h2 className={styles.documentsTitle}>
+                We develop technical documents that don&apos;t sound like generic
+                safety cr*p...
+              </h2>
+              <p className={styles.documentsSubhead}>
+                or we can improve the documents you already have
+              </p>
+            </div>
+
+            <div className={styles.documentsContent}>
+              <div className={styles.documentsVisualColumn} aria-hidden="true">
+                <img
+                  src="/images/documentexamples.png"
+                  alt=""
+                  className={styles.documentsGraphic}
+                />
+              </div>
+
+              <div className={styles.documentsContentsImageColumn} aria-hidden="true">
+                <img
+                  src="/images/contentssection.png"
+                  alt=""
+                  className={styles.documentsContentsImage}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.systems} id="systems">
+          <div className={`${styles.shell} ${styles.systemsInner}`}>
+            <div className={styles.systemsTop}>
+              <div className={styles.systemsHeading}>
+                <p className={styles.systemsEyebrow}>Systems</p>
+                <h2>
+                  A properly built safety management system connects every layer
+                  of your business.
+                </h2>
+                <p className={`${styles.systemsIntro} ${styles.systemsIntroSecondary}`}>
+                  Most businesses have safety documents. Very few have a system.
+                  The difference is whether your policies, procedures, roles,
+                  risks and controls are connected to each other and to the way
+                  your operation actually runs.
+                </p>
+                <p className={styles.systemsIntro}>
+                  We design and build safety management systems from the
+                  architecture up. Before a single document gets written, we map
+                  how your business operates, where accountability sits, and
+                  what the system needs to hold together at scale. What gets
+                  built reflects your operation, not a generic template someone
+                  adapted.
+                </p>
+
+                <div className={styles.systemsActionsDesktop}>
+                  <button
+                    className={`${styles.systemsButton} js-open-modal`}
+                    type="button"
+                  >
+                    Talk to us about your system
+                  </button>
+                  <a className={styles.systemsLink} href="#pricing">
+                    See what a system build involves
+                  </a>
+                </div>
+              </div>
+
+              <div className={styles.systemsVisual}>
+                <img
+                  src="/images/systems-section.png"
+                  alt="HSES systems overview"
+                  className={styles.systemsImage}
+                />
+              </div>
+            </div>
+
+            <div className={styles.systemsGrid}>
+              <article className={styles.systemsCard}>
+                <span className={styles.systemsNumber}>01</span>
+                <h3>System architecture</h3>
+                <p>
+                  We design the structure before anything is written. Every
+                  element has a place and a purpose before we start.
+                </p>
+              </article>
+              <article className={styles.systemsCard}>
+                <span className={styles.systemsNumber}>02</span>
+                <h3>Policy and framework</h3>
+                <p>
+                  The foundation of the system. Written to reflect your
+                  business, your risk profile and your obligations.
+                </p>
+              </article>
+              <article className={styles.systemsCard}>
+                <span className={styles.systemsNumber}>03</span>
+                <h3>Roles and accountability</h3>
+                <p>
+                  We define who owns what inside the system so that nothing
+                  sits without a responsible party behind it.
+                </p>
+              </article>
+              <article className={styles.systemsCard}>
+                <span className={styles.systemsNumber}>04</span>
+                <h3>Operational integration</h3>
+                <p>
+                  The system is built around how your business runs. Not the
+                  other way around.
+                </p>
+              </article>
+            </div>
+
+            <div className={styles.systemsActionsMobile}>
+              <button
+                className={`${styles.systemsButton} js-open-modal`}
+                type="button"
+              >
+                Talk to us about your system
+              </button>
+              <a className={styles.systemsLink} href="#pricing">
+                See what a system build involves
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.technology} id="technology">
+          <div className={`${styles.shell} ${styles.technologyShell}`}>
+            <div className={styles.technologyHeader}>
+              <p className={styles.sectionKickerCenter}>Technology</p>
+              <h2 className={styles.sectionTitleLeft}>
+                Technology we built because nothing else did the job properly.
+              </h2>
+            </div>
+
+            <p className={styles.technologyIntro}>
+              A suite of purpose-built safety technology covering system
+              design, bow-tie development, document mapping, investigation
+              management, org chart creation, and process flows. Available as
+              standard products or developed to your exact operational
+              requirements.
+            </p>
+
+            <div className={styles.technologyShowcase} aria-hidden="true">
               <img
-                src="/images/managementsystem.png"
-                alt="Health &amp; Safety management system illustration"
-                className="systems-led-visual"
+                src="/images/safedoxexample.png"
+                alt=""
+                className={`${styles.technologyShot} ${styles.technologyShotLeft}`}
+              />
+              <img
+                src="/images/investigationtoolexample.png"
+                alt=""
+                className={`${styles.technologyShot} ${styles.technologyShotCenter}`}
+              />
+              <img
+                src="/images/hsesportalexample.png"
+                alt=""
+                className={`${styles.technologyShot} ${styles.technologyShotRight}`}
               />
             </div>
-            <div className="systems-led-right">
-              <header className="systems-led-header systems-led-header--left">
-                <h2>Safety Management Systems are more than documents</h2>
+
+            <div className={styles.technologyDetails}>
+              <article
+                className={`${styles.technologyDetailCard} ${styles.technologyDetailCardAmber}`}
+              >
+                <div className={styles.technologyDetailHeader}>
+                  <img
+                    src="/images/safedox-logo-white.png"
+                    alt="Safedox"
+                    className={styles.technologyDetailLogo}
+                  />
+                  <span className={styles.technologyStatusSoon}>Coming soon</span>
+                </div>
+                <h3>Safedox</h3>
                 <p>
-                  Writing procedures and forms is important. Connecting
-                  information and designing processes is important. Using
-                  technology is helpful. A WHS Management System is the
-                  structure that makes these parts work together.
+                  A health and safety document builder that helps businesses
+                  generate polished, fit-for-purpose documents quickly.
                 </p>
-              </header>
+                <button
+                  className={`${styles.technologyActionLink} js-open-modal`}
+                  type="button"
+                >
+                  Join the waitlist
+                </button>
+              </article>
 
-              <div className="docs-grid systems-led-grid systems-led-grid--compact">
-                <article className="doc-card">
-                  <div className="doc-number">01</div>
-                  <div className="doc-copy">
-                    <h3>We develop documents</h3>
-                    <p>
-                      We write safety procedures and forms that make risk
-                      controls clear and support a Work Health and Safety
-                      Management System.
-                    </p>
-                  </div>
-                </article>
-                <article className="doc-card">
-                  <div className="doc-number">02</div>
-                  <div className="doc-copy">
-                    <h3>We connect your information</h3>
-                    <p>
-                      We connect governance, registers, and records so your WHS
-                      Management System works as one system.
-                    </p>
-                  </div>
-                </article>
-                <article className="doc-card">
-                  <div className="doc-number">03</div>
-                  <div className="doc-copy">
-                    <h3>We design process flows</h3>
-                    <p>
-                      We map how work happens so contractor management and
-                      supervision sit inside the Safety Management System.
-                    </p>
-                  </div>
-                </article>
-                <article className="doc-card">
-                  <div className="doc-number">04</div>
-                  <div className="doc-copy">
-                    <h3>We work with big tech</h3>
-                    <p>
-                      We align software and reporting to strengthen incident
-                      learning and keep the system current.
-                    </p>
-                  </div>
-                </article>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="systems-led systems-led-approach" aria-label="Systems led approach">
-          <div className="container systems-led-inner">
-            <div className="systems-led-content">
-              <div className="systems-led-copy">
-                <h3>Our systems led approach</h3>
+              <article
+                className={`${styles.technologyDetailCard} ${styles.technologyDetailCardCyan}`}
+              >
+                <div className={styles.technologyDetailHeader}>
+                  <img
+                    src="/images/investigation-tool.png"
+                    alt="Investigation Tool"
+                    className={styles.technologyDetailLogo}
+                  />
+                  <span className={styles.technologyStatusLive}>Live</span>
+                </div>
+                <h3>Investigation Tool</h3>
                 <p>
-                  At HSES Industry Partners, we use the Safety Energy Loop
-                  Framework&trade; to design, assess, and repair WHS Management
-                  Systems so they match how work is done in your business.
-                </p>
-              </div>
-              <div className="systems-led-logo" aria-hidden="true">
-                <img src="/images/SELF-Original-Logo.png" alt="" />
-              </div>
-            </div>
-
-            <div className="systems-led-pillars">
-              <div className="pillar">
-                <div className="pillar-icon" aria-hidden="true">
-                  <img src="/images/leadership-icon.png" alt="" />
-                </div>
-                <h4>Governance &amp; Accountability</h4>
-                <ul className="pillar-list">
-                  <li>
-                    <b>1.1</b> Leadership &amp; Governance
-                  </li>
-                  <li>
-                    <b>1.2</b> Descision Rights &amp; Structure
-                  </li>
-                  <li>
-                    <b>1.3</b> Legal &amp; Risk
-                  </li>
-                  <li>
-                    <b>1.4</b> Escalation &amp; Speaking-Up
-                  </li>
-                </ul>
-              </div>
-              <div className="pillar">
-                <div className="pillar-icon" aria-hidden="true">
-                  <img src="/images/risk-icon.png" alt="" />
-                </div>
-                <h4>Risk &amp; Control</h4>
-                <ul className="pillar-list">
-                  <li>
-                    <b>2.1</b> Hazard Identification
-                  </li>
-                  <li>
-                    <b>2.2</b> Risk Assessment
-                  </li>
-                  <li>
-                    <b>2.3</b> Controls (Critical &amp; Standard)
-                  </li>
-                  <li>
-                    <b>2.4</b> Verification of Controls
-                  </li>
-                </ul>
-              </div>
-              <div className="pillar">
-                <div className="pillar-icon" aria-hidden="true">
-                  <img src="/images/operations-icon.png" alt="" />
-                </div>
-                <h4>Operational Delivery</h4>
-                <ul className="pillar-list">
-                  <li>
-                    <b>3.1</b> Safe Work Planning
-                  </li>
-                  <li>
-                    <b>3.2</b> Competence &amp; Training
-                  </li>
-                  <li>
-                    <b>3.3</b> Contractor Management
-                  </li>
-                  <li>
-                    <b>3.4</b> Emergency Preparedness
-                  </li>
-                </ul>
-              </div>
-              <div className="pillar">
-                <div className="pillar-icon" aria-hidden="true">
-                  <img src="/images/learning-icon.png" alt="" />
-                </div>
-                <h4>Learning &amp; Improvement</h4>
-                <ul className="pillar-list">
-                  <li>
-                    <b>4.1</b> Incident Management
-                  </li>
-                  <li>
-                    <b>4.2</b> Performance Monitoring
-                  </li>
-                  <li>
-                    <b>4.3</b> Audit &amp; Assurance
-                  </li>
-                  <li>
-                    <b>4.4</b> Continuous Improvement
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="systems-led-cta" aria-label="Governance Core check">
-          <div className="systems-led-cta-inner">
-            <h3>
-              Start with a <u>FREE</u> Governance Core check
-            </h3>
-            <p>
-              Governance is often assumed to be working, but it drives how risk
-              decisions are made across the business. Complete the short self
-              assessment to see where your governance supports your system and
-              where it creates gaps. You will receive a free Governance SELF
-              assessment tool after you finish.
-            </p>
-            <div className="systems-led-cta-options">
-              <div className="systems-led-cta-option">
-                <div className="cta-icon" aria-hidden="true">
-                  <img src="/images/loop-icon.png" alt="" />
-                </div>
-                <h4>Learn about the Safety Energy Loop Framework&trade;</h4>
-                <p>
-                  Explore how the SELF pillars connect governance, risk
-                  controls, operational delivery, and incident learning.
-                </p>
-                <a className="btn btn-outline" href="/self-framework">
-                  Learn about the Safety Energy Loop Framework&trade;
-                </a>
-              </div>
-              <div className="systems-led-cta-divider" aria-hidden="true"></div>
-              <div className="systems-led-cta-option">
-                <div className="cta-icon" aria-hidden="true">
-                  <img src="/images/survey-icon.png" alt="" />
-                </div>
-                <h4>Complete the FREE Governance SELF assessment</h4>
-                <p>
-                  Finish the short check and receive your Governance SELF
-                  assessment tool with clear next steps.
+                  A purpose-built investigation platform for mapping incidents,
+                  managing evidence, and running structured workflows in one
+                  place.
                 </p>
                 <a
-                  className="btn btn-outline"
-                  href="https://hsesindustrypartners.scoreapp.com"
+                  className={styles.technologyActionLink}
+                  href="https://www.investigationtool.com.au"
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  Complete the free Governance self assessment
+                  Access the tool
                 </a>
+              </article>
+
+              <article
+                className={`${styles.technologyDetailCard} ${styles.technologyDetailCardBlue}`}
+              >
+                <div className={styles.technologyDetailHeader}>
+                  <img
+                    src="/images/logo-original-white.png"
+                    alt="HSES Client Portal"
+                    className={`${styles.technologyDetailLogo} ${styles.technologyDetailLogoHses}`}
+                  />
+                  <span className={styles.technologyStatusContact}>Contact us</span>
+                </div>
+                <h3>HSES Client Portal</h3>
+                <p>
+                  The HSES platform for system mapping, document search,
+                  bow-ties, org charts, and the wider safety management
+                  infrastructure around them.
+                </p>
+                <button
+                  className={`${styles.technologyActionLink} js-open-modal`}
+                  type="button"
+                >
+                  Request access
+                </button>
+              </article>
+            </div>
+
+            <div className={styles.technologyMobileStack}>
+              <div className={`${styles.technologyMobileItem} ${styles.technologyDetailCardAmber}`}>
+                <article className={styles.technologyDetailCard}>
+                  <div className={styles.technologyDetailHeader}>
+                    <img
+                      src="/images/safedox-logo-white.png"
+                      alt="Safedox"
+                      className={styles.technologyDetailLogo}
+                    />
+                    <span className={styles.technologyStatusSoon}>Coming soon</span>
+                  </div>
+                  <h3>Safedox</h3>
+                  <p>
+                    A health and safety document builder that helps businesses
+                    generate polished, fit-for-purpose documents quickly.
+                  </p>
+                  <button
+                    className={`${styles.technologyActionLink} js-open-modal`}
+                    type="button"
+                  >
+                    Join the waitlist
+                  </button>
+                </article>
+                <img
+                  src="/images/safedoxexample.png"
+                  alt=""
+                  className={`${styles.technologyShot} ${styles.technologyShotMobile}`}
+                />
+              </div>
+
+              <div className={`${styles.technologyMobileItem} ${styles.technologyDetailCardCyan}`}>
+                <article className={styles.technologyDetailCard}>
+                  <div className={styles.technologyDetailHeader}>
+                    <img
+                      src="/images/investigation-tool.png"
+                      alt="Investigation Tool"
+                      className={styles.technologyDetailLogo}
+                    />
+                    <span className={styles.technologyStatusLive}>Live</span>
+                  </div>
+                  <h3>Investigation Tool</h3>
+                  <p>
+                    A purpose-built investigation platform for mapping incidents,
+                    managing evidence, and running structured workflows in one
+                    place.
+                  </p>
+                  <a
+                    className={styles.technologyActionLink}
+                    href="https://www.investigationtool.com.au"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Access the tool
+                  </a>
+                </article>
+                <img
+                  src="/images/investigationtoolexample.png"
+                  alt=""
+                  className={`${styles.technologyShot} ${styles.technologyShotMobile}`}
+                />
+              </div>
+
+              <div className={`${styles.technologyMobileItem} ${styles.technologyDetailCardBlue}`}>
+                <article className={styles.technologyDetailCard}>
+                  <div className={styles.technologyDetailHeader}>
+                    <img
+                      src="/images/logo-original-white.png"
+                      alt="HSES Client Portal"
+                      className={`${styles.technologyDetailLogo} ${styles.technologyDetailLogoHses}`}
+                    />
+                    <span className={styles.technologyStatusContact}>Contact us</span>
+                  </div>
+                  <h3>HSES Client Portal</h3>
+                  <p>
+                    The HSES platform for system mapping, document search,
+                    bow-ties, org charts, and the wider safety management
+                    infrastructure around them.
+                  </p>
+                  <button
+                    className={`${styles.technologyActionLink} js-open-modal`}
+                    type="button"
+                  >
+                    Request access
+                  </button>
+                </article>
+                <img
+                  src="/images/hsesportalexample.png"
+                  alt=""
+                  className={`${styles.technologyShot} ${styles.technologyShotMobile}`}
+                />
               </div>
             </div>
           </div>
+        </section>
+
+        <section className={styles.pricing} id="pricing">
+          <div className={`${styles.shell} ${styles.pricingSplit}`}>
+            <div className={styles.pricingCopy}>
+              <p className={styles.pricingHeading}>Pricing</p>
+              <h2 className={styles.pricingTitle}>After a Cost Estimate?</h2>
+              <p>
+                We understand that, in all businesses, cash flow is critical,
+                and that overheads that don&apos;t generate income need to be
+                planned.
+              </p>
+              <p>
+                In honour of this, we have provided an estimation tool that you
+                can use to get a rough estimate of what our standard services
+                may cost for certain activities.
+              </p>
+              <p className={styles.pricingFollowUp}>
+                You will be asked to enter your email address to receive the
+                cost estimate. We may reach out to ask whether you have any
+                follow-up questions about the estimate or any unique business
+                needs that this estimate tool does not cover. We will only
+                follow up once, and you will not be added to a mailing list.
+              </p>
+              <p className={styles.pricingFinePrint}>
+                **Disclaimer** The figures in this estimate are based off
+                average completion times for similar tasks. These cover standard
+                tasks and do not account for unique business needs. HSES
+                Industry Partners reserves the right to alter this estimate tool
+                at any time and the figures you receive from this tool do not
+                constitute a formal quote.
+              </p>
+            </div>
+
+            <PricingEstimator />
+
+            <p className={styles.pricingFinePrintMobile}>
+              **Disclaimer** The figures in this estimate are based off
+              average completion times for similar tasks. These cover standard
+              tasks and do not account for unique business needs. HSES
+              Industry Partners reserves the right to alter this estimate tool
+              at any time and the figures you receive from this tool do not
+              constitute a formal quote.
+            </p>
+          </div>
+
+          <footer className={styles.footer}>
+            <div className={`${styles.shell} ${styles.footerBar}`}>
+              <span className={styles.footerCopy}>
+                &copy; 2026 HSES Industry Partners
+              </span>
+              <div className={styles.footerLinks}>
+                <a className={styles.footerLink} href="/privacy">
+                  Privacy Policy
+                </a>
+                <a className={styles.footerLink} href="/disclaimer">
+                  Website Disclaimer
+                </a>
+              </div>
+            </div>
+          </footer>
         </section>
       </main>
 
-      <footer className="site-footer">
-        <div className="footer-inner">
-          <span className="footer-copy">&copy; 2025 HSES Industry Partners</span>
-          <div className="footer-links">
-            <a className="footer-link" href="/privacy">
-              Privacy Policy
-            </a>
-            <a className="footer-link" href="/disclaimer">
-              Website Disclaimer
-            </a>
-          </div>
-          <button
-            className="footer-menu-toggle"
-            type="button"
-            aria-label="Open footer menu"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-          <div className="footer-menu">
-            <a className="footer-link" href="/privacy">
-              Privacy Policy
-            </a>
-            <a className="footer-link" href="/disclaimer">
-              Website Disclaimer
-            </a>
-          </div>
-        </div>
-      </footer>
-
-      <div className="mobile-menu" data-mobile-menu>
-        <div className="mobile-menu-backdrop js-close-mobile-menu"></div>
-        <div className="mobile-menu-panel" role="dialog" aria-modal="true" aria-label="Menu">
-          <div className="mobile-menu-header">
+      <div className={styles.mobileMenu} data-mobile-menu>
+        <div className={`${styles.mobileBackdrop} js-close-mobile-menu`}></div>
+        <div className={styles.mobilePanel} role="dialog" aria-modal="true" aria-label="Menu">
+          <div className={styles.mobilePanelHeader}>
             <img
-              src="/images/logo-black.png"
+              src="/images/logo-white.png"
               alt="HSES Industry Partners"
-              className="mobile-menu-logo"
+              className={styles.mobileLogo}
             />
-          </div>
-          <div className="mobile-menu-divider"></div>
-          <nav className="mobile-menu-links" aria-label="Primary">
-            <button className="btn btn-primary js-open-modal js-close-mobile-menu" type="button">
-              Book discovery call
+            <button
+              className={`${styles.mobileClose} js-close-mobile-menu`}
+              type="button"
+              aria-label="Close menu"
+            >
+              ×
             </button>
-            <a className="btn btn-outline js-close-mobile-menu" href="/login">
-              Client portal login
+          </div>
+
+          <nav className={styles.mobileNav} aria-label="Primary">
+            <a className={`${styles.mobileNavLink} js-close-mobile-menu`} href="#documents">
+              Documents
             </a>
+            <a className={`${styles.mobileNavLink} js-close-mobile-menu`} href="#systems">
+              Systems
+            </a>
+            <a className={`${styles.mobileNavLink} js-close-mobile-menu`} href="#technology">
+              Technology
+            </a>
+              <HomePageHeaderActions variant="mobile" />
           </nav>
-          <button className="mobile-menu-close js-close-mobile-menu" type="button">
-            Close menu
-          </button>
         </div>
       </div>
 
@@ -391,11 +607,11 @@ export default function HomePage() {
           tabIndex={-1}
         >
           <button className="modal-close js-close-modal" type="button" aria-label="Close">
-            x
+            <img src="/icons/close.svg" alt="" aria-hidden="true" className="modal-close-icon" />
           </button>
           <div className="form-panel modal-panel">
             <h2 id="modal-title">Book a discovery call</h2>
-            <p>Share what you need. We'll confirm fit and next steps.</p>
+            <p>Share what you need. We&apos;ll confirm fit and next steps.</p>
             <form
               className="lead-form"
               name="consult-request"
@@ -407,7 +623,7 @@ export default function HomePage() {
               <input type="hidden" name="form-name" value="consult-request" />
               <p className="field" hidden>
                 <label>
-                  Don't fill this out:
+                  Don&apos;t fill this out:
                   <input name="bot-field" />
                 </label>
               </p>
@@ -479,5 +695,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-

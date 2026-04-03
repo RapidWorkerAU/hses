@@ -24,6 +24,8 @@ import {
   bowtieRiskRatingHeight,
   bowtieSquareHeight,
   incidentDefaultWidth,
+  incidentCardHeight,
+  incidentCardWidth,
   incidentFourThreeHeight,
   incidentSquareSize,
   incidentThreeOneHeight,
@@ -52,6 +54,7 @@ import {
   getNormalizedDocumentSize,
   getRelationshipCategoryLabel,
   getRelationshipCategoryOptions,
+  getRelationshipCategoryGroups,
   getDefaultRelationshipCategoryForMap,
   normalizeRelationshipCategoryForMap,
   getRelationshipDisciplineLetters,
@@ -64,6 +67,8 @@ import {
   groupingMinWidthSquares,
   hashString,
   isAbortLikeError,
+  isOrgChartPersonElement,
+  isPersonElementType,
   isLandscapeTypeName,
   laneHeight,
   landscapeDefaultHeight,
@@ -155,6 +160,7 @@ import { MobileAddRelationshipModal, MobileNodeActionSheet } from "./canvasMobil
 import { CanvasDrilldownOverlays } from "./canvasDrilldownAsides";
 import { CanvasConfirmDialogs } from "./canvasDialogs";
 import { CanvasElementPropertyOverlays } from "./canvasPropertyOverlays";
+import { SystemMapWelcomeModal } from "./SystemMapWelcomeModal";
 import { defaultMapCategoryId, getAllowedNodeKindsForCategory, mapCategoryConfigs, type MapCategoryId } from "./mapCategories";
 import { useCanvasRelationNodeActions } from "./useCanvasRelationNodeActions";
 import { useCanvasElementActions } from "./useCanvasElementActions";
@@ -166,6 +172,10 @@ import { useCanvasNodeDragStop } from "./useCanvasNodeDragStop";
 import { useCanvasRelationshipDerived } from "./useCanvasRelationshipDerived";
 import { useCanvasImageUpload } from "./useCanvasImageUpload";
 import { handleCanvasNodeClick } from "./canvasNodeClickHandler";
+import {
+  SystemMapWizardModal,
+  type SystemMapWizardCommitPayload,
+} from "./SystemMapWizardModal";
 import {
   buildDocumentFlowNodes,
   buildGroupingFlowNodes,
@@ -182,12 +192,134 @@ import {
   loadHtml2Canvas,
   loadHtmlToImage,
 } from "./canvasPrintUtils";
+import { SystemMapLoadingView } from "./SystemMapLoadingView";
 const canvasElementSelectColumns =
   "id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height,created_at,updated_at";
 const isMethodologyElementType = (elementType: string) =>
   elementType.startsWith("bowtie_") || elementType.startsWith("incident_");
+const methodologyDefaultLabelByType: Record<string, string> = {
+  bowtie_hazard: "Hazard",
+  bowtie_top_event: "Top Event",
+  bowtie_threat: "Threat",
+  bowtie_consequence: "Consequence",
+  bowtie_control: "Control",
+  bowtie_escalation_factor: "Escalation Factor",
+  bowtie_recovery_measure: "Recovery Measure",
+  bowtie_degradation_indicator: "Degradation Indicator",
+  bowtie_risk_rating: "Risk Level",
+  incident_sequence_step: "Sequence Step",
+  incident_outcome: "Outcome",
+  incident_task_condition: "Task / Condition",
+  incident_factor: "Factor",
+  incident_system_factor: "System Factor",
+  incident_control_barrier: "Control / Barrier",
+  incident_evidence: "Evidence",
+  incident_finding: "Finding",
+  incident_recommendation: "Recommendation",
+};
+const isDescriptionDrivenMethodologyType = (elementType: string) =>
+  isMethodologyElementType(elementType) && elementType !== "bowtie_risk_rating";
 
-function SystemMapCanvasInner({ mapId }: { mapId: string }) {
+function buildMethodologyDraft(element: CanvasElementRow) {
+  const currentConfig = ((element.element_config as Record<string, unknown> | null) ?? {}) as Record<string, string | boolean>;
+  if (!isDescriptionDrivenMethodologyType(element.element_type)) return currentConfig;
+  const defaultLabel = methodologyDefaultLabelByType[element.element_type] ?? "Node";
+  const currentHeading = String(element.heading ?? "").trim();
+  if (!currentHeading || currentHeading === defaultLabel) return currentConfig;
+  return {
+    ...currentConfig,
+    description: currentHeading,
+  };
+}
+
+type CanvasElementInsertPayload = {
+  map_id: string;
+  element_type: string;
+  heading: string;
+  color_hex: string | null;
+  created_by_user_id: string | null;
+  element_config?: Record<string, unknown> | null;
+  pos_x: number;
+  pos_y: number;
+  width: number;
+  height: number;
+};
+
+type CanvasElementUpdatePayload = {
+  id: string;
+  fields: Partial<Pick<CanvasElementRow, "heading" | "element_config" | "pos_x" | "pos_y" | "width" | "height">>;
+};
+
+type DocumentNodeInsertPayload = {
+  map_id: string;
+  type_id: string;
+  title: string;
+  document_number: string;
+  discipline: string;
+  owner_user_id: string | null;
+  owner_name: string;
+  user_group: string;
+  pos_x: number;
+  pos_y: number;
+  width: number;
+  height: number;
+  is_archived: boolean;
+};
+
+const wizardGroupHeadingByStep: Record<string, string> = {
+  sequence: "Sequence",
+  people: "People",
+  "task-condition": "Task / Condition",
+  factors: "Factors",
+  "control-barrier": "Controls / Barriers",
+  evidence: "Evidence",
+  finding: "Findings",
+  recommendation: "Recommendations",
+  systems: "Systems",
+  processes: "Processes",
+  documents: "Documents",
+  hierarchy: "Hierarchy",
+  overview: "Overview",
+  threats: "Threats",
+  consequences: "Consequences",
+  controls: "Controls",
+  assurance: "Escalation / Recovery",
+  departments: "Departments",
+  leadership: "Leadership",
+  team: "Team",
+  lanes: "Lanes",
+  steps: "Steps",
+  "inputs-outputs": "Inputs / Outputs",
+  roles: "Roles",
+};
+
+const wizardElementTypesByStep: Record<string, string[]> = {
+  sequence: ["incident_sequence_step"],
+  people: ["person"],
+  "task-condition": ["incident_task_condition"],
+  factors: ["incident_factor", "incident_system_factor"],
+  "control-barrier": ["incident_control_barrier"],
+  evidence: ["incident_evidence"],
+  finding: ["incident_finding"],
+  recommendation: ["incident_recommendation"],
+  systems: ["system_circle"],
+  processes: ["process_component"],
+  hierarchy: ["category"],
+  overview: ["bowtie_hazard", "bowtie_top_event", "bowtie_risk_rating"],
+  threats: ["bowtie_threat"],
+  consequences: ["bowtie_consequence"],
+  controls: ["bowtie_control"],
+  assurance: ["bowtie_escalation_factor", "bowtie_recovery_measure", "bowtie_degradation_indicator"],
+  departments: ["category"],
+  leadership: ["person"],
+  team: ["person"],
+  lanes: ["category"],
+  steps: ["process_component", "shape_rectangle", "shape_pill"],
+  "inputs-outputs": ["shape_rectangle"],
+  roles: ["person"],
+};
+
+function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: string; showWelcomeOnLoad?: boolean }) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const relationshipPopupRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
@@ -206,6 +338,9 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const clipboardPasteCountRef = useRef(1);
   const isNodeDragActiveRef = useRef(false);
   const imagePathPairsRef = useRef<Array<{ id: string; path: string }>>([]);
+  const loadingMapIdRef = useRef<string | null>(null);
+  const loadingProgressRef = useRef<25 | 50 | 75 | 100>(25);
+  const loadingStageStartedAtRef = useRef<number>(Date.now());
 
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>("");
@@ -217,6 +352,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [elements, setElements] = useState<CanvasElementRow[]>([]);
   const [relations, setRelations] = useState<NodeRelationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(25);
+  const [loadingMessage, setLoadingMessage] = useState("Checking workspace access...");
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -241,6 +378,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [pendingViewport, setPendingViewport] = useState<Viewport | null>(null);
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [canvasLocked, setCanvasLocked] = useState(false);
+  const [showWizardModal, setShowWizardModal] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [wizardSaving, setWizardSaving] = useState(false);
   const [isNodeDragActive, setIsNodeDragActive] = useState(false);
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const [showPrintMenu, setShowPrintMenu] = useState(false);
@@ -278,12 +419,42 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const snapToMinorGrid = useCallback((v: number) => Math.round(v / minorGridSize) * minorGridSize, []);
+  const getCanvasFlowCenter = useCallback(() => {
+    if (!rf || !canvasRef.current) return null;
+    const bounds = canvasRef.current.getBoundingClientRect();
+    const flowPoint = rf.screenToFlowPosition({
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+    });
+    return {
+      x: snapToMinorGrid(flowPoint.x),
+      y: snapToMinorGrid(flowPoint.y),
+    };
+  }, [rf, snapToMinorGrid]);
   const canWriteMap = mapRole === "partial_write" || mapRole === "full_write";
   const canManageMapMetadata = mapRole === "full_write" && !!map && !!userId && map.owner_id === userId;
   const canUseContextMenu = mapRole !== "read";
   const canCreateSticky = !!userId;
   const allowedNodeKinds = useMemo(() => getAllowedNodeKindsForCategory(mapCategoryId), [mapCategoryId]);
+  const canUseWizard = canWriteMap;
+  const addDisabledReason = canWriteMap || canCreateSticky ? undefined : "Adding components is unavailable for this map.";
+  const wizardDisabledReason = canWriteMap ? undefined : "You need write access to use the wizard.";
+  const canvasLockTitle = canvasLocked
+    ? "Unlock canvas navigation and re-enable node interaction."
+    : "Lock the canvas so you can pan around without selecting or moving nodes.";
+  useEffect(() => {
+    if (!showWelcomeOnLoad) return;
+    setShowWelcomeModal(true);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("welcome") === "1") {
+        url.searchParams.delete("welcome");
+        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      }
+    }
+  }, [showWelcomeOnLoad]);
   const relationshipCategoryOptions = useMemo(() => getRelationshipCategoryOptions(mapCategoryId), [mapCategoryId]);
+  const relationshipCategoryGroups = useMemo(() => getRelationshipCategoryGroups(mapCategoryId), [mapCategoryId]);
   const canEditElement = useCallback(
     (element: CanvasElementRow) =>
       canWriteMap || (mapRole === "read" && element.element_type === "sticky_note" && !!userId && element.created_by_user_id === userId),
@@ -332,11 +503,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [map?.map_category, mapCategoryId]);
   const backHref = useMemo(() => {
     const category = (map?.map_category as MapCategoryId | null | undefined) ?? mapCategoryId;
-    if (category === "document_map") return "/dashboard/map-builders/document-maps";
-    if (category === "bow_tie") return "/dashboard/map-builders/bow-ties";
-    if (category === "incident_investigation") return "/dashboard/map-builders/investigation-maps";
-    if (category === "org_chart") return "/dashboard/map-builders/org-charts";
-    if (category === "process_flow") return "/dashboard/map-builders/process-flows";
+    if (category === "incident_investigation") return "/dashboard/map-builders";
+    if (category === "document_map") return "/dashboard/map-builders";
+    if (category === "bow_tie") return "/dashboard/map-builders";
+    if (category === "org_chart") return "/dashboard/map-builders";
+    if (category === "process_flow") return "/dashboard/map-builders";
     return "/dashboard";
   }, [map?.map_category, mapCategoryId]);
   const backLabel = useMemo(() => `Back to ${loadingLabel}`, [loadingLabel]);
@@ -621,6 +792,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [tableRowsDraft, setTableRowsDraft] = useState("2");
   const [tableColumnsDraft, setTableColumnsDraft] = useState("2");
   const [tableHeaderBgDraft, setTableHeaderBgDraft] = useState("");
+  const [tableHeaderFillModeDraft, setTableHeaderFillModeDraft] = useState<"fill" | "outline">("fill");
   const [tableBoldDraft, setTableBoldDraft] = useState(false);
   const [tableItalicDraft, setTableItalicDraft] = useState(false);
   const [tableUnderlineDraft, setTableUnderlineDraft] = useState(false);
@@ -642,6 +814,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   const [imageUrlsByElementId, setImageUrlsByElementId] = useState<Record<string, string>>({});
   const [evidenceUploadFile, setEvidenceUploadFile] = useState<File | null>(null);
   const [evidenceUploadPreviewUrl, setEvidenceUploadPreviewUrl] = useState<string | null>(null);
+  const methodologyMigrationInFlightRef = useRef(false);
 
   const [desktopNodeAction, setDesktopNodeAction] = useState<"relationship" | "structure" | "delete" | null>(null);
   const [mobileNodeMenuId, setMobileNodeMenuId] = useState<string | null>(null);
@@ -827,6 +1000,171 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     shapeDefaultFillColor,
     normalizePreviewHex,
   ]);
+  const hasUnsavedDocumentDraftChanges = useMemo(() => {
+    if (!selectedNodeId) return false;
+    const current = nodes.find((n) => n.id === selectedNodeId);
+    if (!current) return false;
+    return (
+      selectedTypeId !== current.type_id ||
+      title !== (current.title ?? "Untitled Document") ||
+      documentNumber !== (current.document_number ?? "") ||
+      disciplineSelection.join("|") !== parseDisciplines(current.discipline).join("|") ||
+      userGroup !== (current.user_group ?? "") ||
+      ownerName !== (current.owner_name ?? "")
+    );
+  }, [selectedNodeId, nodes, selectedTypeId, title, documentNumber, disciplineSelection, userGroup, ownerName]);
+  const hasUnsavedProcessDraftChanges = useMemo(() => {
+    if (!selectedProcessId) return false;
+    const current = elements.find((el) => el.id === selectedProcessId && el.element_type === "category");
+    if (!current) return false;
+    const widthSquares = Number(processWidthDraft.trim());
+    const heightSquares = Number(processHeightDraft.trim());
+    const hasValidSize =
+      Number.isInteger(widthSquares) &&
+      Number.isInteger(heightSquares) &&
+      widthSquares >= processMinWidthSquares &&
+      heightSquares >= processMinHeightSquares;
+    return (
+      processHeadingDraft !== (current.heading ?? "New Category") ||
+      (hasValidSize &&
+        (processWidthDraft !== String(Math.round(Math.max(processMinWidth, Number(current.width ?? processHeadingWidth)) / minorGridSize)) ||
+          processHeightDraft !== String(Math.round(Math.max(processMinHeight, Number(current.height ?? processHeadingHeight)) / minorGridSize)))) ||
+      (processColorDraft ?? "") !== (current.color_hex ?? "")
+    );
+  }, [selectedProcessId, elements, processHeadingDraft, processWidthDraft, processHeightDraft, processColorDraft, processMinWidthSquares, processMinHeightSquares, processMinWidth, processHeadingWidth, minorGridSize, processMinHeight, processHeadingHeight]);
+  const hasUnsavedSystemDraftChanges = useMemo(() => {
+    if (!selectedSystemId) return false;
+    const current = elements.find((el) => el.id === selectedSystemId && el.element_type === "system_circle");
+    return current ? systemNameDraft !== (current.heading ?? "System Name") : false;
+  }, [selectedSystemId, elements, systemNameDraft]);
+  const hasUnsavedProcessComponentDraftChanges = useMemo(() => {
+    if (!selectedProcessComponentId) return false;
+    const current = elements.find((el) => el.id === selectedProcessComponentId && el.element_type === "process_component");
+    return current ? processComponentLabelDraft !== (current.heading ?? "Process") : false;
+  }, [selectedProcessComponentId, elements, processComponentLabelDraft]);
+  const hasUnsavedPersonDraftChanges = useMemo(() => {
+    if (!selectedPersonId) return false;
+    const current = elements.find((el) => el.id === selectedPersonId && isPersonElementType(el.element_type));
+    if (!current) return false;
+    const currentConfig = parseOrgChartPersonConfig(current.element_config);
+    if (!isOrgChartPersonElement(current)) {
+      return buildPersonHeading(personRoleDraft, personDepartmentDraft) !== (current.heading ?? buildPersonHeading("", ""));
+    }
+    return (
+      personRoleDraft !== String(currentConfig.position_title ?? "Position Title") ||
+      personRoleIdDraft !== String(currentConfig.role_id ?? "") ||
+      personDepartmentDraft !== String(currentConfig.department ?? "") ||
+      personOccupantNameDraft !== String(currentConfig.occupant_name ?? "") ||
+      personStartDateDraft !== String(currentConfig.start_date ?? "") ||
+      personEmploymentTypeDraft !== (String(currentConfig.employment_type ?? "fte") === "contractor" ? "contractor" : "fte") ||
+      personActingNameDraft !== String(currentConfig.acting_name ?? "") ||
+      personActingStartDateDraft !== String(currentConfig.acting_start_date ?? "") ||
+      personRecruitingDraft !== Boolean(currentConfig.recruiting) ||
+      personProposedRoleDraft !== Boolean(currentConfig.proposed_role)
+    );
+  }, [
+    selectedPersonId,
+    elements,
+    personRoleDraft,
+    personRoleIdDraft,
+    personDepartmentDraft,
+    personOccupantNameDraft,
+    personStartDateDraft,
+    personEmploymentTypeDraft,
+    personActingNameDraft,
+    personActingStartDateDraft,
+    personRecruitingDraft,
+    personProposedRoleDraft,
+  ]);
+  const hasUnsavedGroupingDraftChanges = useMemo(() => {
+    if (!selectedGroupingId) return false;
+    const current = elements.find((el) => el.id === selectedGroupingId && el.element_type === "grouping_container");
+    if (!current) return false;
+    const widthSquares = Number(groupingWidthDraft.trim());
+    const heightSquares = Number(groupingHeightDraft.trim());
+    const hasValidSize =
+      Number.isInteger(widthSquares) &&
+      Number.isInteger(heightSquares) &&
+      widthSquares >= groupingMinWidthSquares &&
+      heightSquares >= groupingMinHeightSquares;
+    return (
+      groupingLabelDraft !== (current.heading ?? "Group label") ||
+      (hasValidSize &&
+        (groupingWidthDraft !== String(Math.round(Math.max(groupingMinWidth, Number(current.width ?? groupingDefaultWidth)) / minorGridSize)) ||
+          groupingHeightDraft !== String(Math.round(Math.max(groupingMinHeight, Number(current.height ?? groupingDefaultHeight)) / minorGridSize))))
+    );
+  }, [selectedGroupingId, elements, groupingLabelDraft, groupingWidthDraft, groupingHeightDraft, groupingMinWidthSquares, groupingMinHeightSquares, groupingMinWidth, groupingDefaultWidth, minorGridSize, groupingMinHeight, groupingDefaultHeight]);
+  const hasUnsavedStickyDraftChanges = useMemo(() => {
+    if (!selectedStickyId) return false;
+    const current = elements.find((el) => el.id === selectedStickyId && el.element_type === "sticky_note");
+    return current ? stickyTextDraft !== (current.heading ?? "Enter Text") : false;
+  }, [selectedStickyId, elements, stickyTextDraft]);
+  const hasUnsavedImageDraftChanges = useMemo(() => {
+    if (!selectedImageId) return false;
+    const current = elements.find((el) => el.id === selectedImageId && el.element_type === "image_asset");
+    if (!current) return false;
+    const currentConfig = (current.element_config as Record<string, unknown> | null) ?? {};
+    return imageDescriptionDraft !== String(currentConfig.description ?? "");
+  }, [selectedImageId, elements, imageDescriptionDraft]);
+  const hasUnsavedTextBoxDraftChanges = useMemo(() => {
+    if (!selectedTextBoxId) return false;
+    const current = elements.find((el) => el.id === selectedTextBoxId && el.element_type === "text_box");
+    if (!current) return false;
+    const cfg = (current.element_config as Record<string, unknown> | null) ?? {};
+    const persistedAlignRaw = String(cfg.align ?? "left");
+    const persistedAlign = persistedAlignRaw === "center" || persistedAlignRaw === "right" ? persistedAlignRaw : "left";
+    const persistedFontSizeRaw = Number(cfg.font_size ?? 16);
+    const persistedFontSize = Number.isFinite(persistedFontSizeRaw) ? Math.max(16, Math.min(168, Math.round(persistedFontSizeRaw))) : 16;
+    const draftFontSizeRaw = Number(textBoxFontSizeDraft.trim());
+    const draftFontSize = Number.isFinite(draftFontSizeRaw) ? Math.max(16, Math.min(168, Math.round(draftFontSizeRaw))) : 16;
+    return (
+      textBoxContentDraft !== (current.heading ?? "Click to edit text box") ||
+      textBoxBoldDraft !== Boolean(cfg.bold) ||
+      textBoxItalicDraft !== Boolean(cfg.italic) ||
+      textBoxUnderlineDraft !== Boolean(cfg.underline) ||
+      textBoxAlignDraft !== persistedAlign ||
+      draftFontSize !== persistedFontSize
+    );
+  }, [selectedTextBoxId, elements, textBoxContentDraft, textBoxBoldDraft, textBoxItalicDraft, textBoxUnderlineDraft, textBoxAlignDraft, textBoxFontSizeDraft]);
+  const hasUnsavedTableDraftChanges = useMemo(() => {
+    if (!selectedTableId) return false;
+    const current = elements.find((el) => el.id === selectedTableId && el.element_type === "table");
+    if (!current) return false;
+    const cfg = (current.element_config as Record<string, unknown> | null) ?? {};
+    const persistedRowsRaw = Number(cfg.rows ?? tableMinRows);
+    const persistedColumnsRaw = Number(cfg.columns ?? tableMinColumns);
+    const persistedRows = Number.isFinite(persistedRowsRaw) ? Math.max(tableMinRows, Math.floor(persistedRowsRaw)) : tableMinRows;
+    const persistedColumns = Number.isFinite(persistedColumnsRaw) ? Math.max(tableMinColumns, Math.floor(persistedColumnsRaw)) : tableMinColumns;
+    const persistedHeaderBg = typeof cfg.header_bg_color === "string" ? cfg.header_bg_color.toUpperCase() : "";
+    const persistedHeaderFillMode = String(cfg.header_fill_mode ?? "fill") === "outline" ? "outline" : "fill";
+    const persistedAlignRaw = String(cfg.align ?? "center");
+    const persistedAlign = persistedAlignRaw === "left" || persistedAlignRaw === "right" ? persistedAlignRaw : "center";
+    const persistedFontSizeRaw = Number(cfg.font_size ?? 10);
+    const persistedFontSize = Number.isFinite(persistedFontSizeRaw) ? Math.max(10, Math.min(72, Math.round(persistedFontSizeRaw))) : 10;
+    const draftFontSizeRaw = Number(tableFontSizeDraft.trim());
+    const draftFontSize = Number.isFinite(draftFontSizeRaw) ? Math.max(10, Math.min(72, Math.round(draftFontSizeRaw))) : 10;
+    return (
+      tableRowsDraft !== String(persistedRows) ||
+      tableColumnsDraft !== String(persistedColumns) ||
+      tableHeaderBgDraft !== persistedHeaderBg ||
+      tableHeaderFillModeDraft !== persistedHeaderFillMode ||
+      tableBoldDraft !== Boolean(cfg.bold) ||
+      tableItalicDraft !== Boolean(cfg.italic) ||
+      tableUnderlineDraft !== Boolean(cfg.underline) ||
+      tableAlignDraft !== persistedAlign ||
+      draftFontSize !== persistedFontSize
+    );
+  }, [selectedTableId, elements, tableMinRows, tableMinColumns, tableRowsDraft, tableColumnsDraft, tableHeaderBgDraft, tableHeaderFillModeDraft, tableBoldDraft, tableItalicDraft, tableUnderlineDraft, tableAlignDraft, tableFontSizeDraft]);
+  const hasUnsavedBowtieDraftChanges = useMemo(() => {
+    if (!selectedBowtieElementId) return false;
+    const current = elements.find((el) => el.id === selectedBowtieElementId && isMethodologyElementType(el.element_type));
+    if (!current) return false;
+    const currentConfig = buildMethodologyDraft(current);
+    return (
+      JSON.stringify(bowtieDraft) !== JSON.stringify(currentConfig) ||
+      !!evidenceUploadFile
+    );
+  }, [selectedBowtieElementId, elements, bowtieDraft, evidenceUploadFile]);
   const canvasPreviewElements = useMemo(() => {
     if (!selectedProcessId && !selectedTextBoxId && !selectedTableId && !selectedFlowShapeId) return elements;
     let changed = false;
@@ -883,6 +1221,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             rows,
             columns,
             header_bg_color: nextHeaderColor,
+            header_fill_mode: tableHeaderFillModeDraft,
             bold: tableBoldDraft,
             italic: tableItalicDraft,
             underline: tableUnderlineDraft,
@@ -958,6 +1297,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     tableRowsDraft,
     tableColumnsDraft,
     tableHeaderBgDraft,
+    tableHeaderFillModeDraft,
     tableBoldDraft,
     tableItalicDraft,
     tableUnderlineDraft,
@@ -1100,9 +1440,9 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       if (el.element_type === "process_component") {
         return { x: el.pos_x, y: el.pos_y, width: processComponentWidth, height: processComponentElementHeight };
       }
-      if (el.element_type === "person") {
-        const width = mapCategoryId === "org_chart" ? orgChartPersonWidth : personElementWidth;
-        const height = mapCategoryId === "org_chart" ? orgChartPersonHeight : personElementHeight;
+      if (isPersonElementType(el.element_type)) {
+        const width = isOrgChartPersonElement(el) ? orgChartPersonWidth : personElementWidth;
+        const height = isOrgChartPersonElement(el) ? orgChartPersonHeight : personElementHeight;
         return { x: el.pos_x, y: el.pos_y, width, height };
       }
       if (el.element_type === "sticky_note") {
@@ -1636,6 +1976,32 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     [elements, imageUrlsByElementId]
   );
 
+  const handleToggleIncidentDetail = useCallback(
+    async (elementId: string, nextOpen: boolean) => {
+      let nextConfig: Record<string, unknown> | null = null;
+      let canPersist = false;
+      setElements((prev) => {
+        const current = prev.find((el) => el.id === elementId && el.element_type.startsWith("incident_"));
+        if (!current || !canEditElement(current)) return prev;
+        canPersist = canWriteMap;
+        nextConfig = {
+          ...((current.element_config as Record<string, unknown> | null) ?? {}),
+          incident_detail_open: nextOpen,
+        };
+        return prev.map((el) => (el.id === elementId ? { ...el, element_config: nextConfig } : el));
+      });
+      if (!nextConfig || !canPersist) return;
+      const { error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .update({ element_config: nextConfig })
+        .eq("id", elementId)
+        .eq("map_id", mapId);
+      if (e) setError(e.message || "Unable to save node detail state.");
+    },
+    [canEditElement, canWriteMap, mapId, setElements, setError]
+  );
+
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
     const directReportCountByPersonNormalizedId = buildOrgDirectReportCountByPersonNormalizedId({
@@ -1684,6 +2050,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             orgDirectReportCountByPersonId,
             onTableCellCommit: handleTableCellCommit,
             onTableCellStyleCommit: handleTableCellStyleCommit,
+            onToggleIncidentDetail: handleToggleIncidentDetail,
           });
           if (primaryElementNode !== undefined) return primaryElementNode;
           return buildSecondaryElementFlowNode({
@@ -1693,11 +2060,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             canWriteMap,
             imageUrlsByElementId,
             onOpenEvidenceMedia: handleOpenEvidenceMediaOverlay,
+            onToggleIncidentDetail: handleToggleIncidentDetail,
           });
         }).filter(Boolean) as Node<FlowData>[],
       ];
     setFlowNodes(nextNodes);
-  }, [nodes, canvasPreviewElements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, selectedTableId, canWriteMap, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, mapCategoryId, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive, handleTableCellCommit, handleTableCellStyleCommit, handleOpenEvidenceMediaOverlay]);
+  }, [nodes, canvasPreviewElements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, selectedTableId, canWriteMap, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, mapCategoryId, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive, handleTableCellCommit, handleTableCellStyleCommit, handleOpenEvidenceMediaOverlay, handleToggleIncidentDetail]);
 
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
@@ -1786,6 +2154,19 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       };
     });
   }, [flowEdgesBase, relationById, hoveredNodeId, hoveredEdgeId, relations]);
+  const interactionFlowNodes = useMemo(
+    () =>
+      canvasLocked
+        ? flowNodes.map((node) => ({
+            ...node,
+            draggable: false,
+            selectable: false,
+            selected: false,
+            className: `${node.className ?? ""} pointer-events-none`.trim(),
+          }))
+        : flowNodes,
+    [canvasLocked, flowNodes]
+  );
 
   const selectedNode = useMemo(
     () => (selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null),
@@ -1804,7 +2185,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     [selectedProcessComponentId, elements]
   );
   const selectedPerson = useMemo(
-    () => (selectedPersonId ? elements.find((el) => el.id === selectedPersonId && el.element_type === "person") ?? null : null),
+    () => (selectedPersonId ? elements.find((el) => el.id === selectedPersonId && isPersonElementType(el.element_type)) ?? null : null),
     [selectedPersonId, elements]
   );
   const selectedGrouping = useMemo(
@@ -2003,11 +2384,53 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
+    if (loadingMapIdRef.current !== mapId) {
+      loadingMapIdRef.current = mapId;
+      loadingProgressRef.current = 25;
+      loadingStageStartedAtRef.current = Date.now();
+      setLoadingProgress(25);
+      setLoadingMessage("Checking workspace access...");
+    }
+
     const run = async (attempt: number) => {
+      const waitForStageFloor = async () => {
+        const elapsed = Date.now() - loadingStageStartedAtRef.current;
+        const remaining = 500 - elapsed;
+        if (remaining > 0) {
+          await new Promise<void>((resolve) => {
+            retryTimer = setTimeout(() => resolve(), remaining);
+          });
+        }
+      };
+      const setLoadingStage = async (progress: number, message: string) => {
+        if (cancelled) return;
+        const nextProgress = Math.max(loadingProgressRef.current, progress) as 25 | 50 | 75 | 100;
+        if (nextProgress <= loadingProgressRef.current) return;
+        await waitForStageFloor();
+        if (cancelled) return;
+        loadingProgressRef.current = nextProgress;
+        loadingStageStartedAtRef.current = Date.now();
+        setLoadingProgress(nextProgress);
+        setLoadingMessage(message);
+      };
+      let shouldRetry = false;
+      let loadCompleted = false;
+
       if (cancelled) return;
       if (attempt === 0) {
         setLoading(true);
         setError(null);
+        loadingProgressRef.current = Math.max(25, loadingProgressRef.current) as 25 | 50 | 75 | 100;
+        setLoadingProgress(loadingProgressRef.current);
+        setLoadingMessage(
+          loadingProgressRef.current >= 100
+            ? "Straightening lines and sharpening pencils..."
+            : loadingProgressRef.current >= 75
+            ? "Gathering collaborators and lining up the map pieces..."
+            : loadingProgressRef.current >= 50
+            ? "Loading map shell, nodes, and canvas data..."
+            : "Checking workspace access..."
+        );
       }
       try {
         const user = await ensurePortalSupabaseUser();
@@ -2017,7 +2440,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           return;
         }
         setUserId(user.id);
-
+        await setLoadingStage(50, "Loading map shell, nodes, and canvas data...");
         const [memberRes, mapRes, typeRes, nodeRes, elementRes, relRes, viewRes] = await Promise.all([
           supabaseBrowser.schema("ms").from("map_members").select("role").eq("map_id", mapId).eq("user_id", user.id).maybeSingle(),
           supabaseBrowser.schema("ms").from("system_maps").select("id,title,description,owner_id,map_code,map_category,updated_at,created_at").eq("id", mapId).maybeSingle(),
@@ -2055,6 +2478,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         }
         setMap(loadedMap);
         setMapCategoryId(nextCategory);
+        await setLoadingStage(75, "Gathering collaborators and lining up the map pieces...");
         await loadMapMembers(loadedMap.owner_id);
         let loadedTypes = (typeRes.data ?? []) as DocumentTypeRow[];
         if (!loadedTypes.length) {
@@ -2124,9 +2548,12 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           const viewData = viewRes.data;
           setPendingViewport({ x: viewData.pan_x, y: viewData.pan_y, zoom: viewData.zoom });
         }
+        await setLoadingStage(100, "Straightening lines and sharpening pencils...");
+        loadCompleted = true;
       } catch (err) {
         if (cancelled) return;
         if (isAbortLikeError(err) && attempt < 3) {
+          shouldRetry = true;
           retryTimer = setTimeout(() => {
             void run(attempt + 1);
           }, 250);
@@ -2135,7 +2562,15 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message || "Unable to load map.");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !shouldRetry) {
+          if (loadCompleted) {
+            retryTimer = setTimeout(() => {
+              if (!cancelled) setLoading(false);
+            }, 500);
+          } else {
+            setLoading(false);
+          }
+        }
       }
     };
 
@@ -2187,7 +2622,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [selectedProcessComponent]);
   useEffect(() => {
     if (!selectedPerson) return;
-    if (mapCategoryId === "org_chart") {
+    if (isOrgChartPersonElement(selectedPerson)) {
       const cfg = parseOrgChartPersonConfig(selectedPerson.element_config);
       setPersonRoleDraft(cfg.position_title);
       setPersonRoleIdDraft(cfg.role_id);
@@ -2212,7 +2647,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setPersonActingStartDateDraft("");
     setPersonRecruitingDraft(false);
     setPersonProposedRoleDraft(false);
-  }, [selectedPerson, mapCategoryId]);
+  }, [selectedPerson]);
   useEffect(() => {
     if (!selectedGrouping) return;
     setGroupingLabelDraft(selectedGrouping.heading ?? "");
@@ -2248,9 +2683,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     const rows = Number.isFinite(parsedRows) ? Math.max(tableMinRows, Math.floor(parsedRows)) : tableMinRows;
     const columns = Number.isFinite(parsedColumns) ? Math.max(tableMinColumns, Math.floor(parsedColumns)) : tableMinColumns;
     const headerBg = typeof cfg.header_bg_color === "string" ? cfg.header_bg_color : "";
+    const headerFillMode = String(cfg.header_fill_mode ?? "fill") === "outline" ? "outline" : "fill";
     setTableRowsDraft(String(rows));
     setTableColumnsDraft(String(columns));
     setTableHeaderBgDraft(headerBg.toUpperCase());
+    setTableHeaderFillModeDraft(headerFillMode);
     setTableBoldDraft(Boolean(cfg.bold));
     setTableItalicDraft(Boolean(cfg.italic));
     setTableUnderlineDraft(Boolean(cfg.underline));
@@ -2421,9 +2858,51 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [evidenceMediaOverlay, elements, mapId, canvasElementSelectColumns, setError, setElements, selectedBowtieElementId]);
   useEffect(() => {
     if (!selectedBowtieElement) return;
-    setBowtieHeadingDraft(selectedBowtieElement.heading ?? "");
-    setBowtieDraft((selectedBowtieElement.element_config as Record<string, string | boolean> | null) ?? {});
+    setBowtieHeadingDraft(methodologyDefaultLabelByType[selectedBowtieElement.element_type] ?? selectedBowtieElement.heading ?? "");
+    setBowtieDraft(buildMethodologyDraft(selectedBowtieElement));
   }, [selectedBowtieElement]);
+  useEffect(() => {
+    if (!canWriteMap || methodologyMigrationInFlightRef.current) return;
+    const elementsToMigrate = elements.filter((el) => {
+      if (!isDescriptionDrivenMethodologyType(el.element_type)) return false;
+      const defaultLabel = methodologyDefaultLabelByType[el.element_type] ?? "Node";
+      const currentHeading = String(el.heading ?? "").trim();
+      return !!currentHeading && currentHeading !== defaultLabel;
+    });
+    if (!elementsToMigrate.length) return;
+    methodologyMigrationInFlightRef.current = true;
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          elementsToMigrate.map(async (el) => {
+            const currentConfig = ((el.element_config as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+            const defaultLabel = methodologyDefaultLabelByType[el.element_type] ?? "Node";
+            const migratedDescription = String(el.heading ?? "").trim();
+            const { data, error: updateError } = await supabaseBrowser
+              .schema("ms")
+              .from("canvas_elements")
+              .update({
+                heading: defaultLabel,
+                element_config: {
+                  ...currentConfig,
+                  description: migratedDescription,
+                },
+              })
+              .eq("id", el.id)
+              .eq("map_id", mapId)
+              .select(canvasElementSelectColumns)
+              .single();
+            return updateError || !data ? null : (data as unknown as CanvasElementRow);
+          })
+        );
+        const updatedById = new Map(results.filter((row): row is CanvasElementRow => !!row).map((row) => [row.id, row]));
+        if (!updatedById.size) return;
+        setElements((prev) => prev.map((el) => updatedById.get(el.id) ?? el));
+      } finally {
+        methodologyMigrationInFlightRef.current = false;
+      }
+    })();
+  }, [canWriteMap, elements, mapId, setElements]);
   useEffect(() => {
     if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
     setEvidenceUploadPreviewUrl(null);
@@ -2513,6 +2992,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as globalThis.Node | null;
+      if (target instanceof HTMLElement && target.closest("[data-add-menu-filter='true']")) return;
       if (addMenuRef.current && target && addMenuRef.current.contains(target)) return;
       setShowAddMenu(false);
       if (searchMenuRef.current && target && searchMenuRef.current.contains(target)) return;
@@ -2640,9 +3120,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     desktopNodeAction,
     showAddRelationship,
     mobileNodeMenuId,
-    map,
+      map,
   ]);
-
   useEffect(() => {
     const onKeyDown = async (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -2787,6 +3266,13 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       if (e && !isAbortLikeError(e)) setError(e.message || "Unable to save viewport state.");
     }, 500);
   }, [mapId, userId]);
+  const handleToggleMapInfoAside = useCallback(() => {
+    setShowMapInfoAside((prev) => {
+      const next = !prev;
+      if (next) setIsEditingMapInfo(false);
+      return next;
+    });
+  }, []);
 
   const { handleSaveMapTitle, handleCloseMapInfoAside, handleSaveMapInfo, handleUpdateMapMemberRole } =
     useCanvasMapInfoActions({
@@ -2834,6 +3320,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     handleAddSystemCircle,
     handleAddProcessComponent,
     handleAddPerson,
+    handleAddOrgChartPerson,
     handleAddGroupingContainer,
     handleAddStickyNote,
     handleAddTextBox,
@@ -2998,6 +3485,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     tableRowsDraft,
     tableColumnsDraft,
     tableHeaderBgDraft,
+    tableHeaderFillModeDraft,
     tableBoldDraft,
     tableItalicDraft,
     tableUnderlineDraft,
@@ -3041,6 +3529,1497 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setShowAddMenu,
     handleAddImageAsset,
   });
+  const insertCanvasElements = useCallback(
+    async (payloads: CanvasElementInsertPayload[]) => {
+      if (!payloads.length) return [];
+      const { data, error: insertError } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .insert(payloads)
+        .select(canvasElementSelectColumns);
+      if (insertError) throw insertError;
+      const insertedRows = (data as CanvasElementRow[] | null) ?? [];
+      if (insertedRows.length) {
+        setElements((current) => [...current, ...insertedRows]);
+      }
+      return insertedRows;
+    },
+    [setElements]
+  );
+  const insertDocumentNodes = useCallback(
+    async (payloads: DocumentNodeInsertPayload[]) => {
+      if (!payloads.length) return [];
+      const { data, error: insertError } = await supabaseBrowser
+        .schema("ms")
+        .from("document_nodes")
+        .insert(payloads)
+        .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived");
+      if (insertError) throw insertError;
+      const insertedRows = (data as DocumentNodeRow[] | null) ?? [];
+      if (insertedRows.length) {
+        insertedRows.forEach((row) => {
+          savedPos.current[row.id] = { x: row.pos_x, y: row.pos_y };
+        });
+        setNodes((current) => [...current, ...insertedRows]);
+      }
+      return insertedRows;
+    },
+    [setNodes]
+  );
+  const updateDocumentNodes = useCallback(
+    async (
+      updates: Array<{
+        id: string;
+        fields: Partial<Pick<DocumentNodeRow, "pos_x" | "pos_y" | "width" | "height">>;
+      }>
+    ) => {
+      if (!updates.length) return;
+      await Promise.all(
+        updates.map(async ({ id, fields }) => {
+          const { error: updateError } = await supabaseBrowser.schema("ms").from("document_nodes").update(fields).eq("id", id).eq("map_id", mapId);
+          if (updateError) throw updateError;
+        })
+      );
+      setNodes((current) =>
+        current.map((node) => {
+          const match = updates.find((update) => update.id === node.id);
+          const next = match ? { ...node, ...match.fields } : node;
+          if (match) {
+            savedPos.current[node.id] = { x: next.pos_x, y: next.pos_y };
+          }
+          return next;
+        })
+      );
+    },
+    [mapId, setNodes]
+  );
+  const updateCanvasElements = useCallback(
+    async (updates: CanvasElementUpdatePayload[]) => {
+      if (!updates.length) return;
+      await Promise.all(
+        updates.map(async ({ id, fields }) => {
+          const { error: updateError } = await supabaseBrowser
+            .schema("ms")
+            .from("canvas_elements")
+            .update(fields)
+            .eq("id", id);
+          if (updateError) throw updateError;
+        })
+      );
+      setElements((current) =>
+        current.map((element) => {
+          const match = updates.find((update) => update.id === element.id);
+          return match ? { ...element, ...match.fields } : element;
+        })
+      );
+    },
+    [setElements]
+  );
+  const buildWizardGroupLayout = useCallback(
+    (itemCount: number, itemWidth: number, itemHeight: number) => {
+      const columns = itemCount <= 1 ? 1 : itemCount <= 4 ? 2 : 3;
+      const rows = Math.max(1, Math.ceil(itemCount / columns));
+      const edgePadding = minorGridSize * 2;
+      const gap = minorGridSize;
+      return {
+        columns,
+        rows,
+        gap,
+        itemWidth,
+        itemHeight,
+        horizontalPadding: edgePadding,
+        topPadding: edgePadding,
+        bottomPadding: edgePadding,
+        width: Math.max(
+          groupingMinWidth,
+          edgePadding * 2 + columns * itemWidth + Math.max(0, columns - 1) * gap
+        ),
+        height: Math.max(
+          groupingMinHeight,
+          edgePadding + rows * itemHeight + Math.max(0, rows - 1) * gap + edgePadding
+        ),
+      };
+    },
+    [groupingMinHeight, groupingMinWidth]
+  );
+  const findWizardGroupElements = useCallback(
+    (groupElement: CanvasElementRow, stepId: string) => {
+      const allowedTypes = new Set(wizardElementTypesByStep[stepId] ?? []);
+      const rightEdge = groupElement.pos_x + (groupElement.width || groupingDefaultWidth);
+      const bottomEdge = groupElement.pos_y + (groupElement.height || groupingDefaultHeight);
+      return elements
+        .filter((element) => {
+          if (!allowedTypes.has(element.element_type)) return false;
+          const elementRight = element.pos_x + (element.width || 0);
+          const elementBottom = element.pos_y + (element.height || 0);
+          return (
+            element.pos_x >= groupElement.pos_x &&
+            element.pos_y >= groupElement.pos_y &&
+            elementRight <= rightEdge &&
+            elementBottom <= bottomEdge
+          );
+        })
+        .sort((a, b) => (a.pos_y === b.pos_y ? a.pos_x - b.pos_x : a.pos_y - b.pos_y));
+    },
+    [elements, groupingDefaultHeight, groupingDefaultWidth]
+  );
+  const findExistingWizardGroup = useCallback(
+    (heading: string) =>
+      elements
+        .filter(
+          (element) =>
+            element.element_type === "grouping_container" &&
+            (element.heading || "").trim().toLowerCase() === heading.trim().toLowerCase()
+        )
+        .sort((a, b) => (a.pos_x === b.pos_x ? a.pos_y - b.pos_y : a.pos_x - b.pos_x))[0] ?? null,
+    [elements]
+  );
+  const getNextWizardGroupPosition = useCallback(
+    (groupWidth: number, groupHeight: number) => {
+      const groupingElements = elements.filter((element) => element.element_type === "grouping_container");
+      if (groupingElements.length) {
+        const rightmostGroup = groupingElements.reduce((best, current) => {
+          const bestEdge = best.pos_x + (best.width || groupingDefaultWidth);
+          const currentEdge = current.pos_x + (current.width || groupingDefaultWidth);
+          return currentEdge > bestEdge ? current : best;
+        });
+        return {
+          x: snapToMinorGrid(rightmostGroup.pos_x + (rightmostGroup.width || groupingDefaultWidth) + majorGridSize),
+          y: snapToMinorGrid(rightmostGroup.pos_y),
+        };
+      }
+      const center = getCanvasFlowCenter();
+      if (!center) {
+        return {
+          x: snapToMinorGrid(majorGridSize),
+          y: snapToMinorGrid(majorGridSize),
+        };
+      }
+      return {
+        x: snapToMinorGrid(center.x - groupWidth / 2),
+        y: snapToMinorGrid(center.y - groupHeight / 2),
+      };
+    },
+    [elements, getCanvasFlowCenter, snapToMinorGrid]
+  );
+  const handleWizardCommitStep = useCallback(
+    async (payload: SystemMapWizardCommitPayload) => {
+      if (!canUseWizard || !userId) return;
+      const createGroupAndInsert = async (
+        step: SystemMapWizardCommitPayload["step"],
+        heading: string,
+        itemWidth: number,
+        itemHeight: number,
+        nodeBuilder: (origin: { x: number; y: number }, index: number) => CanvasElementInsertPayload | null,
+        meaningfulCount: number,
+        newGroupPosition?: { x: number; y: number }
+      ) => {
+        if (!meaningfulCount) return;
+        const existingGroup = findExistingWizardGroup(heading);
+        const existingNodes = existingGroup ? findWizardGroupElements(existingGroup, step) : [];
+        const totalCount = existingNodes.length + meaningfulCount;
+        const layout = buildWizardGroupLayout(totalCount, itemWidth, itemHeight);
+        const groupPosition = existingGroup
+          ? { x: snapToMinorGrid(existingGroup.pos_x), y: snapToMinorGrid(existingGroup.pos_y) }
+          : (newGroupPosition ?? getNextWizardGroupPosition(layout.width, layout.height));
+        const relayoutUpdates: CanvasElementUpdatePayload[] = [];
+        existingNodes.forEach((node, index) => {
+          const column = index % layout.columns;
+          const row = Math.floor(index / layout.columns);
+          const origin = {
+            x: snapToMinorGrid(groupPosition.x + layout.horizontalPadding + column * (layout.itemWidth + layout.gap)),
+            y: snapToMinorGrid(groupPosition.y + layout.topPadding + row * (layout.itemHeight + layout.gap)),
+          };
+          relayoutUpdates.push({
+            id: node.id,
+            fields: { pos_x: origin.x, pos_y: origin.y, width: layout.itemWidth, height: layout.itemHeight },
+          });
+        });
+        const nodePayloads: CanvasElementInsertPayload[] = [];
+        for (let index = 0; index < meaningfulCount; index += 1) {
+          const absoluteIndex = existingNodes.length + index;
+          const column = absoluteIndex % layout.columns;
+          const row = Math.floor(absoluteIndex / layout.columns);
+          const origin = {
+            x: snapToMinorGrid(groupPosition.x + layout.horizontalPadding + column * (layout.itemWidth + layout.gap)),
+            y: snapToMinorGrid(groupPosition.y + layout.topPadding + row * (layout.itemHeight + layout.gap)),
+          };
+          const nodePayload = nodeBuilder(origin, index);
+          if (nodePayload) nodePayloads.push(nodePayload);
+        }
+        if (existingGroup) {
+          await updateCanvasElements([
+            {
+              id: existingGroup.id,
+              fields: { pos_x: groupPosition.x, pos_y: groupPosition.y, width: layout.width, height: layout.height },
+            },
+            ...relayoutUpdates,
+          ]);
+          await insertCanvasElements(nodePayloads);
+          return;
+        }
+        const groupPayload: CanvasElementInsertPayload = {
+          map_id: mapId,
+          element_type: "grouping_container",
+          heading,
+          color_hex: null,
+          created_by_user_id: userId,
+          pos_x: groupPosition.x,
+          pos_y: groupPosition.y,
+          width: layout.width,
+          height: layout.height,
+        };
+        await insertCanvasElements([groupPayload, ...nodePayloads]);
+      };
+
+      const isFilled = (value: string) => value.trim().length > 0;
+      const buildLooseOrigins = (count: number, itemWidth: number, itemHeight: number) => {
+        if (!count) return [] as Array<{ x: number; y: number }>;
+        const layout = buildWizardGroupLayout(count, itemWidth, itemHeight);
+        const base = getNextWizardGroupPosition(layout.width, layout.height);
+        return Array.from({ length: count }, (_, index) => {
+          const column = index % layout.columns;
+          const row = Math.floor(index / layout.columns);
+          return {
+            x: snapToMinorGrid(base.x + layout.horizontalPadding + column * (layout.itemWidth + layout.gap)),
+            y: snapToMinorGrid(base.y + layout.topPadding + row * (layout.itemHeight + layout.gap)),
+          };
+        });
+      };
+      const resolveDocumentType = (value: string) => {
+        const normalized = value.trim().toLowerCase();
+        return (
+          addDocumentTypes.find((option) => option.id === value) ??
+          addDocumentTypes.find((option) => option.name.trim().toLowerCase() === normalized) ??
+          null
+        );
+      };
+      const buildDocumentPayload = (
+        origin: { x: number; y: number },
+        typeValue: string,
+        title: string,
+        documentNumber: string
+      ): DocumentNodeInsertPayload | null => {
+        const type = resolveDocumentType(typeValue);
+        if (!type) return null;
+        const isLandscape = isLandscapeTypeName(type.name);
+        return {
+          map_id: mapId,
+          type_id: type.id,
+          title: title.trim() || "Document",
+          document_number: documentNumber.trim(),
+          discipline: "",
+          owner_user_id: userId,
+          owner_name: userEmail,
+          user_group: "",
+          pos_x: origin.x,
+          pos_y: origin.y,
+          width: isLandscape ? landscapeDefaultWidth : defaultWidth,
+          height: isLandscape ? landscapeDefaultHeight : defaultHeight,
+          is_archived: false,
+        };
+      };
+      const getDocumentDimensionsByTypeValue = (typeValue: string) => {
+        const type = resolveDocumentType(typeValue);
+        const isLandscape = type ? isLandscapeTypeName(type.name) : false;
+        return {
+          width: isLandscape ? landscapeDefaultWidth : defaultWidth,
+          height: isLandscape ? landscapeDefaultHeight : defaultHeight,
+        };
+      };
+      const createCompactPeople = async (
+        heading: string,
+        stepId: "people" | "roles",
+        items: Array<{ roleName: string; occupantName: string }>,
+        newGroupPosition?: { x: number; y: number }
+      ) => {
+        const filtered = items.filter((item) => isFilled(item.roleName) || isFilled(item.occupantName));
+        await createGroupAndInsert(stepId, heading, personElementWidth, personElementHeight, (origin, index) => {
+          const item = filtered[index];
+          return {
+            map_id: mapId,
+            element_type: "person",
+            heading: buildPersonHeading(item.roleName.trim() || "Role Name", item.occupantName.trim() || "Occupant Name"),
+            color_hex: null,
+            created_by_user_id: userId,
+            element_config: {
+              position_title: item.roleName.trim(),
+              role_id: "",
+              department: "",
+              occupant_name: item.occupantName.trim(),
+              start_date: "",
+              employment_type: "fte",
+              acting_name: "",
+              acting_start_date: "",
+              recruiting: false,
+              contractor_role: false,
+              proposed_role: false,
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: personElementWidth,
+            height: personElementHeight,
+          };
+        }, filtered.length, newGroupPosition);
+      };
+      const bowtieSectionHeadings = [
+        wizardGroupHeadingByStep.overview,
+        wizardGroupHeadingByStep.threats,
+        wizardGroupHeadingByStep.consequences,
+        "Preventive Controls",
+        "Recovery Controls",
+        wizardGroupHeadingByStep.assurance,
+      ];
+      const bowtiePreventiveControlsHeading = "Preventive Controls";
+      const bowtieRecoveryControlsHeading = "Recovery Controls";
+      const getBowtieWizardSectionPosition = (heading: string, sectionWidth: number, sectionHeight: number) => {
+        const sectionGap = minorGridSize * 5;
+        const existingSections = elements
+          .filter((element) => element.element_type === "grouping_container" && bowtieSectionHeadings.includes(element.heading))
+          .sort((a, b) => a.pos_y - b.pos_y || a.pos_x - b.pos_x);
+        if (!existingSections.length) {
+          return getNextWizardGroupPosition(sectionWidth, sectionHeight);
+        }
+        const leftEdge = Math.min(...existingSections.map((section) => section.pos_x));
+        const orderIndex = bowtieSectionHeadings.indexOf(heading);
+        const row = Math.floor(Math.max(0, orderIndex) / 3);
+        const col = Math.max(0, orderIndex) % 3;
+        if (row === 0) {
+          if (col === 0) {
+            return {
+              x: leftEdge,
+              y: Math.min(...existingSections.map((section) => section.pos_y)),
+            };
+          }
+          const priorRowSections = existingSections.filter(
+            (section) => Math.floor(Math.max(0, bowtieSectionHeadings.indexOf(section.heading)) / 3) === 0
+          );
+          const rightEdge = Math.max(...priorRowSections.map((section) => section.pos_x + (section.width || sectionWidth)));
+          return {
+            x: snapToMinorGrid(rightEdge + sectionGap),
+            y: Math.min(...priorRowSections.map((section) => section.pos_y)),
+          };
+        }
+        const upperSections = existingSections.filter(
+          (section) => Math.floor(Math.max(0, bowtieSectionHeadings.indexOf(section.heading)) / 3) < row
+        );
+        const rowTop = snapToMinorGrid(
+          Math.max(...upperSections.map((section) => section.pos_y + (section.height || sectionHeight))) + sectionGap
+        );
+        const sameRowSections = existingSections.filter(
+          (section) => Math.floor(Math.max(0, bowtieSectionHeadings.indexOf(section.heading)) / 3) === row
+        );
+        if (!sameRowSections.length || col === 0) {
+          return { x: leftEdge, y: rowTop };
+        }
+        const rightEdge = Math.max(...sameRowSections.map((section) => section.pos_x + (section.width || sectionWidth)));
+        return {
+          x: snapToMinorGrid(rightEdge + sectionGap),
+          y: rowTop,
+        };
+      };
+      const relayoutBowtieWizardSections = async () => {
+        const relevantTypes = [
+          "grouping_container",
+          "bowtie_hazard",
+          "bowtie_top_event",
+          "bowtie_risk_rating",
+          "bowtie_threat",
+          "bowtie_consequence",
+          "bowtie_control",
+          "bowtie_escalation_factor",
+          "bowtie_recovery_measure",
+          "bowtie_degradation_indicator",
+        ];
+        const { data, error: fetchError } = await supabaseBrowser
+          .schema("ms")
+          .from("canvas_elements")
+          .select(canvasElementSelectColumns)
+          .eq("map_id", mapId)
+          .in("element_type", relevantTypes);
+        if (fetchError) throw fetchError;
+        const allRows = ((data as CanvasElementRow[] | null) ?? []).filter((row) => {
+          if (row.element_type !== "grouping_container") return true;
+          return bowtieSectionHeadings.includes(row.heading);
+        });
+        const groupsByHeading = new Map(
+          allRows
+            .filter((row) => row.element_type === "grouping_container")
+            .map((row) => [row.heading, row] as const)
+        );
+        const sortByVisualOrder = (rows: CanvasElementRow[]) =>
+          [...rows].sort((a, b) => a.pos_y - b.pos_y || a.pos_x - b.pos_x || a.created_at.localeCompare(b.created_at));
+        const overviewNodes = sortByVisualOrder(
+          allRows.filter((row) =>
+            row.element_type === "bowtie_hazard" ||
+            row.element_type === "bowtie_top_event" ||
+            row.element_type === "bowtie_risk_rating"
+          )
+        );
+        const threats = sortByVisualOrder(allRows.filter((row) => row.element_type === "bowtie_threat"));
+        const consequences = sortByVisualOrder(allRows.filter((row) => row.element_type === "bowtie_consequence"));
+        const controls = sortByVisualOrder(allRows.filter((row) => row.element_type === "bowtie_control"));
+        const preventiveControls = controls.filter((row) => {
+          const cfg = (row.element_config as Record<string, unknown> | null) ?? {};
+          return String(cfg.control_category ?? "").trim().toLowerCase() === "preventive";
+        });
+        const recoveryControls = controls.filter((row) => {
+          const cfg = (row.element_config as Record<string, unknown> | null) ?? {};
+          return String(cfg.control_category ?? "").trim().toLowerCase() !== "preventive";
+        });
+        const assuranceNodes = sortByVisualOrder(
+          allRows.filter((row) =>
+            row.element_type === "bowtie_escalation_factor" ||
+            row.element_type === "bowtie_recovery_measure" ||
+            row.element_type === "bowtie_degradation_indicator"
+          )
+        );
+        const gap = minorGridSize;
+        const sectionGap = minorGridSize * 5;
+        const edgePadding = minorGridSize * 2;
+        const anchor = getNextWizardGroupPosition(majorGridSize * 4, majorGridSize * 4);
+        const startX = groupsByHeading.size
+          ? Math.min(...[...groupsByHeading.values()].map((row) => row.pos_x))
+          : anchor.x;
+        const startY = groupsByHeading.size
+          ? Math.min(...[...groupsByHeading.values()].map((row) => row.pos_y))
+          : anchor.y;
+
+        const leftRows = threats.map((threat) => {
+          const linkedControls = preventiveControls.filter((control) => {
+            const cfg = (control.element_config as Record<string, unknown> | null) ?? {};
+            const linked = String(cfg.linked_target_heading ?? "").trim();
+            return linked ? linked === threat.heading : threat === threats[0];
+          });
+          return { anchor: threat, controls: linkedControls };
+        });
+        const rightRows = consequences.map((consequence) => {
+          const linkedControls = recoveryControls.filter((control) => {
+            const cfg = (control.element_config as Record<string, unknown> | null) ?? {};
+            const linked = String(cfg.linked_target_heading ?? "").trim();
+            return linked ? linked === consequence.heading : consequence === consequences[0];
+          });
+          return { anchor: consequence, controls: linkedControls };
+        });
+        const leftRowHeights = leftRows.map((row) =>
+          Math.max(
+            row.anchor.height || bowtieSquareHeight,
+            ...row.controls.map((control) => control.height || bowtieControlHeight),
+            bowtieSquareHeight
+          )
+        );
+        const rightRowHeights = rightRows.map((row) =>
+          Math.max(
+            row.anchor.height || bowtieSquareHeight,
+            ...row.controls.map((control) => control.height || bowtieControlHeight),
+            bowtieSquareHeight
+          )
+        );
+        const totalRows = Math.max(leftRows.length, rightRows.length, 1);
+        const rowHeights = Array.from({ length: totalRows }, (_, index) =>
+          Math.max(leftRowHeights[index] ?? 0, rightRowHeights[index] ?? 0, bowtieSquareHeight)
+        );
+        const bodyHeight = edgePadding * 2 + rowHeights.reduce((sum, value) => sum + value, 0) + Math.max(0, totalRows - 1) * gap;
+        const leftThreatWidth = edgePadding * 2 + bowtieDefaultWidth;
+        const leftControlContentWidth = Math.max(
+          bowtieDefaultWidth,
+          ...leftRows.map((row) => row.controls.reduce((sum, control) => sum + (control.width || bowtieDefaultWidth), 0) + Math.max(0, row.controls.length - 1) * gap)
+        );
+        const leftControlWidth = edgePadding * 2 + leftControlContentWidth;
+        const overviewContentWidth = overviewNodes.reduce((sum, row) => sum + (row.width || bowtieDefaultWidth), 0) + Math.max(0, overviewNodes.length - 1) * gap;
+        const overviewWidth = edgePadding * 2 + Math.max(overviewContentWidth, bowtieDefaultWidth * 2);
+        const overviewHeight = edgePadding * 2 + Math.max(...overviewNodes.map((row) => row.height || bowtieSquareHeight), bowtieSquareHeight);
+        const rightControlContentWidth = Math.max(
+          bowtieDefaultWidth,
+          ...rightRows.map((row) => row.controls.reduce((sum, control) => sum + (control.width || bowtieDefaultWidth), 0) + Math.max(0, row.controls.length - 1) * gap)
+        );
+        const rightControlWidth = edgePadding * 2 + rightControlContentWidth;
+        const rightConsequenceWidth = edgePadding * 2 + bowtieDefaultWidth;
+        const overviewY = snapToMinorGrid(startY + Math.max(0, (bodyHeight - overviewHeight) / 2));
+        const leftThreatX = startX;
+        const leftControlX = snapToMinorGrid(leftThreatX + leftThreatWidth + sectionGap);
+        const overviewX = snapToMinorGrid(leftControlX + leftControlWidth + sectionGap);
+        const rightControlX = snapToMinorGrid(overviewX + overviewWidth + sectionGap);
+        const rightConsequenceX = snapToMinorGrid(rightControlX + rightControlWidth + sectionGap);
+        const assuranceWidth = edgePadding * 2 + Math.max(bowtieDefaultWidth, Math.min(3, Math.max(1, assuranceNodes.length)) * bowtieDefaultWidth + Math.max(0, Math.min(3, Math.max(1, assuranceNodes.length)) - 1) * gap);
+        const assuranceRows = Math.max(1, Math.ceil(Math.max(assuranceNodes.length, 1) / 3));
+        const assuranceHeight = edgePadding * 2 + assuranceRows * bowtieSquareHeight + Math.max(0, assuranceRows - 1) * gap;
+        const assuranceX = startX;
+        const assuranceY = snapToMinorGrid(startY + bodyHeight + sectionGap);
+
+        const updates: CanvasElementUpdatePayload[] = [];
+        const pushGroupUpdate = (heading: string, x: number, y: number, width: number, height: number) => {
+          const group = groupsByHeading.get(heading);
+          if (!group) return;
+          updates.push({ id: group.id, fields: { pos_x: x, pos_y: y, width, height } });
+        };
+        pushGroupUpdate(wizardGroupHeadingByStep.threats, leftThreatX, startY, leftThreatWidth, bodyHeight);
+        pushGroupUpdate(bowtiePreventiveControlsHeading, leftControlX, startY, leftControlWidth, bodyHeight);
+        pushGroupUpdate(wizardGroupHeadingByStep.overview, overviewX, overviewY, overviewWidth, overviewHeight);
+        pushGroupUpdate(bowtieRecoveryControlsHeading, rightControlX, startY, rightControlWidth, bodyHeight);
+        pushGroupUpdate(wizardGroupHeadingByStep.consequences, rightConsequenceX, startY, rightConsequenceWidth, bodyHeight);
+        pushGroupUpdate(wizardGroupHeadingByStep.assurance, assuranceX, assuranceY, assuranceWidth, assuranceHeight);
+
+        let runningY = snapToMinorGrid(startY + edgePadding);
+        leftRows.forEach((row, rowIndex) => {
+          updates.push({
+            id: row.anchor.id,
+            fields: {
+              pos_x: snapToMinorGrid(leftThreatX + edgePadding),
+              pos_y: runningY,
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            },
+          });
+          let controlX = snapToMinorGrid(leftControlX + edgePadding);
+          row.controls.forEach((control) => {
+            updates.push({
+              id: control.id,
+              fields: {
+                pos_x: controlX,
+                pos_y: runningY,
+                width: bowtieDefaultWidth,
+                height: bowtieControlHeight,
+              },
+            });
+            controlX = snapToMinorGrid(controlX + bowtieDefaultWidth + gap);
+          });
+          runningY = snapToMinorGrid(runningY + rowHeights[rowIndex] + gap);
+        });
+
+        runningY = snapToMinorGrid(startY + edgePadding);
+        rightRows.forEach((row, rowIndex) => {
+          let controlX = snapToMinorGrid(rightControlX + edgePadding);
+          row.controls.forEach((control) => {
+            updates.push({
+              id: control.id,
+              fields: {
+                pos_x: controlX,
+                pos_y: runningY,
+                width: bowtieDefaultWidth,
+                height: bowtieControlHeight,
+              },
+            });
+            controlX = snapToMinorGrid(controlX + bowtieDefaultWidth + gap);
+          });
+          updates.push({
+            id: row.anchor.id,
+            fields: {
+              pos_x: snapToMinorGrid(rightConsequenceX + edgePadding),
+              pos_y: runningY,
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            },
+          });
+          runningY = snapToMinorGrid(runningY + rowHeights[rowIndex] + gap);
+        });
+
+        let overviewXCursor = snapToMinorGrid(overviewX + edgePadding);
+        overviewNodes.forEach((node) => {
+          const width = node.element_type === "bowtie_risk_rating" ? bowtieDefaultWidth : bowtieDefaultWidth;
+          const height =
+            node.element_type === "bowtie_hazard"
+              ? bowtieHazardHeight
+              : node.element_type === "bowtie_risk_rating"
+                ? bowtieRiskRatingHeight
+                : bowtieSquareHeight;
+          updates.push({
+            id: node.id,
+            fields: {
+              pos_x: overviewXCursor,
+              pos_y: snapToMinorGrid(overviewY + edgePadding),
+              width,
+              height,
+            },
+          });
+          overviewXCursor = snapToMinorGrid(overviewXCursor + width + gap);
+        });
+
+        assuranceNodes.forEach((node, index) => {
+          const column = index % 3;
+          const row = Math.floor(index / 3);
+          updates.push({
+            id: node.id,
+            fields: {
+              pos_x: snapToMinorGrid(assuranceX + edgePadding + column * (bowtieDefaultWidth + gap)),
+              pos_y: snapToMinorGrid(assuranceY + edgePadding + row * (bowtieSquareHeight + gap)),
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            },
+          });
+        });
+
+        if (updates.length) {
+          await updateCanvasElements(updates);
+        }
+      };
+      const getDocumentWizardTopRowGroups = () =>
+        elements.filter(
+          (element) =>
+            element.element_type === "grouping_container" &&
+            (element.heading === wizardGroupHeadingByStep.systems ||
+              element.heading === wizardGroupHeadingByStep.processes ||
+              element.heading === wizardGroupHeadingByStep.people)
+        );
+      const getDocumentWizardTopRowWidth = () => {
+        const topGroups = getDocumentWizardTopRowGroups();
+        if (!topGroups.length) {
+          return processHeadingWidth;
+        }
+        const leftEdge = Math.min(...topGroups.map((group) => group.pos_x));
+        const rightEdge = Math.max(...topGroups.map((group) => group.pos_x + (group.width || groupingDefaultWidth)));
+        return Math.max(processHeadingWidth, snapToMinorGrid(rightEdge - leftEdge));
+      };
+      const getDocumentWizardTopRowPosition = (groupWidth: number, groupHeight: number) => {
+        const topGroups = getDocumentWizardTopRowGroups();
+        if (!topGroups.length) {
+          return {
+            x: snapToMinorGrid(majorGridSize),
+            y: snapToMinorGrid(majorGridSize),
+          };
+        }
+        const topY = topGroups.reduce((best, current) => Math.min(best, current.pos_y), topGroups[0].pos_y);
+        const rightmost = topGroups.reduce((best, current) => {
+          const bestEdge = best.pos_x + (best.width || groupWidth);
+          const currentEdge = current.pos_x + (current.width || groupWidth);
+          return currentEdge > bestEdge ? current : best;
+        });
+        return {
+          x: snapToMinorGrid(rightmost.pos_x + (rightmost.width || groupWidth) + majorGridSize),
+          y: snapToMinorGrid(topY),
+        };
+      };
+      const getDocumentWizardSecondRowBounds = () => {
+        const topGroups = getDocumentWizardTopRowGroups();
+        const leftEdge = topGroups.length ? Math.min(...topGroups.map((group) => group.pos_x)) : snapToMinorGrid(majorGridSize);
+        const defaultTop = snapToMinorGrid(majorGridSize + groupingDefaultHeight + minorGridSize * 5);
+        if (!topGroups.length) {
+          return {
+            x: leftEdge,
+            y: defaultTop,
+          };
+        }
+        const secondRowTop = snapToMinorGrid(
+          Math.max(...topGroups.map((group) => group.pos_y + (group.height || groupingDefaultHeight))) + minorGridSize * 5
+        );
+        const secondRowElementRightEdges = elements
+          .filter((element) => element.pos_y >= secondRowTop - minorGridSize)
+          .map((element) => element.pos_x + (element.width || defaultWidth));
+        const secondRowNodeRightEdges = nodes
+          .filter((node) => node.pos_y >= secondRowTop - minorGridSize)
+          .map((node) => node.pos_x + (node.width || defaultWidth));
+        const rightmost = Math.max(0, ...secondRowElementRightEdges, ...secondRowNodeRightEdges);
+        return {
+          x: leftEdge,
+          y: secondRowTop,
+        };
+      };
+
+      if (payload.category === "document_map") {
+        if (payload.step === "systems") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
+          const groupPosition = getDocumentWizardTopRowPosition(
+            buildWizardGroupLayout(items.length, systemCircleDiameter, systemCircleElementHeight).width,
+            buildWizardGroupLayout(items.length, systemCircleDiameter, systemCircleElementHeight).height
+          );
+          await createGroupAndInsert("systems", wizardGroupHeadingByStep.systems, systemCircleDiameter, systemCircleElementHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: "system_circle",
+              heading: item.heading.trim() || `System ${index + 1}`,
+              color_hex: null,
+              created_by_user_id: userId,
+              element_config: null,
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: systemCircleDiameter,
+              height: systemCircleElementHeight,
+            };
+          }, items.length, groupPosition);
+          return;
+        }
+        if (payload.step === "processes") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
+          const groupPosition = getDocumentWizardTopRowPosition(
+            buildWizardGroupLayout(items.length, processComponentWidth, processComponentElementHeight).width,
+            buildWizardGroupLayout(items.length, processComponentWidth, processComponentElementHeight).height
+          );
+          await createGroupAndInsert("processes", wizardGroupHeadingByStep.processes, processComponentWidth, processComponentElementHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: "process_component",
+              heading: item.heading.trim() || `Process ${index + 1}`,
+              color_hex: null,
+              created_by_user_id: userId,
+              element_config: { body: item.description.trim() },
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: processComponentWidth,
+              height: processComponentElementHeight,
+            };
+          }, items.length, groupPosition);
+          return;
+        }
+        if (payload.step === "people") {
+          const filteredCount = payload.items.filter((item) => isFilled(item.roleName) || isFilled(item.occupantName)).length;
+          const groupPosition = getDocumentWizardTopRowPosition(
+            buildWizardGroupLayout(filteredCount, personElementWidth, personElementHeight).width,
+            buildWizardGroupLayout(filteredCount, personElementWidth, personElementHeight).height
+          );
+          await createCompactPeople(wizardGroupHeadingByStep.people, "people", payload.items, groupPosition);
+          return;
+        }
+        if (payload.step === "documents") {
+          const items = payload.items.filter((item) => isFilled(item.title) || isFilled(item.documentNumber) || isFilled(item.documentType));
+          const secondRowBase = getDocumentWizardSecondRowBounds();
+          let nextX = secondRowBase.x;
+          const documentPayloads = items
+            .map((item, index) => {
+              const dimensions = getDocumentDimensionsByTypeValue(item.documentType);
+              const payload = buildDocumentPayload(
+                { x: nextX, y: secondRowBase.y },
+                item.documentType,
+                item.title || `Document ${index + 1}`,
+                item.documentNumber
+              );
+              nextX = snapToMinorGrid(nextX + dimensions.width + minorGridSize);
+              return payload;
+            })
+            .filter((item): item is DocumentNodeInsertPayload => Boolean(item));
+          await insertDocumentNodes(documentPayloads);
+          return;
+        }
+        if (payload.step === "hierarchy") {
+          const items = payload.items.filter((item) => isFilled(item.layerName) || item.documentIds.length > 0);
+          if (!items.length) return;
+          const gap = minorGridSize;
+          const base = getDocumentWizardSecondRowBounds();
+          const maxLayerWidth = getDocumentWizardTopRowWidth();
+          const categoryPayloads: CanvasElementInsertPayload[] = [];
+          const documentUpdates: Array<{ id: string; fields: Partial<Pick<DocumentNodeRow, "pos_x" | "pos_y" | "width" | "height">> }> = [];
+          let nextColumnX = base.x;
+          items.forEach((item, index) => {
+            const selectedNodes = item.documentIds
+              .map((documentId) => nodes.find((node) => node.id === documentId))
+              .filter((node): node is DocumentNodeRow => Boolean(node));
+            const totalDocWidth =
+              selectedNodes.reduce((sum, node) => sum + (node.width || defaultWidth), 0) +
+              Math.max(0, selectedNodes.length - 1) * gap;
+            const categoryWidth = Math.max(
+              processHeadingWidth,
+              Math.min(maxLayerWidth, totalDocWidth || processHeadingWidth)
+            );
+            const categoryX = snapToMinorGrid(nextColumnX);
+            categoryPayloads.push({
+              map_id: mapId,
+              element_type: "category",
+              heading: item.layerName.trim() || `Layer ${index + 1}`,
+              color_hex: defaultCategoryColor,
+              created_by_user_id: userId,
+              element_config: null,
+              pos_x: categoryX,
+              pos_y: base.y,
+              width: categoryWidth,
+              height: processHeadingHeight,
+            });
+            let currentX = categoryX;
+            let currentY = snapToMinorGrid(base.y + processHeadingHeight + gap);
+            let currentRowHeight = 0;
+            selectedNodes.forEach((existingNode) => {
+              const documentWidth = existingNode.width || defaultWidth;
+              const documentHeight = existingNode.height || defaultHeight;
+              if (currentX > categoryX && currentX + documentWidth > categoryX + categoryWidth) {
+                currentX = categoryX;
+                currentY = snapToMinorGrid(currentY + currentRowHeight + gap);
+                currentRowHeight = 0;
+              }
+              documentUpdates.push({
+                id: existingNode.id,
+                fields: {
+                  pos_x: currentX,
+                  pos_y: currentY,
+                  width: existingNode.width,
+                  height: existingNode.height,
+                },
+              });
+              currentX = snapToMinorGrid(currentX + documentWidth + gap);
+              currentRowHeight = Math.max(currentRowHeight, documentHeight);
+            });
+            nextColumnX = snapToMinorGrid(nextColumnX + categoryWidth + gap);
+          });
+          await insertCanvasElements(categoryPayloads);
+          await updateDocumentNodes(documentUpdates);
+          return;
+        }
+      }
+
+      if (payload.category === "bow_tie") {
+        if (payload.step === "overview") {
+          const item = payload.items[0];
+          const edgePadding = minorGridSize * 2;
+          const gap = minorGridSize;
+          const overviewNodes = [
+            {
+              element_type: "bowtie_hazard" as const,
+              heading: item.hazard.trim() || "Hazard",
+              color_hex: "#111827",
+              element_config: { description: "", hazard_category: "" },
+              width: bowtieDefaultWidth,
+              height: bowtieHazardHeight,
+            },
+            {
+              element_type: "bowtie_top_event" as const,
+              heading: item.topEvent.trim() || "Top Event",
+              color_hex: "#dc2626",
+              element_config: { description: "", loss_of_control_type: item.lossOfControlType.trim() },
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            },
+            {
+              element_type: "bowtie_risk_rating" as const,
+              heading: `Risk Level: ${item.riskLevel.charAt(0).toUpperCase() + item.riskLevel.slice(1)}`,
+              color_hex: "#111827",
+              element_config: { likelihood: item.likelihood, consequence: item.consequence, risk_level: item.riskLevel },
+              width: bowtieDefaultWidth,
+              height: bowtieRiskRatingHeight,
+            },
+          ];
+          const sectionWidth =
+            edgePadding * 2 + overviewNodes.reduce((sum, node) => sum + node.width, 0) + gap * (overviewNodes.length - 1);
+          const sectionHeight = edgePadding * 2 + Math.max(...overviewNodes.map((node) => node.height));
+          const existingGroup = findExistingWizardGroup(wizardGroupHeadingByStep.overview);
+          const sectionPosition = existingGroup
+            ? { x: snapToMinorGrid(existingGroup.pos_x), y: snapToMinorGrid(existingGroup.pos_y) }
+            : getBowtieWizardSectionPosition(wizardGroupHeadingByStep.overview, sectionWidth, sectionHeight);
+          const childOrigins = overviewNodes.map((node, index) => ({
+            x: snapToMinorGrid(
+              sectionPosition.x +
+                edgePadding +
+                overviewNodes.slice(0, index).reduce((sum, current) => sum + current.width, 0) +
+                gap * index
+            ),
+            y: snapToMinorGrid(sectionPosition.y + edgePadding),
+          }));
+          const riskLabel = item.riskLevel.charAt(0).toUpperCase() + item.riskLevel.slice(1);
+          if (existingGroup) {
+            const existingChildren = findWizardGroupElements(existingGroup, "overview");
+            const updates: CanvasElementUpdatePayload[] = [
+              {
+                id: existingGroup.id,
+                fields: { pos_x: sectionPosition.x, pos_y: sectionPosition.y, width: sectionWidth, height: sectionHeight },
+              },
+            ];
+            const inserts: CanvasElementInsertPayload[] = [];
+            overviewNodes.forEach((node, index) => {
+              const match = existingChildren.find((child) => child.element_type === node.element_type);
+              if (match) {
+                updates.push({
+                  id: match.id,
+                  fields: {
+                    heading: node.heading,
+                    element_config: node.element_config,
+                    pos_x: childOrigins[index].x,
+                    pos_y: childOrigins[index].y,
+                    width: node.width,
+                    height: node.height,
+                  },
+                });
+                return;
+              }
+              inserts.push({
+                map_id: mapId,
+                element_type: node.element_type,
+                heading: node.heading,
+                color_hex: node.color_hex,
+                created_by_user_id: userId,
+                element_config: node.element_config,
+                pos_x: childOrigins[index].x,
+                pos_y: childOrigins[index].y,
+                width: node.width,
+                height: node.height,
+              });
+            });
+            await updateCanvasElements(updates);
+            await insertCanvasElements(inserts);
+            return;
+          }
+          await insertCanvasElements([
+            {
+              map_id: mapId,
+              element_type: "grouping_container",
+              heading: wizardGroupHeadingByStep.overview,
+              color_hex: null,
+              created_by_user_id: userId,
+              pos_x: sectionPosition.x,
+              pos_y: sectionPosition.y,
+              width: sectionWidth,
+              height: sectionHeight,
+            },
+            {
+              map_id: mapId,
+              element_type: "bowtie_hazard",
+              heading: item.hazard.trim() || "Hazard",
+              color_hex: "#111827",
+              created_by_user_id: userId,
+              element_config: { description: "", hazard_category: "" },
+              pos_x: childOrigins[0].x,
+              pos_y: childOrigins[0].y,
+              width: bowtieDefaultWidth,
+              height: bowtieHazardHeight,
+            },
+            {
+              map_id: mapId,
+              element_type: "bowtie_top_event",
+              heading: item.topEvent.trim() || "Top Event",
+              color_hex: "#dc2626",
+              created_by_user_id: userId,
+              element_config: { description: "", loss_of_control_type: item.lossOfControlType.trim() },
+              pos_x: childOrigins[1].x,
+              pos_y: childOrigins[1].y,
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            },
+            {
+              map_id: mapId,
+              element_type: "bowtie_risk_rating",
+              heading: `Risk Level: ${riskLabel}`,
+              color_hex: "#111827",
+              created_by_user_id: userId,
+              element_config: { likelihood: item.likelihood, consequence: item.consequence, risk_level: item.riskLevel },
+              pos_x: childOrigins[2].x,
+              pos_y: childOrigins[2].y,
+              width: bowtieDefaultWidth,
+              height: bowtieRiskRatingHeight,
+            },
+          ]);
+          await relayoutBowtieWizardSections();
+          return;
+        }
+        if (payload.step === "threats") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.threatCategory));
+          const layout = buildWizardGroupLayout(items.length, bowtieDefaultWidth, bowtieSquareHeight);
+          const sectionPosition = getBowtieWizardSectionPosition(wizardGroupHeadingByStep.threats, layout.width, layout.height);
+          await createGroupAndInsert("threats", wizardGroupHeadingByStep.threats, bowtieDefaultWidth, bowtieSquareHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: "bowtie_threat",
+              heading: item.heading.trim() || `Threat ${index + 1}`,
+              color_hex: "#f97316",
+              created_by_user_id: userId,
+              element_config: { description: "", threat_category: item.threatCategory.trim() },
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            };
+          }, items.length, sectionPosition);
+          await relayoutBowtieWizardSections();
+          return;
+        }
+        if (payload.step === "consequences") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.impactCategory));
+          const layout = buildWizardGroupLayout(items.length, bowtieDefaultWidth, bowtieSquareHeight);
+          const sectionPosition = getBowtieWizardSectionPosition(wizardGroupHeadingByStep.consequences, layout.width, layout.height);
+          await createGroupAndInsert("consequences", wizardGroupHeadingByStep.consequences, bowtieDefaultWidth, bowtieSquareHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: "bowtie_consequence",
+              heading: item.heading.trim() || `Consequence ${index + 1}`,
+              color_hex: "#9333ea",
+              created_by_user_id: userId,
+              element_config: { description: "", impact_category: item.impactCategory.trim() },
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            };
+          }, items.length, sectionPosition);
+          await relayoutBowtieWizardSections();
+          return;
+        }
+        if (payload.step === "controls") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.controlType));
+          const preventiveItems = items.filter((item) => item.controlCategory === "preventive");
+          const recoveryItems = items.filter((item) => item.controlCategory !== "preventive");
+          if (preventiveItems.length) {
+            const layout = buildWizardGroupLayout(preventiveItems.length, bowtieDefaultWidth, bowtieControlHeight);
+            const sectionPosition = getBowtieWizardSectionPosition(bowtiePreventiveControlsHeading, layout.width, layout.height);
+            await createGroupAndInsert("controls", bowtiePreventiveControlsHeading, bowtieDefaultWidth, bowtieControlHeight, (origin, index) => {
+              const item = preventiveItems[index];
+              return {
+                map_id: mapId,
+                element_type: "bowtie_control",
+                heading: item.heading.trim() || `Control ${index + 1}`,
+                color_hex: "#ffffff",
+                created_by_user_id: userId,
+                element_config: {
+                  description: item.description.trim(),
+                  control_category: item.controlCategory,
+                  linked_target_heading: item.linkedTargetHeading.trim(),
+                  control_type: item.controlType.trim(),
+                  owner_text: "",
+                  verification_method: item.verificationMethod.trim(),
+                  verification_frequency: item.verificationFrequency.trim(),
+                  is_critical_control: item.critical,
+                  performance_standard: "",
+                },
+                pos_x: origin.x,
+                pos_y: origin.y,
+                width: bowtieDefaultWidth,
+                height: bowtieControlHeight,
+              };
+            }, preventiveItems.length, sectionPosition);
+          }
+          if (recoveryItems.length) {
+            const layout = buildWizardGroupLayout(recoveryItems.length, bowtieDefaultWidth, bowtieControlHeight);
+            const sectionPosition = getBowtieWizardSectionPosition(bowtieRecoveryControlsHeading, layout.width, layout.height);
+            await createGroupAndInsert("controls", bowtieRecoveryControlsHeading, bowtieDefaultWidth, bowtieControlHeight, (origin, index) => {
+              const item = recoveryItems[index];
+              return {
+                map_id: mapId,
+                element_type: "bowtie_control",
+                heading: item.heading.trim() || `Control ${index + 1}`,
+                color_hex: "#ffffff",
+                created_by_user_id: userId,
+                element_config: {
+                  description: item.description.trim(),
+                  control_category: item.controlCategory,
+                  linked_target_heading: item.linkedTargetHeading.trim(),
+                  control_type: item.controlType.trim(),
+                  owner_text: "",
+                  verification_method: item.verificationMethod.trim(),
+                  verification_frequency: item.verificationFrequency.trim(),
+                  is_critical_control: item.critical,
+                  performance_standard: "",
+                },
+                pos_x: origin.x,
+                pos_y: origin.y,
+                width: bowtieDefaultWidth,
+                height: bowtieControlHeight,
+              };
+            }, recoveryItems.length, sectionPosition);
+          }
+          await relayoutBowtieWizardSections();
+          return;
+        }
+        if (payload.step === "assurance") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
+          const layout = buildWizardGroupLayout(items.length, bowtieDefaultWidth, bowtieSquareHeight);
+          const sectionPosition = getBowtieWizardSectionPosition(wizardGroupHeadingByStep.assurance, layout.width, layout.height);
+          await createGroupAndInsert("assurance", wizardGroupHeadingByStep.assurance, bowtieDefaultWidth, bowtieSquareHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: item.kind,
+              heading: item.heading.trim() || `Assurance ${index + 1}`,
+              color_hex:
+                item.kind === "bowtie_escalation_factor" ? "#facc15" : item.kind === "bowtie_recovery_measure" ? "#22c55e" : "#8b5cf6",
+              created_by_user_id: userId,
+              element_config:
+                item.kind === "bowtie_escalation_factor"
+                  ? { description: item.description.trim(), factor_type: item.factorType.trim() }
+                  : item.kind === "bowtie_recovery_measure"
+                    ? { description: item.description.trim(), trigger: "", owner_text: "", time_requirement: item.timeRequirement.trim() }
+                    : { description: item.description.trim(), linked_factor: "", indicator_type: item.monitoringMethod.trim(), monitoring_method: item.monitoringMethod.trim() },
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: bowtieDefaultWidth,
+              height: bowtieSquareHeight,
+            };
+          }, items.length, sectionPosition);
+          await relayoutBowtieWizardSections();
+          return;
+        }
+      }
+
+      if (payload.category === "org_chart") {
+        if (payload.step === "departments") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
+          await createGroupAndInsert("departments", wizardGroupHeadingByStep.departments, processHeadingWidth, processHeadingHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: "category",
+              heading: item.heading.trim() || `Department ${index + 1}`,
+              color_hex: defaultCategoryColor,
+              created_by_user_id: userId,
+              element_config: item.description.trim() ? { description: item.description.trim() } : null,
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: processHeadingWidth,
+              height: processHeadingHeight,
+            };
+          }, items.length);
+          return;
+        }
+        const stepId = payload.step;
+        const items = payload.items.filter((item) => isFilled(item.positionTitle) || isFilled(item.occupantName) || isFilled(item.roleId));
+        await createGroupAndInsert(stepId, wizardGroupHeadingByStep[stepId], orgChartPersonWidth, orgChartPersonHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "person",
+            heading: item.positionTitle.trim() || "Position Title",
+            color_hex: null,
+            created_by_user_id: userId,
+            element_config: {
+              display_variant: "org_chart",
+              position_title: item.positionTitle.trim() || "Position Title",
+              role_id: item.roleId.trim(),
+              department: "",
+              occupant_name: item.occupantName.trim(),
+              start_date: "",
+              employment_type: item.employmentType,
+              acting_name: "",
+              acting_start_date: "",
+              recruiting: false,
+              contractor_role: item.employmentType === "contractor",
+              proposed_role: item.proposedRole,
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: orgChartPersonWidth,
+            height: orgChartPersonHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      if (payload.category === "process_flow") {
+        if (payload.step === "lanes") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
+          await createGroupAndInsert("lanes", wizardGroupHeadingByStep.lanes, processHeadingWidth, processHeadingHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: "category",
+              heading: item.heading.trim() || `Lane ${index + 1}`,
+              color_hex: defaultCategoryColor,
+              created_by_user_id: userId,
+              element_config: item.description.trim() ? { description: item.description.trim() } : null,
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: processHeadingWidth,
+              height: processHeadingHeight,
+            };
+          }, items.length);
+          return;
+        }
+        if (payload.step === "steps") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
+          await createGroupAndInsert("steps", wizardGroupHeadingByStep.steps, processComponentWidth, processComponentElementHeight, (origin, index) => {
+            const item = items[index];
+            const dimensions =
+              item.kind === "shape_rectangle"
+                ? { width: shapeRectangleDefaultWidth, height: shapeRectangleDefaultHeight }
+                : item.kind === "shape_pill"
+                  ? { width: shapePillDefaultWidth, height: shapePillDefaultHeight }
+                  : { width: processComponentWidth, height: processComponentElementHeight };
+            return {
+              map_id: mapId,
+              element_type: item.kind,
+              heading: item.heading.trim() || `Step ${index + 1}`,
+              color_hex: item.kind === "process_component" ? null : shapeDefaultFillColor,
+              created_by_user_id: userId,
+              element_config:
+                item.kind === "process_component"
+                  ? { body: item.description.trim() }
+                  : { bold: false, italic: false, underline: false, align: "center", font_size: 24, fill_mode: "fill" },
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: dimensions.width,
+              height: dimensions.height,
+            };
+          }, items.length);
+          return;
+        }
+        if (payload.step === "inputs-outputs") {
+          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
+          await createGroupAndInsert("inputs-outputs", wizardGroupHeadingByStep["inputs-outputs"], shapeRectangleDefaultWidth, shapeRectangleDefaultHeight, (origin, index) => {
+            const item = items[index];
+            return {
+              map_id: mapId,
+              element_type: "shape_rectangle",
+              heading: item.heading.trim() || `Input / Output ${index + 1}`,
+              color_hex: shapeDefaultFillColor,
+              created_by_user_id: userId,
+              element_config: { bold: false, italic: false, underline: false, align: "center", font_size: 24, fill_mode: "fill", description: item.description.trim() },
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: shapeRectangleDefaultWidth,
+              height: shapeRectangleDefaultHeight,
+            };
+          }, items.length);
+          return;
+        }
+        if (payload.step === "roles") {
+          await createCompactPeople(wizardGroupHeadingByStep.roles, "roles", payload.items);
+          return;
+        }
+      }
+
+      if (payload.step === "sequence") {
+        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.timestamp) || isFilled(item.location));
+        await createGroupAndInsert("sequence", wizardGroupHeadingByStep.sequence, incidentCardWidth, incidentCardHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "incident_sequence_step",
+            heading: item.heading.trim() || `Sequence Step ${index + 1}`,
+            color_hex: "#bfdbfe",
+            created_by_user_id: userId,
+            element_config: { description: item.description.trim(), timestamp: item.timestamp.trim(), location: item.location.trim() },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: incidentCardWidth,
+            height: incidentCardHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      if (payload.step === "people") {
+        const items = (payload.items as any[]).filter((item) => isFilled(item.roleName) || isFilled(item.occupantName));
+        await createGroupAndInsert("people", wizardGroupHeadingByStep.people, personElementWidth, personElementHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "person",
+            heading: buildPersonHeading(item.roleName.trim() || "Role Name", item.occupantName.trim() || "Occupant Name"),
+            color_hex: null,
+            created_by_user_id: userId,
+            element_config: {
+              position_title: item.roleName.trim(),
+              role_id: "",
+              department: "",
+              occupant_name: item.occupantName.trim(),
+              start_date: "",
+              employment_type: "fte",
+              acting_name: "",
+              acting_start_date: "",
+              recruiting: false,
+              contractor_role: false,
+              proposed_role: false,
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: personElementWidth,
+            height: personElementHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      if (payload.step === "task-condition") {
+        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.environmentalContext));
+        await createGroupAndInsert("task-condition", wizardGroupHeadingByStep["task-condition"], incidentCardWidth, incidentCardHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "incident_task_condition",
+            heading: item.heading.trim() || `Task / Condition ${index + 1}`,
+            color_hex: "#fb923c",
+            created_by_user_id: userId,
+            element_config: {
+              description: item.description.trim(),
+              state: item.state,
+              environmental_context: item.environmentalContext.trim(),
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: incidentCardWidth,
+            height: incidentCardHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      if (payload.step === "factors") {
+        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.category));
+        await createGroupAndInsert("factors", wizardGroupHeadingByStep.factors, incidentCardWidth, incidentCardHeight, (origin, index) => {
+          const item = items[index];
+          if (item.kind === "incident_system_factor") {
+            return {
+              map_id: mapId,
+              element_type: "incident_system_factor",
+              heading: item.heading.trim() || `System Factor ${index + 1}`,
+              color_hex: "#a78bfa",
+              created_by_user_id: userId,
+              element_config: { description: item.description.trim(), category: item.category.trim(), cause_level: item.classification },
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: incidentCardWidth,
+              height: incidentCardHeight,
+            };
+          }
+          return {
+            map_id: mapId,
+            element_type: "incident_factor",
+            heading: item.heading.trim() || `Factor ${index + 1}`,
+            color_hex: "#fde047",
+            created_by_user_id: userId,
+            element_config: {
+              factor_presence: item.presence,
+              factor_classification: item.classification,
+              influence_type: item.category.trim(),
+              description: item.description.trim(),
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: incidentCardWidth,
+            height: incidentCardHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      if (payload.step === "control-barrier") {
+        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.controlType) || isFilled(item.ownerText));
+        await createGroupAndInsert("control-barrier", wizardGroupHeadingByStep["control-barrier"], incidentCardWidth, incidentCardHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "incident_control_barrier",
+            heading: item.heading.trim() || `Control / Barrier ${index + 1}`,
+            color_hex: "#4ade80",
+            created_by_user_id: userId,
+            element_config: {
+              barrier_state: item.barrierState,
+              barrier_role: item.barrierRole,
+              description: item.description.trim(),
+              control_type: item.controlType.trim(),
+              owner_text: item.ownerText.trim(),
+              verification_method: "",
+              verification_frequency: "",
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: incidentCardWidth,
+            height: incidentCardHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      if (payload.step === "evidence") {
+        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.evidenceType) || isFilled(item.source));
+        await createGroupAndInsert("evidence", wizardGroupHeadingByStep.evidence, incidentCardWidth, incidentCardHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "incident_evidence",
+            heading: item.heading.trim() || `Evidence ${index + 1}`,
+            color_hex: "#cbd5e1",
+            created_by_user_id: userId,
+            element_config: {
+              evidence_type: item.evidenceType.trim(),
+              description: item.description.trim(),
+              source: item.source.trim(),
+              show_canvas_preview: false,
+              media_storage_path: "",
+              media_mime: "",
+              media_name: "",
+              media_rotation_deg: 0,
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: incidentCardWidth,
+            height: incidentCardHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      if (payload.step === "finding") {
+        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description));
+        await createGroupAndInsert("finding", wizardGroupHeadingByStep.finding, bowtieDefaultWidth, bowtieControlHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "incident_finding",
+            heading: item.heading.trim() || `Finding ${index + 1}`,
+            color_hex: "#1d4ed8",
+            created_by_user_id: userId,
+            element_config: { description: item.description.trim(), confidence_level: item.confidenceLevel },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: bowtieDefaultWidth,
+            height: bowtieControlHeight,
+          };
+        }, items.length);
+        return;
+      }
+
+      const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.ownerText) || isFilled(item.dueDate));
+      await createGroupAndInsert("recommendation", wizardGroupHeadingByStep.recommendation, incidentCardWidth, incidentCardHeight, (origin, index) => {
+        const item = items[index];
+        return {
+          map_id: mapId,
+          element_type: "incident_recommendation",
+          heading: item.heading.trim() || `Recommendation ${index + 1}`,
+          color_hex: "#14b8a6",
+          created_by_user_id: userId,
+          element_config: {
+            action_type: item.actionType,
+            owner_text: item.ownerText.trim(),
+            due_date: item.dueDate.trim(),
+            description: item.description.trim(),
+          },
+          pos_x: origin.x,
+          pos_y: origin.y,
+          width: incidentCardWidth,
+          height: incidentCardHeight,
+        };
+      }, items.length);
+    },
+    [
+      addDocumentTypes,
+      bowtieControlHeight,
+      bowtieDefaultWidth,
+      bowtieHazardHeight,
+      bowtieRiskRatingHeight,
+      bowtieSquareHeight,
+      buildPersonHeading,
+      buildWizardGroupLayout,
+      canUseWizard,
+      defaultCategoryColor,
+      defaultHeight,
+      defaultWidth,
+      findExistingWizardGroup,
+      findWizardGroupElements,
+      getNextWizardGroupPosition,
+      insertDocumentNodes,
+      insertCanvasElements,
+      isLandscapeTypeName,
+      landscapeDefaultHeight,
+      landscapeDefaultWidth,
+      mapId,
+      minorGridSize,
+      orgChartPersonHeight,
+      orgChartPersonWidth,
+      personElementHeight,
+      personElementWidth,
+      processComponentElementHeight,
+      processComponentWidth,
+      processHeadingHeight,
+      processHeadingWidth,
+      shapeDefaultFillColor,
+      shapePillDefaultHeight,
+      shapePillDefaultWidth,
+      shapeRectangleDefaultHeight,
+      shapeRectangleDefaultWidth,
+      snapToMinorGrid,
+      systemCircleDiameter,
+      systemCircleElementHeight,
+      updateCanvasElements,
+      userEmail,
+      userId,
+    ]
+  );
   const {
     relatedRows,
     relatedGroupingRows,
@@ -3057,6 +5036,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     relationshipModeGrouping,
     allowDocumentTargets,
     allowSystemTargets,
+    allowGroupingTargets,
     documentRelationCandidates,
     documentRelationCandidateLabelById,
     documentRelationCandidateIdByLabel,
@@ -3097,7 +5077,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     };
     const peopleByNormalizedId = new Map(
       elements
-        .filter((el) => el.element_type === "person")
+        .filter((el) => isOrgChartPersonElement(el))
         .map((el) => [normalizeRef(el.id), el] as const)
     );
     const resolvePersonByAnyRef = (refs: Array<string | null | undefined>) => {
@@ -3130,7 +5110,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [elements, mapCategoryId, relations]);
   useEffect(() => {
     if (mapCategoryId !== "org_chart") return;
-    const personElements = elements.filter((el) => el.element_type === "person");
+    const personElements = elements.filter((el) => isOrgChartPersonElement(el));
     if (!personElements.length) return;
     const changed = personElements
       .map((person) => {
@@ -3184,7 +5164,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     const sourceId = parseProcessFlowId(relationshipSourceSystemId);
     const term = relationshipSystemQuery.trim().toLowerCase();
     return elements
-      .filter((el) => el.element_type === "person")
+      .filter((el) => isOrgChartPersonElement(el))
       .filter((el) => el.id !== sourceId)
       .map((el) => {
         const cfg = parseOrgChartPersonConfig(el.element_config);
@@ -3209,7 +5189,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   }, [alreadyRelatedSystemTargetIds, elements, mapCategoryId, relationshipSourceSystemId, relationshipSystemQuery]);
   const orgDirectReportSourceLabel = useMemo(() => {
     if (!relationshipSourceSystemId || mapCategoryId !== "org_chart") return "";
-    const source = elements.find((el) => el.id === parseProcessFlowId(relationshipSourceSystemId) && el.element_type === "person");
+    const source = elements.find((el) => el.id === parseProcessFlowId(relationshipSourceSystemId) && isOrgChartPersonElement(el));
     if (!source) return "";
     const cfg = parseOrgChartPersonConfig(source.element_config);
     const actingName = cfg.acting_name.trim();
@@ -3269,38 +5249,20 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     if (score <= 16) return "high";
     return "extreme";
   }, []);
-  const handleSaveBowtieElement = useCallback(async () => {
+  const handleSaveBowtieElement = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) {
       setError("You have view access only for this map.");
       return;
     }
     if (!selectedBowtieElement) return;
     const elementType = selectedBowtieElement.element_type;
-    const defaultLabelByType: Record<string, string> = {
-      bowtie_hazard: "Hazard",
-      bowtie_top_event: "Top Event",
-      bowtie_threat: "Threat",
-      bowtie_consequence: "Consequence",
-      bowtie_control: "Control",
-      bowtie_escalation_factor: "Escalation Factor",
-      bowtie_recovery_measure: "Recovery Measure",
-      bowtie_degradation_indicator: "Degradation Indicator",
-      bowtie_risk_rating: "Risk Level: Medium",
-      incident_sequence_step: "Sequence Step",
-      incident_outcome: "Outcome",
-      incident_task_condition: "Task / Condition",
-      incident_factor: "Factor",
-      incident_system_factor: "System Factor",
-      incident_control_barrier: "Control / Barrier",
-      incident_evidence: "Evidence",
-      incident_finding: "Finding",
-      incident_recommendation: "Recommendation",
-    };
     const nextConfig: Record<string, unknown> = { ...bowtieDraft };
-    const isIncidentElement = elementType.startsWith("incident_");
-    let nextHeading = isIncidentElement
-      ? selectedBowtieElement.heading || defaultLabelByType[elementType] || "Node"
-      : bowtieHeadingDraft.trim() || defaultLabelByType[elementType] || "Bow Tie Node";
+    const defaultLabel = methodologyDefaultLabelByType[elementType] ?? "Node";
+    let nextHeading = defaultLabel;
+    if (isDescriptionDrivenMethodologyType(elementType)) {
+      const persistedHeading = String(selectedBowtieElement.heading ?? "").trim();
+      nextConfig.description = String(nextConfig.description ?? "").trim() || persistedHeading || defaultLabel;
+    }
     if (elementType === "bowtie_risk_rating") {
       const likelihood = String(nextConfig.likelihood || "possible");
       const consequence = String(nextConfig.consequence || "moderate");
@@ -3353,12 +5315,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       setEvidenceUploadPreviewUrl(null);
       setEvidenceUploadFile(null);
     }
-    setSelectedBowtieElementId(null);
+    if (options?.closeAfterSave !== false) setSelectedBowtieElementId(null);
   }, [
     canWriteMap,
     selectedBowtieElement,
     bowtieDraft,
-    bowtieHeadingDraft,
     calculateRiskLevel,
     mapId,
     setError,
@@ -3366,6 +5327,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     canvasElementSelectColumns,
     evidenceUploadFile,
     evidenceUploadPreviewUrl,
+    setSelectedBowtieElementId,
   ]);
   const closeAddRelationshipModal = useCallback(() => {
     setShowAddRelationship(false);
@@ -3401,11 +5363,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
     setEditContentHeadingId("");
     setEditContentText("");
   }, [closeAddRelationshipModal]);
-  const handleCloseDocumentPropertiesPanel = useCallback(() => {
-    setSelectedNodeId(null);
-    closeDesktopDrilldownPanels();
-  }, [closeDesktopDrilldownPanels]);
-  const closeAllLeftAsides = useCallback(() => {
+  const closeAllLeftAsidesImmediate = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedProcessId(null);
     setSelectedSystemId(null);
@@ -3458,8 +5416,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       setError("Please select a valid direct report.");
       return;
     }
-    const sourcePerson = elements.find((el) => el.id === sourceId && el.element_type === "person");
-    const targetPerson = elements.find((el) => el.id === targetId && el.element_type === "person");
+    const sourcePerson = elements.find((el) => el.id === sourceId && isOrgChartPersonElement(el));
+    const targetPerson = elements.find((el) => el.id === targetId && isOrgChartPersonElement(el));
     if (!sourcePerson || !targetPerson) {
       setError("Direct report links must be person-to-person.");
       return;
@@ -3565,6 +5523,106 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       setOutlineNodeId,
       setOutlineItems,
     });
+  const dismissLeftAsides = useCallback(async (options?: { saveBeforeClose?: boolean }) => {
+    if (options?.saveBeforeClose) {
+      if (selectedNodeId && hasUnsavedDocumentDraftChanges) return void (await handleSaveNode());
+      if (selectedProcessId && hasUnsavedProcessDraftChanges) return void (await handleSaveProcessHeading());
+      if (selectedSystemId && hasUnsavedSystemDraftChanges) return void (await handleSaveSystemName());
+      if (selectedProcessComponentId && hasUnsavedProcessComponentDraftChanges) return void (await handleSaveProcessComponent());
+      if (selectedPersonId && hasUnsavedPersonDraftChanges) return void (await handleSavePerson());
+      if (selectedGroupingId && hasUnsavedGroupingDraftChanges) return void (await handleSaveGroupingContainer());
+      if (selectedStickyId && hasUnsavedStickyDraftChanges) return void (await handleSaveStickyNote());
+      if (selectedImageId && hasUnsavedImageDraftChanges) return void (await handleSaveImageAsset());
+      if (selectedTextBoxId && hasUnsavedTextBoxDraftChanges) return void (await handleSaveTextBox());
+      if (selectedTableId && hasUnsavedTableDraftChanges) return void (await handleSaveTable());
+      if (selectedFlowShapeId && hasUnsavedFlowShapeDraftChanges) return void (await handleSaveFlowShape());
+      if (selectedBowtieElementId && hasUnsavedBowtieDraftChanges) return void (await handleSaveBowtieElement());
+    }
+    closeAllLeftAsidesImmediate();
+  }, [
+    closeAllLeftAsidesImmediate,
+    selectedNodeId,
+    selectedProcessId,
+    selectedSystemId,
+    selectedProcessComponentId,
+    selectedPersonId,
+    selectedGroupingId,
+    selectedStickyId,
+    selectedImageId,
+    selectedTextBoxId,
+    selectedTableId,
+    selectedFlowShapeId,
+    selectedBowtieElementId,
+    hasUnsavedDocumentDraftChanges,
+    hasUnsavedProcessDraftChanges,
+    hasUnsavedSystemDraftChanges,
+    hasUnsavedProcessComponentDraftChanges,
+    hasUnsavedPersonDraftChanges,
+    hasUnsavedGroupingDraftChanges,
+    hasUnsavedStickyDraftChanges,
+    hasUnsavedImageDraftChanges,
+    hasUnsavedTextBoxDraftChanges,
+    hasUnsavedTableDraftChanges,
+    hasUnsavedFlowShapeDraftChanges,
+    hasUnsavedBowtieDraftChanges,
+    handleSaveNode,
+    handleSaveProcessHeading,
+    handleSaveSystemName,
+    handleSaveProcessComponent,
+    handleSavePerson,
+    handleSaveGroupingContainer,
+    handleSaveStickyNote,
+    handleSaveImageAsset,
+    handleSaveTextBox,
+    handleSaveTable,
+    handleSaveFlowShape,
+    handleSaveBowtieElement,
+  ]);
+  const handleCloseDocumentPropertiesPanel = useCallback(() => {
+    void dismissLeftAsides({ saveBeforeClose: true });
+  }, [dismissLeftAsides]);
+  const closeAllLeftAsides = useCallback(() => {
+    void dismissLeftAsides({ saveBeforeClose: true });
+  }, [dismissLeftAsides]);
+  useEffect(() => {
+    if (isMobile) return;
+    const hasOpenPropertyAside =
+      !!selectedNodeId ||
+      !!selectedProcessId ||
+      !!selectedSystemId ||
+      !!selectedProcessComponentId ||
+      !!selectedPersonId ||
+      !!selectedStickyId ||
+      !!selectedImageId ||
+      !!selectedTextBoxId ||
+      !!selectedTableId ||
+      !!selectedFlowShapeId ||
+      !!selectedBowtieElementId ||
+      !!selectedGroupingId;
+    if (!hasOpenPropertyAside) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-left-aside='true']")) return;
+      void dismissLeftAsides({ saveBeforeClose: true });
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [
+    isMobile,
+    selectedNodeId,
+    selectedProcessId,
+    selectedSystemId,
+    selectedProcessComponentId,
+    selectedPersonId,
+    selectedStickyId,
+    selectedImageId,
+    selectedTextBoxId,
+    selectedTableId,
+    selectedFlowShapeId,
+    selectedBowtieElementId,
+    selectedGroupingId,
+    dismissLeftAsides,
+  ]);
   const { handleDeleteProcessElement, handleDeleteSelectedComponents } = useCanvasDeleteSelectionActions({
     canWriteMap,
     canEditElement,
@@ -3705,16 +5763,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   );
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
-        <div className="w-full max-w-xl border border-slate-200 bg-white px-8 py-10 text-center shadow-sm">
-          <img src="/images/logo-black.png" alt="HSES Industry Partners" className="mx-auto mb-5 h-auto w-28" />
-          <div className="mx-auto mb-4 h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-[#6686c7]" aria-hidden="true" />
-          <h1 className="mb-2 text-2xl font-bold text-slate-900">Loading {loadingLabel}</h1>
-          <p className="text-sm text-slate-600">Preparing your canvas and map data.</p>
-        </div>
-      </div>
-    );
+    return <SystemMapLoadingView progress={loadingProgress} message={loadingMessage} />;
   }
 
   if (!map) {
@@ -3742,9 +5791,11 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       />
 
       <CanvasActionButtons
+        isMobile={isMobile}
         backHref={backHref}
-        backLabel={backLabel}
+        backTitle={backLabel}
         showMapInfoAside={showMapInfoAside}
+        onToggleMapInfo={handleToggleMapInfoAside}
         rf={rf}
         setShowAddMenu={setShowAddMenu}
         showAddMenu={showAddMenu}
@@ -3757,11 +5808,24 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         searchResults={searchResults}
         onSelectSearchResult={handleSelectSearchResult}
         canWriteMap={canWriteMap}
+        canUseWizard={canUseWizard}
+        addDisabledReason={addDisabledReason}
+        wizardDisabledReason={wizardDisabledReason}
+        canPrint
+        printDisabledReason={undefined}
+        canvasLocked={canvasLocked}
+        onToggleCanvasLock={() => setCanvasLocked((prev) => !prev)}
+        canvasLockTitle={canvasLockTitle}
+        onOpenWizard={() => {
+          if (!canUseWizard) return;
+          setShowWizardModal(true);
+        }}
         canCreateSticky={canCreateSticky}
         handleAddBlankDocument={handleAddBlankDocument}
         handleAddSystemCircle={handleAddSystemCircle}
         handleAddProcessComponent={handleAddProcessComponent}
         handleAddPerson={handleAddPerson}
+        handleAddOrgChartPerson={handleAddOrgChartPerson}
         handleAddProcessHeading={handleAddProcessHeading}
         handleAddGroupingContainer={handleAddGroupingContainer}
         handleAddStickyNote={handleAddStickyNote}
@@ -3793,6 +5857,22 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         handleAddIncidentFinding={handleAddIncidentFinding}
         handleAddIncidentRecommendation={handleAddIncidentRecommendation}
         allowedNodeKinds={allowedNodeKinds}
+        canSaveTemplate={false}
+        isPlatformAdmin={false}
+        saveAsGlobalTemplate={false}
+        setSaveAsGlobalTemplate={() => undefined}
+        templateDisabledReason={undefined}
+        showTemplateMenu={false}
+        setShowTemplateMenu={() => undefined}
+        templateMenuRef={addMenuRef}
+        templateQuery=""
+        setTemplateQuery={() => undefined}
+        templateResults={[]}
+        isLoadingTemplates={false}
+        isSavingTemplate={false}
+        templateSaveMessage={null}
+        onSelectTemplate={() => undefined}
+        onSaveTemplate={() => undefined}
         showPrintMenu={showPrintMenu}
         setShowPrintMenu={setShowPrintMenu}
         printMenuRef={printMenuRef}
@@ -3800,8 +5880,39 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
         onPrintSelectArea={handlePrintSelectArea}
         isPreparingPrint={isPreparingPrint}
       />
+      <SystemMapWelcomeModal
+        open={showWelcomeModal}
+        isMobile={isMobile}
+        onStartManual={() => setShowWelcomeModal(false)}
+        onStartWizard={() => {
+          setShowWelcomeModal(false);
+          if (canUseWizard) setShowWizardModal(true);
+        }}
+      />
+      <SystemMapWizardModal
+        open={showWizardModal}
+        isMobile={isMobile}
+        categoryId={mapCategoryId}
+        documentTypeOptions={addDocumentTypes.map((type) => ({ id: type.id, name: getDisplayTypeName(type.name) }))}
+        existingDocumentOptions={nodes.map((node) => ({
+          id: node.id,
+          title: node.title?.trim() || "Untitled document",
+          subtitle: `${getDisplayTypeName(typesById.get(node.type_id)?.name ?? "Document")}${node.document_number ? ` | ${node.document_number}` : ""}`,
+        }))}
+        onClose={() => setShowWizardModal(false)}
+        isSaving={wizardSaving}
+        onCommitStep={async (payload) => {
+          setWizardSaving(true);
+          try {
+            await handleWizardCommitStep(payload);
+          } finally {
+            setWizardSaving(false);
+          }
+        }}
+      />
 
       <MapInfoAside
+        isMobile={isMobile}
         showMapInfoAside={showMapInfoAside}
         mapInfoAsideRef={mapInfoAsideRef}
         handleCloseMapInfoAside={handleCloseMapInfoAside}
@@ -3830,7 +5941,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
       <main className="relative min-h-0 flex-1 overflow-hidden">
         <div
           ref={canvasRef}
-          className="h-full w-full bg-stone-50"
+          className={`h-full w-full bg-stone-50 ${canvasLocked ? "[&_.react-flow__edge]:pointer-events-none [&_.react-flow__node]:pointer-events-none" : ""}`}
           onMouseDown={handlePaneMouseDown}
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
@@ -3839,18 +5950,20 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           }}
         >
           <ReactFlow
-            nodes={flowNodes}
+            nodes={interactionFlowNodes}
             edges={flowEdges}
             nodeTypes={flowNodeTypes}
             edgeTypes={flowEdgeTypes}
             onlyRenderVisibleElements
+            elementsSelectable={!canvasLocked}
             nodesConnectable={false}
             edgesReconnectable={false}
             nodesFocusable={false}
             edgesFocusable={false}
             onInit={(instance) => setRf({ fitView: instance.fitView, screenToFlowPosition: instance.screenToFlowPosition, setViewport: instance.setViewport })}
             onNodesChange={handleFlowNodesChange}
-            onNodeClick={(event, n) =>
+            onNodeClick={(event, n) => {
+              if (canvasLocked) return;
               handleCanvasNodeClick({
                 event,
                 node: n,
@@ -3873,9 +5986,10 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
                 setSelectedFlowShapeId,
                 setSelectedBowtieElementId,
                 setMobileNodeMenuId,
-              })
-            }
+              });
+            }}
             onNodeContextMenu={(e, n) => {
+              if (canvasLocked) return;
               if (!canUseContextMenu) return;
               e.preventDefault();
               if (n.data.entityKind === "grouping_container") {
@@ -3903,23 +6017,29 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               if (!canUseContextMenu) return;
               e.preventDefault();
             }}
-            onNodeMouseEnter={(_, n) => scheduleHoveredNodeId(n.id)}
+            onNodeMouseEnter={(_, n) => {
+              if (canvasLocked) return;
+              scheduleHoveredNodeId(n.id);
+            }}
             onNodeMouseLeave={() => scheduleHoveredNodeId(null)}
             onNodeDragStart={() => {
+              if (canvasLocked) return;
               isNodeDragActiveRef.current = true;
               setIsNodeDragActive(true);
             }}
             onNodeDragStop={(event, node) => {
+              if (canvasLocked) return;
               void onNodeDragStop(event, node).finally(() => {
                 isNodeDragActiveRef.current = false;
                 setIsNodeDragActive(false);
               });
             }}
             onMoveEnd={onMoveEnd}
-            nodesDraggable
+            nodesDraggable={!canvasLocked}
             onEdgeMouseEnter={(_, edge) => scheduleHoveredEdgeId(edge.id)}
             onEdgeMouseLeave={() => scheduleHoveredEdgeId(null)}
             onEdgeClick={(event, edge) => {
+              if (canvasLocked) return;
               event.preventDefault();
               event.stopPropagation();
               const rel = relations.find((r) => r.id === edge.id);
@@ -4099,6 +6219,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           setShowRelationshipGroupingOptions={setShowRelationshipGroupingOptions}
           groupingRelationCandidates={groupingRelationCandidates}
           groupingRelationCandidateLabelById={groupingRelationCandidateLabelById}
+          allowGroupingTargets={allowGroupingTargets}
           allowDocumentTargets={allowDocumentTargets}
           relationshipDocumentQuery={relationshipDocumentQuery}
           setRelationshipDocumentQuery={setRelationshipDocumentQuery}
@@ -4128,6 +6249,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           setRelationshipDisciplineSelection={setRelationshipDisciplineSelection}
           relationshipCategory={relationshipCategory}
           setRelationshipCategory={setRelationshipCategory}
+          relationshipCategoryGroups={relationshipCategoryGroups}
           relationshipCategoryOptions={relationshipCategoryOptions}
           relationshipCustomType={relationshipCustomType}
           setRelationshipCustomType={setRelationshipCustomType}
@@ -4171,7 +6293,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               await handleDeleteProcessElement(selectedProcess.id);
             },
             onSave: handleSaveProcessHeading,
-            onClose: () => setSelectedProcessId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
           }}
           systemProps={{
             open: !!selectedSystem,
@@ -4184,7 +6306,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               await handleDeleteProcessElement(selectedSystem.id);
             },
             onSave: handleSaveSystemName,
-            onClose: () => setSelectedSystemId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
             onAddRelationship: () => {
               if (!selectedSystem) return;
               openAddRelationshipFromSource({ systemId: selectedSystem.id });
@@ -4204,7 +6326,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               await handleDeleteProcessElement(selectedProcessComponent.id);
             },
             onSave: handleSaveProcessComponent,
-            onClose: () => setSelectedProcessComponentId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
             onAddRelationship: () => {
               if (!selectedProcessComponent) return;
               openAddRelationshipFromSource({ systemId: selectedProcessComponent.id });
@@ -4218,6 +6340,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             isMobile,
             leftAsideSlideIn,
             mapCategoryId,
+            selectedPersonElementType: selectedPerson ? (isOrgChartPersonElement(selectedPerson) ? "org_chart_person" : "person") : null,
             personRoleDraft,
             setPersonRoleDraft,
             personRoleIdDraft,
@@ -4244,7 +6367,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               await handleDeleteProcessElement(selectedPerson.id);
             },
             onSave: handleSavePerson,
-            onClose: () => setSelectedPersonId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
             onAddRelationship: () => {
               if (!selectedPerson) return;
               openAddRelationshipFromSource({ systemId: selectedPerson.id });
@@ -4306,7 +6429,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setSelectedBowtieElementId(null);
             },
             onSave: handleSaveBowtieElement,
-            onClose: () => setSelectedBowtieElementId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
             onAddRelationship: () => {
               if (!selectedBowtieElement) return;
               openAddRelationshipFromSource({ systemId: selectedBowtieElement.id });
@@ -4330,7 +6453,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               await handleDeleteProcessElement(selectedGrouping.id);
             },
             onSave: handleSaveGroupingContainer,
-            onClose: () => setSelectedGroupingId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
             onAddRelationship: () => {
               if (!selectedGrouping) return;
               openAddRelationshipFromSource({ groupingId: selectedGrouping.id });
@@ -4350,7 +6473,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               await handleDeleteProcessElement(selectedSticky.id);
             },
             onSave: handleSaveStickyNote,
-            onClose: () => setSelectedStickyId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
           }}
           imageProps={{
             open: !!selectedImage,
@@ -4369,7 +6492,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setSelectedImageId(null);
             },
             onSave: handleSaveImageAsset,
-            onClose: () => setSelectedImageId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
             onAddRelationship: () => {
               if (!selectedImage) return;
               openAddRelationshipFromSource({ systemId: selectedImage.id });
@@ -4400,7 +6523,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setSelectedTextBoxId(null);
             },
             onSave: handleSaveTextBox,
-            onClose: () => setSelectedTextBoxId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
           }}
           tableProps={{
             open: !!selectedTable,
@@ -4412,6 +6535,8 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             setTableColumnsDraft,
             tableHeaderBgDraft,
             setTableHeaderBgDraft,
+            tableHeaderFillModeDraft,
+            setTableHeaderFillModeDraft,
             tableBoldDraft,
             setTableBoldDraft,
             tableItalicDraft,
@@ -4430,7 +6555,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setSelectedTableId(null);
             },
             onSave: handleSaveTable,
-            onClose: () => setSelectedTableId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
           }}
           flowShapeProps={{
             open: !!selectedFlowShape,
@@ -4479,7 +6604,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
               setSelectedFlowShapeId(null);
             },
             onSave: handleSaveFlowShape,
-            onClose: () => setSelectedFlowShapeId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
           }}
           documentProps={{
             open: !!selectedNode && !isMobile,
@@ -4565,6 +6690,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             relationshipSourceGroupingHeading: relationshipSourceGrouping?.heading || "",
             allowDocumentTargets,
             allowSystemTargets,
+            allowGroupingTargets,
             relationshipGroupingQuery,
             setRelationshipGroupingQuery,
             groupingRelationCandidateIdByLabel,
@@ -4601,6 +6727,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
             setRelationshipDisciplineSelection,
             relationshipCategory,
             setRelationshipCategory,
+            relationshipCategoryGroups,
             relationshipCategoryOptions,
             relationshipCustomType,
             setRelationshipCustomType,
@@ -4634,7 +6761,7 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
           }}
           mobileDocumentPropertiesModalProps={{
             open: Boolean(selectedNode && isMobile),
-            onClose: () => setSelectedNodeId(null),
+            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
             selectedTypeId,
             setSelectedTypeId,
             addDocumentTypes,
@@ -4715,10 +6842,16 @@ function SystemMapCanvasInner({ mapId }: { mapId: string }) {
   );
 }
 
-export default function SystemMapCanvasClient({ mapId }: { mapId: string }) {
+export default function SystemMapCanvasClient({
+  mapId,
+  showWelcomeOnLoad = false,
+}: {
+  mapId: string;
+  showWelcomeOnLoad?: boolean;
+}) {
   return (
     <ReactFlowProvider>
-      <SystemMapCanvasInner mapId={mapId} />
+      <SystemMapCanvasInner mapId={mapId} showWelcomeOnLoad={showWelcomeOnLoad} />
     </ReactFlowProvider>
   );
 }

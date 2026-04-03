@@ -1,5 +1,5 @@
 ﻿import type { Metadata } from "next";
-import SystemMapsListClient from "./SystemMapsListClient";
+import MapBuilderLandingClient from "../sms-diagnostic/dashboard/MapBuilderLandingClient";
 import DashboardLogoutLink from "../sms-diagnostic/dashboard/DashboardLogoutLink";
 import DashboardSessionText from "../sms-diagnostic/dashboard/DashboardSessionText";
 
@@ -45,7 +45,7 @@ export default function SystemMapsPage() {
                 Create and manage management system design maps you own or that are shared with you.
               </p>
             </div>
-            <SystemMapsListClient />
+            <MapBuilderLandingClient />
           </div>
         </section>
       </main>

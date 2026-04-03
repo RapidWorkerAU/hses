@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { CanvasElementRow, DisciplineKey, DocumentNodeRow } from "./canvasShared";
-import { boxesOverlap, parseOrgChartPersonConfig } from "./canvasShared";
+import { boxesOverlap, isOrgChartPersonElement, isPersonElementType, parseOrgChartPersonConfig } from "./canvasShared";
 import type { MapCategoryId } from "./mapCategories";
 
 type UseCanvasElementActionsParams = {
@@ -131,6 +131,7 @@ type UseCanvasElementActionsParams = {
   tableRowsDraft: string;
   tableColumnsDraft: string;
   tableHeaderBgDraft: string;
+  tableHeaderFillModeDraft: "fill" | "outline";
   tableBoldDraft: boolean;
   tableItalicDraft: boolean;
   tableUnderlineDraft: boolean;
@@ -279,6 +280,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     tableRowsDraft,
     tableColumnsDraft,
     tableHeaderBgDraft,
+    tableHeaderFillModeDraft,
     tableBoldDraft,
     tableItalicDraft,
     tableUnderlineDraft,
@@ -566,34 +568,50 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (!canWriteMap) return setError("You have view access only for this map.");
     const center = getCenter();
     if (!center) return;
-    const isOrgChart = mapCategoryId === "org_chart";
     await addElement({
       map_id: mapId,
       element_type: "person",
       heading: buildPersonHeading("Role Name", "Department"),
       color_hex: null,
       created_by_user_id: userId,
-      element_config: isOrgChart
-        ? {
-            position_title: "Position Title",
-            role_id: "",
-            department: "",
-            occupant_name: "",
-            start_date: "",
-            employment_type: "fte",
-            acting_name: "",
-            acting_start_date: "",
-            recruiting: false,
-            contractor_role: false,
-            proposed_role: false,
-          }
-        : null,
+      element_config: null,
       pos_x: center.x,
       pos_y: center.y,
-      width: isOrgChart ? orgChartPersonWidth : personElementWidth,
-      height: isOrgChart ? orgChartPersonHeight : personElementHeight,
+      width: personElementWidth,
+      height: personElementHeight,
     }, "Unable to create person component.");
-  }, [canWriteMap, setError, getCenter, addElement, mapId, mapCategoryId, buildPersonHeading, userId, orgChartPersonWidth, orgChartPersonHeight, personElementWidth, personElementHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, buildPersonHeading, userId, personElementWidth, personElementHeight]);
+
+  const handleAddOrgChartPerson = useCallback(async () => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    const center = getCenter();
+    if (!center) return;
+    await addElement({
+      map_id: mapId,
+      element_type: "person",
+      heading: "Position Title",
+      color_hex: null,
+      created_by_user_id: userId,
+      element_config: {
+        display_variant: "org_chart",
+        position_title: "Position Title",
+        role_id: "",
+        department: "",
+        occupant_name: "",
+        start_date: "",
+        employment_type: "fte",
+        acting_name: "",
+        acting_start_date: "",
+        recruiting: false,
+        contractor_role: false,
+        proposed_role: false,
+      },
+      pos_x: center.x,
+      pos_y: center.y,
+      width: orgChartPersonWidth,
+      height: orgChartPersonHeight,
+    }, "Unable to create org chart person component.");
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, orgChartPersonWidth, orgChartPersonHeight]);
 
   const handleAddGroupingContainer = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");
@@ -668,6 +686,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
           rows: 2,
           columns: 2,
           header_bg_color: null,
+          header_fill_mode: "fill",
           bold: false,
           italic: false,
           underline: false,
@@ -1321,7 +1340,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     );
   }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
-  const handleSaveProcessHeading = useCallback(async () => {
+  const handleSaveProcessHeading = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedProcessId) return;
     const heading = processHeadingDraft.trim() || "New Category";
@@ -1341,41 +1360,41 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save process heading.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedProcessId(null);
+    if (options?.closeAfterSave !== false) setSelectedProcessId(null);
   }, [canWriteMap, setError, selectedProcessId, processHeadingDraft, processWidthDraft, processHeightDraft, processMinWidthSquares, processMinHeightSquares, processMinWidth, snapToMinorGrid, minorGridSize, processMinHeight, processColorDraft, mapId, canvasElementSelectColumns, normalizeColorHex, setElements, setSelectedProcessId]);
 
-  const handleSaveSystemName = useCallback(async () => {
+  const handleSaveSystemName = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedSystemId) return;
     const { data, error: e } = await supabaseBrowser.schema("ms").from("canvas_elements").update({ heading: systemNameDraft.trim() || "System Name" }).eq("id", selectedSystemId).eq("map_id", mapId).select(canvasElementSelectColumns).single();
     if (e || !data) return setError(e?.message || "Unable to save system name.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedSystemId(null);
+    if (options?.closeAfterSave !== false) setSelectedSystemId(null);
   }, [canWriteMap, setError, selectedSystemId, systemNameDraft, mapId, canvasElementSelectColumns, setElements, setSelectedSystemId]);
 
-  const handleSaveProcessComponent = useCallback(async () => {
+  const handleSaveProcessComponent = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedProcessComponentId) return;
     const { data, error: e } = await supabaseBrowser.schema("ms").from("canvas_elements").update({ heading: processComponentLabelDraft.trim() || "Process" }).eq("id", selectedProcessComponentId).eq("map_id", mapId).select(canvasElementSelectColumns).single();
     if (e || !data) return setError(e?.message || "Unable to save process.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedProcessComponentId(null);
+    if (options?.closeAfterSave !== false) setSelectedProcessComponentId(null);
   }, [canWriteMap, setError, selectedProcessComponentId, processComponentLabelDraft, mapId, canvasElementSelectColumns, setElements, setSelectedProcessComponentId]);
 
-  const handleSavePerson = useCallback(async () => {
+  const handleSavePerson = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedPersonId) return;
-    const isOrgChart = mapCategoryId === "org_chart";
     const currentPerson =
-      selectedPersonId ? elements.find((el) => el.id === selectedPersonId && el.element_type === "person") ?? null : null;
+      selectedPersonId ? elements.find((el) => el.id === selectedPersonId && isPersonElementType(el.element_type)) ?? null : null;
     const currentDirectReportCount = currentPerson
       ? Math.max(
           Number(parseOrgChartPersonConfig(currentPerson.element_config).direct_report_count || 0)
         )
       : 0;
-    const payload = isOrgChart
+    const isOrgChartPerson = isOrgChartPersonElement(currentPerson);
+    const payload = isOrgChartPerson
         ? {
           heading: personRoleDraft.trim() || "Position Title",
           width: orgChartPersonWidth,
@@ -1403,12 +1422,11 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save person.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedPersonId(null);
+    if (options?.closeAfterSave !== false) setSelectedPersonId(null);
   }, [
     canWriteMap,
     setError,
     selectedPersonId,
-    mapCategoryId,
     buildPersonHeading,
     personRoleDraft,
     personRoleIdDraft,
@@ -1431,7 +1449,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     setSelectedPersonId,
   ]);
 
-  const handleSaveGroupingContainer = useCallback(async () => {
+  const handleSaveGroupingContainer = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedGroupingId) return;
     const heading = groupingLabelDraft.trim() || "Group label";
@@ -1451,10 +1469,10 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save grouping container.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedGroupingId(null);
+    if (options?.closeAfterSave !== false) setSelectedGroupingId(null);
   }, [canWriteMap, setError, selectedGroupingId, groupingLabelDraft, groupingWidthDraft, groupingHeightDraft, groupingMinWidthSquares, groupingMinHeightSquares, groupingMinWidth, snapToMinorGrid, minorGridSize, groupingMinHeight, mapId, canvasElementSelectColumns, setElements, setSelectedGroupingId]);
 
-  const handleSaveStickyNote = useCallback(async () => {
+  const handleSaveStickyNote = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!selectedStickyId) return;
     const current = elements.find((el) => el.id === selectedStickyId && el.element_type === "sticky_note");
     if (!current || !canEditElement(current)) {
@@ -1465,10 +1483,10 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save sticky note.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedStickyId(null);
+    if (options?.closeAfterSave !== false) setSelectedStickyId(null);
   }, [selectedStickyId, elements, canEditElement, setError, stickyTextDraft, mapId, canvasElementSelectColumns, setElements, setSelectedStickyId]);
 
-  const handleSaveImageAsset = useCallback(async () => {
+  const handleSaveImageAsset = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedImageId) return;
     const current = elements.find((el) => el.id === selectedImageId && el.element_type === "image_asset");
@@ -1488,10 +1506,10 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save image details.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedImageId(null);
+    if (options?.closeAfterSave !== false) setSelectedImageId(null);
   }, [canWriteMap, setError, selectedImageId, elements, imageDescriptionDraft, mapId, canvasElementSelectColumns, setElements, setSelectedImageId]);
 
-  const handleSaveTextBox = useCallback(async () => {
+  const handleSaveTextBox = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedTextBoxId) return;
     const parsedFontSize = Number(textBoxFontSizeDraft.trim());
@@ -1516,10 +1534,10 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save text box.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedTextBoxId(null);
+    if (options?.closeAfterSave !== false) setSelectedTextBoxId(null);
   }, [canWriteMap, setError, selectedTextBoxId, textBoxContentDraft, textBoxBoldDraft, textBoxItalicDraft, textBoxUnderlineDraft, textBoxAlignDraft, textBoxFontSizeDraft, mapId, canvasElementSelectColumns, setElements, setSelectedTextBoxId]);
 
-  const handleSaveTable = useCallback(async () => {
+  const handleSaveTable = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedTableId) return;
     const current = elements.find((el) => el.id === selectedTableId && el.element_type === "table");
@@ -1554,6 +1572,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
           rows,
           columns,
           header_bg_color: headerBg,
+          header_fill_mode: tableHeaderFillModeDraft,
           bold: tableBoldDraft,
           italic: tableItalicDraft,
           underline: tableUnderlineDraft,
@@ -1568,7 +1587,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save table.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedTableId(null);
+    if (options?.closeAfterSave !== false) setSelectedTableId(null);
   }, [
     canWriteMap,
     setError,
@@ -1577,6 +1596,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     tableRowsDraft,
     tableColumnsDraft,
     tableHeaderBgDraft,
+    tableHeaderFillModeDraft,
     tableBoldDraft,
     tableItalicDraft,
     tableUnderlineDraft,
@@ -1595,7 +1615,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     setSelectedTableId,
   ]);
 
-  const handleSaveFlowShape = useCallback(async () => {
+  const handleSaveFlowShape = useCallback(async (options?: { closeAfterSave?: boolean }) => {
     if (!canWriteMap) return setError("You have view access only for this map.");
     if (!selectedFlowShapeId) return;
     const current = elements.find((el) => el.id === selectedFlowShapeId);
@@ -1683,7 +1703,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     if (e || !data) return setError(e?.message || "Unable to save shape.");
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setSelectedFlowShapeId(null);
+    if (options?.closeAfterSave !== false) setSelectedFlowShapeId(null);
   }, [
     canWriteMap,
     setError,
@@ -1726,6 +1746,7 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
     handleAddSystemCircle,
     handleAddProcessComponent,
     handleAddPerson,
+    handleAddOrgChartPerson,
     handleAddGroupingContainer,
     handleAddStickyNote,
     handleAddTextBox,

@@ -1,7 +1,5 @@
 "use client";
 
-import { MAP_BUILDER_CATEGORIES } from "./mapBuilderCategories";
-
 export const ADMIN_EMAIL = "ashleigh.phillips@hses.com.au";
 
 export type PortalItem = {
@@ -75,15 +73,14 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
       },
     ],
   },
-  ...MAP_BUILDER_CATEGORIES.map((category) => ({
-    key: category.key,
-    title: category.menuTitle,
-    description: category.subtitle,
-    href: `/dashboard/map-builders/${category.slug}`,
+  {
+    key: "canvas-creator",
+    title: "Canvas Creator",
+    description: "Create and manage document maps, bow ties, investigation maps, org charts, and process flows from one workspace.",
+    href: "/dashboard/map-builders",
     requiresAdmin: false,
-    lockedForStandardUsers: category.mapCategory !== "document_map",
-    icon: category.icon,
-  })),
+    icon: "/icons/documentmap.svg",
+  },
   {
     key: "risk-assessments",
     title: "Risk Assessments",
@@ -108,18 +105,9 @@ export const hasPortalAccess = (email: string | null | undefined, portalKey: str
   return true;
 };
 
-export const MAP_CATEGORY_PORTAL_KEY: Record<string, string> = {
-  document_map: "document-maps",
-  bow_tie: "bow-ties",
-  incident_investigation: "investigation-maps",
-  org_chart: "org-charts",
-  process_flow: "process-flows",
-  risk_assessment: "risk-assessments",
-};
-
 export const hasMapCategoryAccess = (email: string | null | undefined, mapCategory: string | null | undefined) => {
   if (!mapCategory) return true;
-  const portalKey = MAP_CATEGORY_PORTAL_KEY[mapCategory];
-  if (!portalKey) return true;
-  return hasPortalAccess(email, portalKey);
+  if (mapCategory === "document_map") return true;
+  if (mapCategory === "risk_assessment") return hasPortalAccess(email, "risk-assessments");
+  return hasAdminAccess(email);
 };

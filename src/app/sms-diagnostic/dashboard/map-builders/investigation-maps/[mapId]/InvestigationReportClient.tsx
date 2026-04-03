@@ -442,7 +442,7 @@ export default function InvestigationReportClient({ mapId }: InvestigationReport
   return (
     <div className={styles.wrap}>
       <div className={styles.headerBlock}>
-        <Link href="/dashboard/map-builders/investigation-maps" className={styles.backLink}>
+        <Link href="/dashboard/map-builders" className={styles.backLink}>
           <span className={styles.backIcon} aria-hidden="true">&lt;</span>
           <span>Back</span>
         </Link>

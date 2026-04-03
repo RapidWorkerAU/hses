@@ -23,7 +23,7 @@ export default async function InvestigationReportPage({
       subtitle=""
       hidePageHeader
     >
-      <PortalAccessGate portalKey="investigation-maps">
+      <PortalAccessGate portalKey="canvas-creator">
         <InvestigationReportClient mapId={mapId} />
       </PortalAccessGate>
     </HsesDashboardShell>

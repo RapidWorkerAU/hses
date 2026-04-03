@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import HsesDashboardShell from "../../../HsesDashboardShell";
 import PortalAccessGate from "../../../PortalAccessGate";
 import ClauseIndicatorClient from "./ClauseIndicatorClient";
+import styles from "../../../InvestigationDashboard.module.css";
 
 export function generateMetadata(): Metadata {
   return {
@@ -36,8 +37,9 @@ export default async function DiagnosticResultsPage({
             <h2>Intent and fundamental criteria</h2>
             <p>Indicators update as access codes are completed.</p>
           </div>
-          <div className="dashboard-table-wrap" role="region" aria-label="Diagnostic results table">
-            <table className="diagnostic-results-table">
+          <div className={`${styles.tableCard} portal-table-shell`} role="region" aria-label="Diagnostic results table">
+            <div className={styles.tableWrap}>
+            <table className={`diagnostic-results-table ${styles.resultsTable}`}>
             <thead>
               <tr className="results-superhead">
                 <th className="col-category">Category</th>
@@ -234,6 +236,7 @@ export default async function DiagnosticResultsPage({
               </tr>
             </tbody>
             </table>
+            </div>
           </div>
         </section>
       </PortalAccessGate>

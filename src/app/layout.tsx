@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./public-shared.css";
+import "./diagnostic-public.css";
 import HashRedirector from "./HashRedirector";
 
 export const metadata: Metadata = {

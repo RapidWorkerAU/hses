@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { fetchWithSession } from "../../portalAuth";
 import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
 import PortalTableFooter from "@/components/table/PortalTableFooter";
+import styles from "../../InvestigationDashboard.module.css";
 
 type DiagnosticRecord = {
   id: string;
@@ -128,6 +129,15 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  const formatDateParts = (value: string | null) => {
+    const formatted = formatTimestamp(value);
+    const [datePart, timePart] = formatted.split(", ");
+    return {
+      date: datePart ?? formatted,
+      time: timePart ?? "",
+    };
   };
 
   const statusClass = (status: string | null) => {
@@ -427,15 +437,15 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
   }
 
   if (error) {
-    return <div className="dashboard-empty">{error}</div>;
+    return <div className={styles.emptyState}>{error}</div>;
   }
 
   if (!diagnostic) {
     return (
-      <div className="dashboard-empty">
+      <div className={styles.emptyState}>
         <h2>Diagnostic not found</h2>
         <p>Return to the diagnostics list to select another diagnostic.</p>
-        <a className="btn btn-primary" href="/dashboard/diagnostics">
+        <a className={`${styles.buttonBase} ${styles.primaryButton}`} href="/dashboard/diagnostics">
           Open diagnostics
         </a>
       </div>
@@ -467,66 +477,79 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
             className="dashboard-page-logo"
           />
           <h1>Email invitations</h1>
-          <p className="dashboard-page-helper">
-            Use placeholders {"{{name}}"}, {"{{code}}"}, and {"{{diagnostic}}"} to personalise
-            each email.
-          </p>
-        </div>
-        <div className="dashboard-header-actions">
-          <button className="btn btn-outline" type="button" onClick={closeEmailView}>
+        <p className="dashboard-page-helper">
+          Use placeholders {"{{name}}"}, {"{{code}}"}, and {"{{diagnostic}}"} to personalise
+          each email.
+        </p>
+      </div>
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarActions}>
+          <button
+            className={`${styles.buttonBase} ${styles.secondaryButton}`}
+            type="button"
+            onClick={closeEmailView}
+          >
             Back to access codes
           </button>
         </div>
+      </div>
 
-        <section className="dashboard-panel dashboard-panel--wide">
-          <div className="dashboard-input-stack">
-            <label className="dashboard-field">
+        <section className={styles.card}>
+          <div className={styles.fieldStack}>
+            <label className={styles.field}>
               <span>Email subject</span>
               <input
-                className="dashboard-input"
+                className={styles.input}
                 value={emailSubject}
                 onChange={(event) => setEmailSubject(event.target.value)}
               />
             </label>
-            <label className="dashboard-field">
+            <label className={styles.field}>
               <span>Email message</span>
               <textarea
-                className="dashboard-textarea"
+                className={styles.textarea}
                 value={emailMessage}
                 onChange={(event) => setEmailMessage(event.target.value)}
                 rows={8}
               />
             </label>
           </div>
-          <div className="dashboard-email-selection">
+          <div className={styles.toolbar}>
             <div>
               <strong>{selectedCodes.length}</strong> invitation
               {selectedCodes.length === 1 ? "" : "s"} selected
             </div>
-            <button
-              className="btn btn-outline btn-small"
-              type="button"
-              onClick={() =>
-                setSelectedCodeIds(
-                  codes
-                    .filter((code) => code.issued_to_email && code.issued_to_name)
-                    .map((code) => code.id)
-                )
-              }
-            >
-              Select all eligible
-            </button>
-            <button
-              className="btn btn-ghost btn-small"
-              type="button"
-              onClick={() => setSelectedCodeIds([])}
-            >
-              Clear selection
-            </button>
+            <div className={styles.toolbarActions}>
+              <button
+                className={`${styles.buttonBase} ${styles.secondaryButton} ${styles.buttonSmall}`}
+                type="button"
+                onClick={() =>
+                  setSelectedCodeIds(
+                    codes
+                      .filter((code) => code.issued_to_email && code.issued_to_name)
+                      .map((code) => code.id)
+                  )
+                }
+              >
+                Select all eligible
+              </button>
+              <button
+                className={`${styles.buttonBase} ${styles.ghostButton} ${styles.buttonSmall}`}
+                type="button"
+                onClick={() => setSelectedCodeIds([])}
+              >
+                Clear selection
+              </button>
+            </div>
           </div>
-          {emailError && <div className="dashboard-form-error">{emailError}</div>}
-          {emailSuccess && <div className="dashboard-form-success">{emailSuccess}</div>}
-          <button className="btn btn-primary" type="button" onClick={sendEmails} disabled={isSending}>
+          {emailError && <div className={styles.error}>{emailError}</div>}
+          {emailSuccess && <div className={styles.success}>{emailSuccess}</div>}
+          <button
+            className={`${styles.buttonBase} ${styles.primaryButton}`}
+            type="button"
+            onClick={sendEmails}
+            disabled={isSending}
+          >
             {isSending ? "Sending..." : "Send email invitations"}
           </button>
         </section>
@@ -552,40 +575,45 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
           place.
         </p>
       </div>
-      <div className="dashboard-metric-row">
-        <div className="dashboard-metric">
+      <div className={styles.metricRow}>
+        <div className={styles.metricCard}>
           <span>Purchased</span>
           <strong>{purchasedLabel}</strong>
         </div>
-        <div className="dashboard-metric">
+        <div className={styles.metricCard}>
           <span>Issued</span>
           <strong>{issued}</strong>
         </div>
-        <div className="dashboard-metric">
+        <div className={styles.metricCard}>
           <span>Redeemed</span>
           <strong>
             {redeemed} ({completion}%)
           </strong>
         </div>
-        <div className="dashboard-metric">
+        <div className={styles.metricCard}>
           <span>Status</span>
           <strong>{diagnostic.status}</strong>
         </div>
       </div>
 
-      <div className="dashboard-split dashboard-split--single">
-        <section className="dashboard-panel">
-          <div className="dashboard-panel-header">
-            <h2>Access codes</h2>
-            <p>Assign codes manually or ask us to email invitations for you.</p>
-          </div>
-          <div className="dashboard-table-actions">
-            <a className="btn btn-outline" href={`/dashboard/diagnostics/${id}/results`}>
+      <section className={styles.card}>
+          <div className={styles.toolbar}>
+            <div className={styles.toolbarLead}>
+              <h2>Access codes</h2>
+              <p>Assign codes manually or ask us to email invitations for you.</p>
+            </div>
+            <div className={styles.toolbarActions}>
+              <a
+                className={`${styles.buttonBase} ${styles.secondaryButton}`}
+                href={`/dashboard/diagnostics/${id}/results`}
+              >
               Diagnostic Results
-            </a>
+              </a>
+            </div>
           </div>
-          <div className="dashboard-table-wrap" role="region" aria-label="Diagnostic codes">
-            <table className="dashboard-table">
+          <div className={`${styles.tableCard} portal-table-shell`} role="region" aria-label="Diagnostic codes">
+            <div className={styles.tableWrap}>
+            <table className={`${styles.table} portal-table`}>
               <thead>
                 <tr>
                   <th>Invite</th>
@@ -607,11 +635,13 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                   const isSelected = selectedCodeIds.includes(entry.id);
                   const displayStatus = getDisplayStatus(entry);
                   const badgeClass = statusClass(displayStatus);
+                  const issuedParts = formatDateParts(entry.issued_at);
+                  const redeemedParts = formatDateParts(entry.redeemed_at);
 
                   return (
-                    <tr key={entry.id}>
-                      <td>
-                        <label className="dashboard-checkbox">
+                    <tr key={entry.id} className={styles.row}>
+                      <td className={styles.checkboxCell}>
+                        <label className={styles.checkboxLabel}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -622,14 +652,14 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                         </label>
                       </td>
                       <td>
-                        <div className="dashboard-code">{entry.code}</div>
+                        <span className={styles.codePill}>{entry.code}</span>
                       </td>
                       <td>
                         {isEditing ? (
-                          <label className="dashboard-field">
+                          <label className={styles.field}>
                             <span className="sr-only">Name</span>
                             <input
-                              className="dashboard-input"
+                              className={styles.compactInput}
                               value={assignmentName}
                               onChange={(event) => setAssignmentName(event.target.value)}
                               placeholder="Participant name"
@@ -637,15 +667,17 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                             />
                           </label>
                         ) : (
-                          <strong>{entry.issued_to_name ?? "--"}</strong>
+                          <div className={styles.stack}>
+                            <strong>{entry.issued_to_name ?? "--"}</strong>
+                          </div>
                         )}
                       </td>
                       <td>
                         {isEditing ? (
-                          <label className="dashboard-field">
+                          <label className={styles.field}>
                             <span className="sr-only">Email</span>
                             <input
-                              className="dashboard-input"
+                              className={styles.compactInput}
                               value={assignmentEmail}
                               onChange={(event) => setAssignmentEmail(event.target.value)}
                               placeholder="name@company.com"
@@ -653,26 +685,30 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                             />
                           </label>
                         ) : (
-                          <span>{entry.issued_to_email ?? "--"}</span>
+                          <div className={styles.stack}>
+                            <span>{entry.issued_to_email ?? "--"}</span>
+                          </div>
                         )}
                       </td>
                       <td>
-                        <span className={`dashboard-badge dashboard-badge--${badgeClass}`}>
+                        <span className={`${styles.statusBadge} ${styles[`status${badgeClass.charAt(0).toUpperCase()}${badgeClass.slice(1)}`]}`}>
                           {displayStatus}
                         </span>
                       </td>
                       <td>
-                        <div className="dashboard-activity">
-                          <div>Issued {formatTimestamp(entry.issued_at)}</div>
-                          <div>Redeemed {formatTimestamp(entry.redeemed_at)}</div>
+                        <div className={styles.dateCell}>
+                          <span>Issued {issuedParts.date}</span>
+                          <span className={styles.muted}>{issuedParts.time || "--"}</span>
+                          <span>Redeemed {redeemedParts.date}</span>
+                          <span className={styles.muted}>{redeemedParts.time || "--"}</span>
                         </div>
                       </td>
                       <td>
-                        <div className="dashboard-inline-actions">
+                        <div className={styles.actionBar}>
                           {isEditing ? (
                             <>
                               <button
-                                className="btn btn-primary btn-small"
+                                className={`${styles.buttonBase} ${styles.primaryButton} ${styles.buttonSmall}`}
                                 type="button"
                                 onClick={() => saveAssignment(entry)}
                                 disabled={isAssigning}
@@ -680,7 +716,7 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                                 {isAssigning ? "Saving..." : "Save"}
                               </button>
                               <button
-                                className="btn btn-outline btn-small"
+                                className={`${styles.buttonBase} ${styles.secondaryButton} ${styles.buttonSmall}`}
                                 type="button"
                                 onClick={cancelAssignment}
                                 disabled={isAssigning}
@@ -688,13 +724,13 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                                 Cancel
                               </button>
                               {assignmentError && (
-                                <div className="dashboard-form-error">{assignmentError}</div>
+                                <div className={styles.error}>{assignmentError}</div>
                               )}
                             </>
                           ) : (
                             <>
                               <button
-                                className={`btn btn-ghost btn-small ${isRedeemed ? "is-muted" : ""}`}
+                                className={`${styles.buttonBase} ${styles.ghostButton} ${styles.buttonSmall}`}
                                 type="button"
                                 onClick={() => startAssignment(entry)}
                                 disabled={isRedeemed}
@@ -707,7 +743,7 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                                 Edit
                               </button>
                               <button
-                                className={`btn btn-ghost btn-small dashboard-row-email ${canEmail && !isRedeemed ? "" : "is-muted"}`}
+                                className={`${styles.buttonBase} ${styles.ghostButton} ${styles.buttonSmall}`}
                                 type="button"
                                 disabled={!canEmail || sendingCodeId === entry.id || isRedeemed}
                                 onClick={() => {
@@ -730,13 +766,15 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
                   );
                 })}
                 {codes.length === 0 && (
-                  <tr className="dashboard-table-empty-row">
+                  <tr className="portal-table-empty-row">
                     <td colSpan={7}>No codes have been issued yet.</td>
                   </tr>
                 )}
               </tbody>
             </table>
+            </div>
           </div>
+          <div className={styles.tableFooterWrap}>
           <PortalTableFooter
             total={codes.length}
             page={safePage}
@@ -744,14 +782,19 @@ export default function DiagnosticDetailClient({ id }: DiagnosticDetailClientPro
             onPageChange={setPage}
             label="codes"
           />
-          <div className="dashboard-table-actions">
-            <button className="btn btn-primary" type="button" onClick={openEmailView}>
+          </div>
+          <div className={styles.toolbar}>
+            <div className={styles.toolbarActions}>
+            <button
+              className={`${styles.buttonBase} ${styles.primaryButton}`}
+              type="button"
+              onClick={openEmailView}
+            >
               Email invitations via HSES
             </button>
           </div>
-
-        </section>
-      </div>
+          </div>
+      </section>
     </>
   );
 }

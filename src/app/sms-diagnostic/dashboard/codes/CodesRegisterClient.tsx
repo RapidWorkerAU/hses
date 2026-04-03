@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { fetchWithSession } from "../portalAuth";
 import { TableSkeleton } from "@/components/loading/HsesLoaders";
 import PortalTableFooter from "@/components/table/PortalTableFooter";
+import styles from "../InvestigationDashboard.module.css";
 
 type CodeRow = {
   id: string;
@@ -102,6 +103,15 @@ export default function CodesRegisterClient() {
       month: "short",
       year: "numeric",
     });
+  };
+
+  const formatDateParts = (value: string | null) => {
+    const formatted = formatTimestamp(value);
+    const [datePart, timePart] = formatted.split(", ");
+    return {
+      date: datePart ?? formatted,
+      time: timePart ?? "",
+    };
   };
 
   const statusClass = (status: string | null) => {
@@ -348,12 +358,12 @@ export default function CodesRegisterClient() {
   }
 
   if (error) {
-    return <div className="dashboard-empty">{error}</div>;
+    return <div className={styles.emptyState}>{error}</div>;
   }
 
   if (codes.length === 0) {
     return (
-      <div className="dashboard-empty">
+      <div className={styles.emptyState}>
         <h2>No codes yet</h2>
         <p>Codes will appear here once diagnostics have been issued.</p>
       </div>
@@ -361,12 +371,12 @@ export default function CodesRegisterClient() {
   }
 
   return (
-    <div className="dashboard-code-page">
-      <div className="dashboard-code-tabs" role="tablist" aria-label="Code management views">
+    <div>
+      <div className={styles.tabList} role="tablist" aria-label="Code management views">
         {diagnosticTabs.map((tab) => (
           <button
             key={tab}
-            className={`dashboard-code-tab ${activeTab === tab ? "is-active" : ""}`}
+            className={`${styles.tabButton} ${activeTab === tab ? styles.tabButtonActive : ""}`}
             type="button"
             onClick={() => setActiveTab(tab)}
           >
@@ -375,16 +385,16 @@ export default function CodesRegisterClient() {
         ))}
       </div>
 
-      <section className="dashboard-code-section">
-        <div className="dashboard-section-header">
+      <section className={styles.card}>
+        <div className={styles.toolbarLead}>
           <h2>All codes</h2>
         </div>
-        <div className="dashboard-bundle-toolbar">
-          <div className="dashboard-bundle-filters">
-            <label className="dashboard-filter">
-              <span>Code type</span>
+        <div className={styles.filterToolbar}>
+          <div className={styles.filterGroup}>
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Code type</span>
               <select
-                className="dashboard-select"
+                className={styles.select}
                 value={codeTypeFilter}
                 onChange={(event) => setCodeTypeFilter(event.target.value)}
               >
@@ -392,10 +402,10 @@ export default function CodesRegisterClient() {
                 <option>Safety Management System Diagnostic</option>
               </select>
             </label>
-            <label className="dashboard-filter">
-              <span>Usage</span>
+            <label className={styles.filterField}>
+              <span className={styles.filterLabel}>Usage</span>
               <select
-                className="dashboard-select"
+                className={styles.select}
                 value={usageFilter}
                 onChange={(event) => setUsageFilter(event.target.value)}
               >
@@ -404,14 +414,17 @@ export default function CodesRegisterClient() {
               </select>
             </label>
           </div>
-          <div className="dashboard-bundle-actions">
-            <button className="btn btn-outline btn-small" type="button">
+          <div className={styles.toolbarActions}>
+            <button
+              className={`${styles.buttonBase} ${styles.secondaryButton} ${styles.buttonSmall}`}
+              type="button"
+            >
               Export
             </button>
-            <label className="dashboard-search">
+            <label className={`${styles.filterField} ${styles.searchField}`}>
               <span className="sr-only">Search codes</span>
               <input
-                className="dashboard-input"
+                className={styles.input}
                 placeholder="Search codes"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
@@ -420,8 +433,9 @@ export default function CodesRegisterClient() {
           </div>
         </div>
 
-        <div className="dashboard-table-wrap" role="region" aria-label="Access codes">
-          <table className="dashboard-table dashboard-table--codes">
+        <div className={`${styles.tableCard} portal-table-shell`} role="region" aria-label="Access codes">
+          <div className={styles.tableWrap}>
+          <table className={`${styles.table} ${styles.tableCompact} portal-table`}>
             <thead>
               <tr>
                 <th>Domain</th>
@@ -439,10 +453,11 @@ export default function CodesRegisterClient() {
                   if (typeof window === "undefined") return;
                   window.location.assign(`/dashboard/diagnostics/${code.diagnostic_id}`);
                 };
+                const redeemedParts = formatDateParts(code.redeemed_at);
                 return (
                   <tr
                     key={code.id}
-                    className="dashboard-row-link"
+                    className={`${styles.row} ${styles.rowHover}`}
                     role="button"
                     tabIndex={0}
                     onClick={openDiagnostic}
@@ -453,31 +468,45 @@ export default function CodesRegisterClient() {
                       }
                     }}
                   >
-                    <td>{code.diagnostic_domain_name ?? "--"}</td>
                     <td>
-                      {formatDateOnly(code.diagnostic_purchased_at ?? code.diagnostic_created_at)}
+                      <div className={styles.stack}>
+                        <strong>{code.diagnostic_domain_name ?? "--"}</strong>
+                        <span className={styles.muted}>{code.diagnostic_name}</span>
+                      </div>
                     </td>
                     <td>
-                      <div className="dashboard-code">{code.code}</div>
+                      <div className={styles.dateCell}>
+                        <span>{formatDateOnly(code.diagnostic_purchased_at ?? code.diagnostic_created_at)}</span>
+                      </div>
                     </td>
                     <td>
-                      <span className={`dashboard-badge dashboard-badge--${badgeClass}`}>
+                      <span className={styles.codePill}>{code.code}</span>
+                    </td>
+                    <td>
+                      <span className={`${styles.statusBadge} ${styles[`status${badgeClass.charAt(0).toUpperCase()}${badgeClass.slice(1)}`]}`}>
                         {displayStatus}
                       </span>
                     </td>
-                    <td>{formatTimestamp(code.redeemed_at)}</td>
+                    <td>
+                      <div className={styles.dateCell}>
+                        <span>{redeemedParts.date}</span>
+                        <span className={styles.muted}>{redeemedParts.time || "--"}</span>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
               {filteredCodes.length === 0 && (
-                <tr className="dashboard-table-empty-row">
+                <tr className="portal-table-empty-row">
                   <td colSpan={5}>No codes available yet.</td>
                 </tr>
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
+        <div className={styles.tableFooterWrap}>
         <PortalTableFooter
           total={filteredCodes.length}
           page={safePage}
@@ -485,6 +514,7 @@ export default function CodesRegisterClient() {
           onPageChange={setCurrentPage}
           label="codes"
         />
+        </div>
       </section>
     </div>
   );

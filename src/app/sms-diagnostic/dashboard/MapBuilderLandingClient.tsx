@@ -7,7 +7,13 @@ import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
 import { TableSkeleton } from "@/components/loading/HsesLoaders";
 import PortalTableFooter from "@/components/table/PortalTableFooter";
 import styles from "./MapBuilderLanding.module.css";
-import type { MapBuilderCategory } from "./mapBuilderCategories";
+import {
+  MAP_BUILDER_CATEGORIES,
+  MAP_BUILDER_CATEGORY_BY_ID,
+  MAP_BUILDER_CATEGORY_OPTIONS,
+  type MapBuilderCategory,
+} from "./mapBuilderCategories";
+import { hasMapCategoryAccess } from "./dashboardPortals";
 
 type SystemMapRow = {
   id: string;
@@ -50,15 +56,15 @@ const truncateValue = (value: string) => {
   return `${value.slice(0, 21)}...`;
 };
 
-const getCreateModalEyebrow = (category: MapBuilderCategory) => {
-  if (category.mapCategory === "incident_investigation") return "New investigation";
-  return `New ${category.title.replace(/s$/, "")}`.toLowerCase();
+const DEFAULT_MAP_CATEGORY = MAP_BUILDER_CATEGORIES[0]?.mapCategory ?? "document_map";
+
+const getStoredUserEmail = () => {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem("hses_user_email") ?? "";
 };
 
-const getCreateModalTitle = (category: MapBuilderCategory) => {
-  if (category.mapCategory === "incident_investigation") return "Create your investigation";
-  return `Create your ${category.title.replace(/s$/, "").toLowerCase()}`;
-};
+const getCategoryForMap = (mapCategory: MapBuilderCategory["mapCategory"] | null | undefined) =>
+  (mapCategory ? MAP_BUILDER_CATEGORY_BY_ID.get(mapCategory) : null) ?? MAP_BUILDER_CATEGORY_BY_ID.get(DEFAULT_MAP_CATEGORY)!;
 
 const getTitlePlaceholder = (category: MapBuilderCategory) => {
   switch (category.mapCategory) {
@@ -95,7 +101,7 @@ const getDescriptionPlaceholder = (category: MapBuilderCategory) => {
 };
 
 type MapBuilderLandingClientProps = {
-  category: MapBuilderCategory;
+  category?: MapBuilderCategory;
 };
 
 export default function MapBuilderLandingClient({ category }: MapBuilderLandingClientProps) {
@@ -118,6 +124,9 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
   const [mapCodeInput, setMapCodeInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [selectedMapCategory, setSelectedMapCategory] = useState<MapBuilderCategory["mapCategory"]>(
+    category?.mapCategory ?? DEFAULT_MAP_CATEGORY
+  );
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [pendingDuplicateRow, setPendingDuplicateRow] = useState<SystemMapRow | null>(null);
@@ -127,15 +136,14 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState<{ percent: number; message: string } | null>(null);
   const [page, setPage] = useState(1);
 
-  const redirectToLogin = useMemo(
-    () => `/login?returnTo=${encodeURIComponent(`/dashboard/map-builders/${category.slug}`)}`,
-    [category.slug]
-  );
+  const redirectToLogin = "/login?returnTo=%2Fdashboard%2Fmap-builders";
 
-  const getRecordHref = (mapId: string) =>
-    category.mapCategory === "incident_investigation"
-      ? `/dashboard/map-builders/investigation-maps/${mapId}`
-      : `/system-maps/${mapId}`;
+  const resolvedCreateCategory = getCategoryForMap(selectedMapCategory);
+
+  const getRecordHref = (row: SystemMapRow) =>
+    row.map_category === "incident_investigation"
+      ? `/dashboard/map-builders/investigation-maps/${row.id}`
+      : `/system-maps/${row.id}`;
 
   const loadMaps = async () => {
     const user = await ensurePortalSupabaseUser();
@@ -145,7 +153,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
     }
 
     setCurrentUserId(user.id);
-    setCurrentUserEmail(user.email ?? localStorage.getItem("hses_user_email") ?? "");
+    setCurrentUserEmail(user.email ?? getStoredUserEmail());
 
     const { data: memberRows, error: memberError } = await supabaseBrowser
       .schema("ms")
@@ -173,7 +181,6 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
       .from("system_maps")
       .select("id,title,description,owner_id,map_code,map_category,updated_at,created_at")
       .in("id", mapIds)
-      .eq("map_category", category.mapCategory)
       .order("updated_at", { ascending: false });
 
     if (mapsError) {
@@ -181,10 +188,12 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
       return;
     }
 
-    const mergedRows = ((data ?? []) as Omit<SystemMapRow, "role">[]).map((row) => ({
-      ...row,
-      role: memberByMapId.get(row.id)?.role ?? "read",
-    }));
+    const mergedRows = ((data ?? []) as Omit<SystemMapRow, "role">[])
+      .map((row) => ({
+        ...row,
+        role: memberByMapId.get(row.id)?.role ?? "read",
+      }))
+      .filter((row) => hasMapCategoryAccess(user.email ?? getStoredUserEmail(), row.map_category));
 
     setRows(mergedRows);
     setSelectedMapIds((current) => current.filter((id) => mergedRows.some((row) => row.id === id)));
@@ -204,7 +213,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
     };
 
     void run();
-  }, [category.mapCategory]);
+  }, [category?.mapCategory]);
 
   useEffect(() => {
     if (!successMessage) return;
@@ -263,12 +272,18 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
 
   const openCreateModal = () => {
     setError(null);
+    setSelectedMapCategory(category?.mapCategory ?? DEFAULT_MAP_CATEGORY);
     setNewTitle("");
     setNewDescription("");
     setIsCreateModalOpen(true);
   };
 
   const createMap = async () => {
+    if (!selectedMapCategory) {
+      setError("Map category is required.");
+      return;
+    }
+
     if (!newTitle.trim()) {
       setError("Map title is required.");
       return;
@@ -292,7 +307,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
           owner_id: user.id,
           title: newTitle.trim(),
           description: newDescription.trim() || null,
-          map_category: category.mapCategory,
+          map_category: selectedMapCategory,
         })
         .select("id")
         .single();
@@ -307,7 +322,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
             owner_id: user.id,
             title: newTitle.trim(),
             description: newDescription.trim() || null,
-            map_category: category.mapCategory,
+            map_category: selectedMapCategory,
           });
 
         if (fallbackInsert.error) {
@@ -320,7 +335,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
           .from("system_maps")
           .select("id")
           .eq("owner_id", user.id)
-          .eq("map_category", category.mapCategory)
+          .eq("map_category", selectedMapCategory)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -347,6 +362,11 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
 
       if (memberInsertError) {
         setError(memberInsertError.message || "Map created, but owner permissions could not be assigned.");
+        return;
+      }
+
+      if (selectedMapCategory === "incident_investigation") {
+        router.push(`/dashboard/map-builders/investigation-maps/${createdMapId}`);
         return;
       }
 
@@ -496,7 +516,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
           owner_id: user.id,
           title: duplicateTitle,
           description: row.description,
-          map_category: category.mapCategory,
+          map_category: row.map_category,
         })
         .select("id")
         .single();
@@ -511,7 +531,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
             owner_id: user.id,
             title: duplicateTitle,
             description: row.description,
-            map_category: category.mapCategory,
+            map_category: row.map_category,
           });
 
         if (fallbackInsert.error) {
@@ -524,7 +544,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
           .from("system_maps")
           .select("id")
           .eq("owner_id", user.id)
-          .eq("map_category", category.mapCategory)
+          .eq("map_category", row.map_category)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -551,6 +571,11 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
 
       if (memberInsertError) {
         setError(memberInsertError.message || "Map duplicated, but owner permissions could not be assigned.");
+        return;
+      }
+
+      if (row.map_category === "incident_investigation") {
+        router.push(`/dashboard/map-builders/investigation-maps/${createdMapId}`);
         return;
       }
 
@@ -581,15 +606,21 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
     return truncateValue(row.owner_id);
   };
 
-  const deleteItemLabel = category.mapCategory === "incident_investigation" ? "investigation map" : "map";
-  const isDocumentMapsCategory = category.mapCategory === "document_map";
+  const accessibleCategoryOptions = MAP_BUILDER_CATEGORY_OPTIONS.filter((option) =>
+    hasMapCategoryAccess(currentUserEmail || getStoredUserEmail(), option.value)
+  );
+  const deleteItemLabel = "map";
+  const isSingleCategoryView = Boolean(category);
+  const emptyLabel = category?.emptyLabel ?? "No canvas maps have been added yet.";
+  const createButtonLabel = category?.createButtonLabel ?? "Create New Canvas Map";
+  const footerLabel = category?.title.toLowerCase() ?? "canvas maps";
 
   if (isLoading) {
-    return <TableSkeleton rows={pageSize} columns="5% 20% 15% 10% 15% 10% 10% 15%" showToolbar />;
+    return <TableSkeleton rows={pageSize} columns="5% 20% 14% 15% 10% 12% 10% 14%" showToolbar />;
   }
 
   return (
-    <div className={`${styles.wrap} ${isDocumentMapsCategory ? styles.documentMapWrap : ""}`}>
+    <div className={`${styles.wrap} ${!isSingleCategoryView ? styles.documentMapWrap : ""}`}>
       <div className={styles.toolbar}>
         <button
           type="button"
@@ -659,7 +690,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
               alt=""
               className={`${styles.toolbarButtonIcon} ${styles.toolbarButtonIconLight}`}
             />
-            <span>{category.createButtonLabel}</span>
+            <span>{createButtonLabel}</span>
           </button>
         </div>
       </div>
@@ -667,12 +698,13 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
       {error ? <div className={styles.error}>{error}</div> : null}
       {successMessage ? <div className={styles.success}>{successMessage}</div> : null}
 
-      {isDocumentMapsCategory ? (
+      {!isSingleCategoryView ? (
         <div className={styles.mobileDocumentCards}>
           {rows.length === 0 ? (
-            <div className={styles.mobileDocumentEmpty}>{category.emptyLabel}</div>
+            <div className={styles.mobileDocumentEmpty}>{emptyLabel}</div>
           ) : (
             paginatedRows.map((row) => {
+              const rowCategory = getCategoryForMap(row.map_category);
               const updatedParts = formatDateParts(row.updated_at);
               const ownerLabel = getOwnerLabel(row);
 
@@ -681,19 +713,23 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
                   key={row.id}
                   type="button"
                   className={styles.mobileDocumentCard}
-                  onClick={() => router.push(getRecordHref(row.id))}
+                  onClick={() => router.push(getRecordHref(row))}
                 >
                   <div className={styles.mobileDocumentCardTop}>
                     <span className={styles.mobileDocumentIcon}>
-                      <img src={category.icon} alt="" className={styles.mobileDocumentIconImage} />
+                      <img src={rowCategory.icon} alt="" className={styles.mobileDocumentIconImage} />
                     </span>
                     <span className={styles.mobileDocumentCodePill}>{row.map_code || "No code"}</span>
                   </div>
                   <div className={styles.mobileDocumentBody}>
                     <h3>{row.title}</h3>
-                    <p>{row.description || "No description added for this document map yet."}</p>
+                    <p>{row.description || "No description added for this canvas map yet."}</p>
                   </div>
                   <div className={styles.mobileDocumentMeta}>
+                    <span className={styles.mobileDocumentMetaGroup}>
+                      <span className={styles.mobileDocumentMetaLabel}>Category</span>
+                      <span className={styles.mobileDocumentMetaPill}>{rowCategory.title}</span>
+                    </span>
                     <span className={styles.mobileDocumentMetaGroup}>
                       <span className={styles.mobileDocumentMetaLabel}>Owner</span>
                       <span className={styles.mobileDocumentMetaPill}>{ownerLabel}</span>
@@ -716,6 +752,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
             <colgroup>
               <col className={styles.colCheckbox} />
               <col className={styles.colName} />
+              <col className={styles.colCategory} />
               <col className={styles.colOwner} />
               <col className={styles.colCode} />
               <col className={styles.colUpdatedBy} />
@@ -729,6 +766,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
                   <input type="checkbox" checked={allOwnedSelected} onChange={toggleSelectAllOwned} aria-label="Select all owned maps" />
                 </th>
                 <th>Map name</th>
+                <th>Category</th>
                 <th>Owner</th>
                 <th>Code</th>
                 <th>Last updated by</th>
@@ -740,13 +778,14 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
             <tbody>
               {rows.length === 0 ? (
                 <tr className="portal-table-empty-row">
-                  <td className={styles.empty} colSpan={8}>
-                    {category.emptyLabel}
+                  <td className={styles.empty} colSpan={9}>
+                    {emptyLabel}
                   </td>
                 </tr>
               ) : (
                 paginatedRows.map((row) => {
                   const canDelete = row.owner_id === currentUserId;
+                  const rowCategory = getCategoryForMap(row.map_category);
                   const ownerLabel = getOwnerLabel(row);
                   const updatedParts = formatDateParts(row.updated_at);
                   const createdParts = formatDateParts(row.created_at);
@@ -755,7 +794,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
                     <tr
                       key={row.id}
                       className={`${styles.row} portal-table-row`}
-                      onClick={() => router.push(getRecordHref(row.id))}
+                      onClick={() => router.push(getRecordHref(row))}
                     >
                       <td className={styles.checkboxCell} onClick={(event) => event.stopPropagation()}>
                         <input
@@ -772,6 +811,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
                           <span className={styles.desc}>{row.description || "-"}</span>
                         </div>
                       </td>
+                      <td>{rowCategory.title}</td>
                       <td title={ownerLabel}>{ownerLabel}</td>
                       <td>{row.map_code || "-"}</td>
                       <td title={ownerLabel}>{ownerLabel}</td>
@@ -847,31 +887,47 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
           page={safePage}
           pageSize={pageSize}
           onPageChange={setPage}
-          label={category.title.toLowerCase()}
+          label={footerLabel}
         />
       </div>
 
       {isCreateModalOpen ? (
         <>
           <button type="button" className={styles.modalBackdrop} aria-label="Close create map modal" onClick={() => setIsCreateModalOpen(false)} />
-          <div className={`${styles.modal} ${styles.createModal}`} role="dialog" aria-modal="true" aria-label={`Create ${category.title}`}>
+          <div className={`${styles.modal} ${styles.createModal}`} role="dialog" aria-modal="true" aria-label="Create canvas map">
             <div className={styles.createModalHeader}>
               <div className={styles.createModalBrand}>
                 <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.createModalLogo} />
                 <div className={styles.createModalBrandCopy}>
-                  <span className={styles.createModalEyebrow}>{getCreateModalEyebrow(category)}</span>
-                  <h3 className={styles.createModalTitle}>{getCreateModalTitle(category)}</h3>
+                  <span className={styles.createModalEyebrow}>New canvas map</span>
+                  <h3 className={styles.createModalTitle}>Create your canvas map</h3>
                 </div>
               </div>
             </div>
             <div className={styles.createModalBody}>
+              {!category ? (
+                <label className={styles.createModalField}>
+                  <span>Map category</span>
+                  <select
+                    className={styles.createModalInput}
+                    value={selectedMapCategory}
+                    onChange={(event) => setSelectedMapCategory(event.target.value as MapBuilderCategory["mapCategory"])}
+                  >
+                    {accessibleCategoryOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label className={styles.createModalField}>
-                <span>{category.mapCategory === "incident_investigation" ? "Investigation title" : "Title"}</span>
+                <span>{resolvedCreateCategory.mapCategory === "incident_investigation" ? "Investigation title" : "Title"}</span>
                 <input
                   className={styles.createModalInput}
                   value={newTitle}
                   onChange={(event) => setNewTitle(event.target.value)}
-                  placeholder={getTitlePlaceholder(category)}
+                  placeholder={getTitlePlaceholder(resolvedCreateCategory)}
                 />
               </label>
               <label className={styles.createModalField}>
@@ -880,7 +936,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
                   className={`${styles.createModalInput} ${styles.createModalTextarea}`}
                   value={newDescription}
                   onChange={(event) => setNewDescription(event.target.value)}
-                  placeholder={getDescriptionPlaceholder(category)}
+                  placeholder={getDescriptionPlaceholder(resolvedCreateCategory)}
                   rows={5}
                 />
               </label>
@@ -894,7 +950,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
                   Cancel
                 </button>
                 <button type="button" className={styles.modalPrimaryButton} onClick={() => void createMap()} disabled={isCreating}>
-                  {isCreating ? "Creating..." : category.mapCategory === "incident_investigation" ? "Create investigation" : "Create new"}
+                  {isCreating ? "Creating..." : resolvedCreateCategory.mapCategory === "incident_investigation" ? "Create investigation" : "Create new"}
                 </button>
               </div>
             </div>

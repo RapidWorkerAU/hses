@@ -6,6 +6,7 @@ import {
   getElementDisplayName,
   getElementRelationshipDisplayLabel,
   getElementRelationshipTypeLabel,
+  isPersonElementType,
 } from "./canvasShared";
 
 type Params = {
@@ -43,42 +44,18 @@ export function useCanvasRelationshipDerived({
   elements,
   mapCategoryId,
 }: Params) {
-  const relationshipSourceKind = useMemo(() => {
-    if (relationshipSourceNodeId) return "document";
-    if (relationshipSourceGroupingId) return "grouping_container";
-    if (relationshipSourceSystemId) {
-      return elements.find((el) => el.id === relationshipSourceSystemId)?.element_type || "";
-    }
-    return "";
-  }, [relationshipSourceNodeId, relationshipSourceGroupingId, relationshipSourceSystemId, elements]);
-
-  const bowtieAllowedTargetsBySource = useMemo(() => {
-    const bySource: Record<string, string[]> = {
-      bowtie_hazard: ["bowtie_top_event"],
-      bowtie_threat: ["bowtie_top_event", "bowtie_control"],
-      bowtie_top_event: ["bowtie_consequence"],
-      bowtie_consequence: ["bowtie_control"],
-      bowtie_control: ["bowtie_escalation_factor", "bowtie_degradation_indicator", "person"],
-      bowtie_escalation_factor: ["bowtie_control"],
-    };
-    return bySource;
-  }, []);
+  const hasRelationshipSource = !!relationshipSourceNodeId || !!relationshipSourceSystemId || !!relationshipSourceGroupingId;
 
   const allowDocumentTargets = useMemo(() => {
-    if (relationshipSourceGroupingId) return false;
-    if (mapCategoryId === "org_chart") return false;
-    if (mapCategoryId !== "bow_tie") return true;
-    if (relationshipSourceKind === "image_asset") return true;
-    return (bowtieAllowedTargetsBySource[relationshipSourceKind] ?? []).includes("document");
-  }, [mapCategoryId, relationshipSourceGroupingId, bowtieAllowedTargetsBySource, relationshipSourceKind]);
+    return hasRelationshipSource;
+  }, [hasRelationshipSource]);
 
   const allowSystemTargets = useMemo(() => {
-    if (relationshipSourceGroupingId) return false;
-    if (mapCategoryId === "org_chart") return relationshipSourceKind === "person";
-    if (mapCategoryId !== "bow_tie") return true;
-    if (relationshipSourceKind === "image_asset") return true;
-    return (bowtieAllowedTargetsBySource[relationshipSourceKind] ?? []).length > 0;
-  }, [mapCategoryId, relationshipSourceGroupingId, bowtieAllowedTargetsBySource, relationshipSourceKind]);
+    return hasRelationshipSource;
+  }, [hasRelationshipSource]);
+  const allowGroupingTargets = useMemo(() => {
+    return hasRelationshipSource;
+  }, [hasRelationshipSource]);
 
   const relatedRows = useMemo(() => {
     if (!selectedNodeId) return [];
@@ -94,13 +71,8 @@ export function useCanvasRelationshipDerived({
 
   const relatedPersonRows = useMemo(() => {
     if (!selectedPersonId) return [];
-    return relations.filter((r) => {
-      const isLinked = r.target_system_element_id === selectedPersonId || r.source_system_element_id === selectedPersonId;
-      if (!isLinked) return false;
-      if (mapCategoryId !== "org_chart") return true;
-      return String(r.relation_type ?? "").trim().toLowerCase() === "reports_to";
-    });
-  }, [relations, selectedPersonId, mapCategoryId]);
+    return relations.filter((r) => r.target_system_element_id === selectedPersonId || r.source_system_element_id === selectedPersonId);
+  }, [relations, selectedPersonId]);
 
   const relatedSystemRows = useMemo(() => {
     if (!selectedSystemId) return [];
@@ -201,13 +173,13 @@ export function useCanvasRelationshipDerived({
   const relationshipModeGrouping = !!relationshipSourceGroupingId;
 
   const documentRelationCandidates = useMemo(() => {
-    if (!relationshipSourceNodeId && !relationshipSourceSystemId) return [];
+    if (!hasRelationshipSource) return [];
     if (!allowDocumentTargets) return [];
     const term = relationshipDocumentQuery.trim().toLowerCase();
     return nodes
       .filter((n) => n.id !== relationshipSourceNodeId)
       .filter((n) => n.title.toLowerCase().includes(term));
-  }, [nodes, relationshipSourceNodeId, relationshipSourceSystemId, relationshipDocumentQuery, allowDocumentTargets]);
+  }, [nodes, relationshipSourceNodeId, relationshipDocumentQuery, allowDocumentTargets, hasRelationshipSource]);
 
   const documentRelationCandidateLabelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -222,15 +194,9 @@ export function useCanvasRelationshipDerived({
   }, [documentRelationCandidates]);
 
   const systemRelationCandidates = useMemo(() => {
-    if (!relationshipSourceNodeId && !relationshipSourceSystemId) return [];
+    if (!hasRelationshipSource) return [];
     if (!allowSystemTargets) return [];
     const term = relationshipSystemQuery.trim().toLowerCase();
-    const allowedKinds =
-      mapCategoryId === "bow_tie"
-        ? relationshipSourceKind === "image_asset"
-          ? null
-          : new Set(bowtieAllowedTargetsBySource[relationshipSourceKind] ?? [])
-        : null;
     return elements
       .filter(
         (el) =>
@@ -241,15 +207,20 @@ export function useCanvasRelationshipDerived({
       )
       .filter((el) => el.id !== relationshipSourceSystemId)
       .filter((el) => {
-        if (mapCategoryId === "org_chart") {
-          return el.element_type === "person";
-        }
-        if (mapCategoryId !== "bow_tie") return true;
-        if (relationshipSourceKind === "image_asset") return true;
-        return allowedKinds?.has(el.element_type) ?? false;
-      })
-      .filter((el) => (el.heading || "").toLowerCase().includes(term));
-  }, [elements, relationshipSourceNodeId, relationshipSourceSystemId, relationshipSystemQuery, allowSystemTargets, mapCategoryId, bowtieAllowedTargetsBySource, relationshipSourceKind]);
+        if (!term) return true;
+        const displayLabel = getElementRelationshipDisplayLabel(el).toLowerCase();
+        const name = getElementDisplayName(el).toLowerCase();
+        const heading = String(el.heading ?? "").toLowerCase();
+        const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+        const description = String(cfg.description ?? "").toLowerCase();
+        return (
+          displayLabel.includes(term) ||
+          name.includes(term) ||
+          heading.includes(term) ||
+          description.includes(term)
+        );
+      });
+  }, [elements, relationshipSourceSystemId, relationshipSystemQuery, allowSystemTargets, hasRelationshipSource]);
 
   const systemRelationCandidateLabelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -264,12 +235,13 @@ export function useCanvasRelationshipDerived({
   }, [systemRelationCandidates]);
 
   const groupingRelationCandidates = useMemo(() => {
-    if (!relationshipSourceGroupingId) return [];
+    if (!hasRelationshipSource) return [];
+    if (!allowGroupingTargets) return [];
     const term = relationshipGroupingQuery.trim().toLowerCase();
     return elements
       .filter((el) => el.element_type === "grouping_container" && el.id !== relationshipSourceGroupingId)
       .filter((el) => (el.heading || "").toLowerCase().includes(term));
-  }, [elements, relationshipSourceGroupingId, relationshipGroupingQuery]);
+  }, [elements, relationshipSourceGroupingId, relationshipGroupingQuery, hasRelationshipSource, allowGroupingTargets]);
 
   const groupingRelationCandidateLabelById = useMemo(() => {
     const m = new Map<string, string>();
@@ -320,17 +292,29 @@ export function useCanvasRelationshipDerived({
 
   const alreadyRelatedGroupingTargetIds = useMemo(() => {
     const ids = new Set<string>();
-    if (!relationshipSourceGroupingId) return ids;
+    if (!hasRelationshipSource) return ids;
     relations.forEach((r) => {
-      if (r.source_grouping_element_id === relationshipSourceGroupingId && r.target_grouping_element_id) {
+      if (relationshipSourceGroupingId && r.source_grouping_element_id === relationshipSourceGroupingId && r.target_grouping_element_id) {
         ids.add(r.target_grouping_element_id);
       }
-      if (r.target_grouping_element_id === relationshipSourceGroupingId && r.source_grouping_element_id) {
+      if (relationshipSourceGroupingId && r.target_grouping_element_id === relationshipSourceGroupingId && r.source_grouping_element_id) {
+        ids.add(r.source_grouping_element_id);
+      }
+      if (relationshipSourceNodeId && r.from_node_id === relationshipSourceNodeId && r.target_grouping_element_id) {
+        ids.add(r.target_grouping_element_id);
+      }
+      if (relationshipSourceNodeId && r.to_node_id === relationshipSourceNodeId && r.source_grouping_element_id) {
+        ids.add(r.source_grouping_element_id);
+      }
+      if (relationshipSourceSystemId && r.source_system_element_id === relationshipSourceSystemId && r.target_grouping_element_id) {
+        ids.add(r.target_grouping_element_id);
+      }
+      if (relationshipSourceSystemId && r.target_system_element_id === relationshipSourceSystemId && r.source_grouping_element_id) {
         ids.add(r.source_grouping_element_id);
       }
     });
     return ids;
-  }, [relations, relationshipSourceGroupingId]);
+  }, [relations, relationshipSourceGroupingId, relationshipSourceNodeId, relationshipSourceSystemId, hasRelationshipSource]);
 
   return {
     relatedRows,
@@ -348,6 +332,7 @@ export function useCanvasRelationshipDerived({
     relationshipModeGrouping,
     allowDocumentTargets,
     allowSystemTargets,
+    allowGroupingTargets,
     documentRelationCandidates,
     documentRelationCandidateLabelById,
     documentRelationCandidateIdByLabel,

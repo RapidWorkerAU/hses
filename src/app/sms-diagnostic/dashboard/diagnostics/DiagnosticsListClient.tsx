@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { fetchWithSession } from "../portalAuth";
 import { CardGridSkeleton } from "@/components/loading/HsesLoaders";
+import styles from "../InvestigationDashboard.module.css";
 
 type DiagnosticRow = {
   id: string;
@@ -54,23 +55,33 @@ export default function DiagnosticsListClient() {
     fetchDiagnostics();
   }, []);
 
+  const statusClassName = (status: string | null) => {
+    const normalized = status?.toLowerCase() ?? "new";
+    if (normalized === "redeemed") return styles.statusRedeemed;
+    if (normalized === "assigned") return styles.statusAssigned;
+    if (normalized === "emailed") return styles.statusEmailed;
+    if (normalized === "manual") return styles.statusManual;
+    if (normalized === "new") return styles.statusNew;
+    return styles.statusUnassigned;
+  };
+
   if (isLoading) {
     return <CardGridSkeleton cards={3} />;
   }
 
   if (error) {
-    return <div className="dashboard-empty">{error}</div>;
+    return <div className={styles.emptyState}>{error}</div>;
   }
 
   if (diagnostics.length === 0) {
     return (
-      <div className="dashboard-empty">
+      <div className={styles.emptyState}>
         <h2>No diagnostics yet</h2>
         <p>
           When you purchase a diagnostic, it will appear here with access codes and
           rollout progress.
         </p>
-        <a className="btn btn-primary" href="/sms-diagnostic/purchase">
+        <a className={`${styles.buttonBase} ${styles.primaryButton}`} href="/sms-diagnostic/purchase">
           Purchase a diagnostic
         </a>
       </div>
@@ -78,7 +89,7 @@ export default function DiagnosticsListClient() {
   }
 
   return (
-    <div className="dashboard-card-grid">
+    <div className={styles.cardGrid}>
       {diagnostics.map((diagnostic) => {
         const issued = diagnostic.issued_codes ?? 0;
         const redeemed = diagnostic.redeemed_codes ?? 0;
@@ -89,17 +100,17 @@ export default function DiagnosticsListClient() {
               month: "long",
               year: "numeric",
             })
-          : "â€”";
+          : "--";
 
         return (
-          <article key={diagnostic.id} className="dashboard-card">
-            <div className="dashboard-card-top">
-              <p className="dashboard-card-domain">Safety Energy Loop Framework</p>
-              <span className="dashboard-card-status">{diagnostic.status}</span>
+          <article key={diagnostic.id} className={styles.card}>
+            <div className={styles.cardTop}>
+              <p className={styles.cardDomain}>Safety Energy Loop Framework</p>
+              <span className={`${styles.cardStatus} ${statusClassName(diagnostic.status)}`}>{diagnostic.status}</span>
             </div>
             <h3>{diagnostic.name}</h3>
-            <p className="dashboard-card-meta">Purchased {purchasedLabel}</p>
-            <div className="dashboard-card-stats">
+            <p className={styles.cardMeta}>Purchased {purchasedLabel}</p>
+            <div className={styles.cardStats}>
               <div>
                 <strong>{issued}</strong>
                 <span>Codes issued</span>
@@ -113,8 +124,11 @@ export default function DiagnosticsListClient() {
                 <span>Completion</span>
               </div>
             </div>
-            <div className="dashboard-card-actions">
-              <a className="btn btn-primary" href={`/dashboard/diagnostics/${diagnostic.id}`}>
+            <div className={styles.cardActions}>
+              <a
+                className={`${styles.buttonBase} ${styles.primaryButton}`}
+                href={`/dashboard/diagnostics/${diagnostic.id}`}
+              >
                 Open diagnostic
               </a>
             </div>

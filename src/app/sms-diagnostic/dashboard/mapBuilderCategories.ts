@@ -17,6 +17,11 @@ export type MapBuilderCategory = {
   emptyLabel: string;
 };
 
+export type MapBuilderCategoryOption = {
+  value: MapBuilderCategoryId;
+  label: string;
+};
+
 export const MAP_BUILDER_CATEGORIES: MapBuilderCategory[] = [
   {
     key: "document-maps",
@@ -78,3 +83,12 @@ export const MAP_BUILDER_CATEGORIES: MapBuilderCategory[] = [
 export const MAP_BUILDER_CATEGORY_BY_SLUG = new Map(
   MAP_BUILDER_CATEGORIES.map((category) => [category.slug, category])
 );
+
+export const MAP_BUILDER_CATEGORY_BY_ID = new Map(
+  MAP_BUILDER_CATEGORIES.map((category) => [category.mapCategory, category])
+);
+
+export const MAP_BUILDER_CATEGORY_OPTIONS: MapBuilderCategoryOption[] = MAP_BUILDER_CATEGORIES.map((category) => ({
+  value: category.mapCategory,
+  label: category.title,
+}));

@@ -1,3 +1,4 @@
+import "../portal.css";
 import AdminGate from "./AdminGate";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

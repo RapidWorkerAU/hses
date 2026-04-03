@@ -1,7 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import type { CanvasElementRow, DisciplineKey, DocumentNodeRow, RelationshipCategory } from "./canvasShared";
+import type { CanvasElementRow, DisciplineKey, DocumentNodeRow, RelationshipCategory, RelationshipCategoryGroup } from "./canvasShared";
 
 type MobileNodeActionSheetProps = {
   open: boolean;
@@ -62,6 +62,7 @@ type MobileAddRelationshipModalProps = {
   setShowRelationshipGroupingOptions: Dispatch<SetStateAction<boolean>>;
   groupingRelationCandidates: CanvasElementRow[];
   groupingRelationCandidateLabelById: Map<string, string>;
+  allowGroupingTargets: boolean;
   allowDocumentTargets: boolean;
   relationshipDocumentQuery: string;
   setRelationshipDocumentQuery: (value: string) => void;
@@ -91,6 +92,7 @@ type MobileAddRelationshipModalProps = {
   setRelationshipDisciplineSelection: Dispatch<SetStateAction<DisciplineKey[]>>;
   relationshipCategory: RelationshipCategory;
   setRelationshipCategory: (value: RelationshipCategory) => void;
+  relationshipCategoryGroups: RelationshipCategoryGroup[];
   relationshipCategoryOptions: RelationshipCategoryOption[];
   relationshipCustomType: string;
   setRelationshipCustomType: (value: string) => void;
@@ -116,6 +118,7 @@ export function MobileAddRelationshipModal({
   setShowRelationshipGroupingOptions,
   groupingRelationCandidates,
   groupingRelationCandidateLabelById,
+  allowGroupingTargets,
   allowDocumentTargets,
   relationshipDocumentQuery,
   setRelationshipDocumentQuery,
@@ -145,6 +148,7 @@ export function MobileAddRelationshipModal({
   setRelationshipDisciplineSelection,
   relationshipCategory,
   setRelationshipCategory,
+  relationshipCategoryGroups,
   relationshipCategoryOptions,
   relationshipCustomType,
   setRelationshipCustomType,
@@ -159,9 +163,8 @@ export function MobileAddRelationshipModal({
   if (!open) return null;
 
   const disableAddButton =
-    (!relationshipModeGrouping && (!allowDocumentTargets && !allowSystemTargets)) ||
-    (!relationshipModeGrouping && !relationshipTargetDocumentId && !relationshipTargetSystemId) ||
-    (relationshipModeGrouping && !relationshipTargetGroupingId) ||
+    (!allowGroupingTargets && !allowDocumentTargets && !allowSystemTargets) ||
+    (!relationshipTargetDocumentId && !relationshipTargetSystemId && !relationshipTargetGroupingId) ||
     (relationshipCategory === "other" && !relationshipCustomType.trim());
 
   return (
@@ -170,7 +173,7 @@ export function MobileAddRelationshipModal({
         <h2 className="text-lg font-semibold">Add Relationship</h2>
         <p className="mt-1 text-sm text-slate-600">From: {sourceLabel || "Unknown source"}</p>
         <div className="mt-4 grid gap-3">
-          {relationshipModeGrouping ? (
+          {allowGroupingTargets ? (
             <div className="relative">
               <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Grouping Containers</div>
               <div className="relative flex">
@@ -183,12 +186,18 @@ export function MobileAddRelationshipModal({
                     setRelationshipGroupingQuery(query);
                     const candidateId = groupingRelationCandidateIdByLabel.get(query) ?? "";
                     setRelationshipTargetGroupingId(candidateId && !alreadyRelatedGroupingTargetIds.has(candidateId) ? candidateId : "");
+                    setRelationshipTargetDocumentId("");
+                    setRelationshipTargetSystemId("");
                   }}
                 />
                 <button
                   type="button"
                   className="rounded-r border border-l-0 border-slate-300 bg-white px-3 text-xs text-slate-700 hover:bg-slate-50"
-                  onClick={() => setShowRelationshipGroupingOptions((prev) => !prev)}
+                  onClick={() => {
+                    setShowRelationshipGroupingOptions((prev) => !prev);
+                    setShowRelationshipDocumentOptions(false);
+                    setShowRelationshipSystemOptions(false);
+                  }}
                 >
                   {showRelationshipGroupingOptions ? "▲" : "▼"}
                 </button>
@@ -210,6 +219,8 @@ export function MobileAddRelationshipModal({
                           e.preventDefault();
                           if (isDisabled) return;
                           setRelationshipTargetGroupingId(el.id);
+                          setRelationshipTargetDocumentId("");
+                          setRelationshipTargetSystemId("");
                           setRelationshipGroupingQuery(optionLabel);
                           setShowRelationshipGroupingOptions(false);
                         }}
@@ -226,7 +237,8 @@ export function MobileAddRelationshipModal({
                 </div>
               )}
             </div>
-          ) : (
+          ) : null}
+          {!relationshipModeGrouping ? (
             <>
               {allowDocumentTargets ? <div className="relative">
                 <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
@@ -240,6 +252,8 @@ export function MobileAddRelationshipModal({
                       setRelationshipDocumentQuery(query);
                       const candidateId = documentRelationCandidateIdByLabel.get(query) ?? "";
                       setRelationshipTargetDocumentId(candidateId && !alreadyRelatedDocumentTargetIds.has(candidateId) ? candidateId : "");
+                      setRelationshipTargetGroupingId("");
+                      setRelationshipTargetSystemId("");
                     }}
                   />
                   <button
@@ -271,6 +285,7 @@ export function MobileAddRelationshipModal({
                             if (isDisabled) return;
                             setRelationshipTargetDocumentId(n.id);
                             setRelationshipTargetSystemId("");
+                            setRelationshipTargetGroupingId("");
                             setRelationshipDocumentQuery(optionLabel);
                             setShowRelationshipDocumentOptions(false);
                           }}
@@ -299,6 +314,8 @@ export function MobileAddRelationshipModal({
                       setRelationshipSystemQuery(query);
                       const candidateId = systemRelationCandidateIdByLabel.get(query) ?? "";
                       setRelationshipTargetSystemId(candidateId && !alreadyRelatedSystemTargetIds.has(candidateId) ? candidateId : "");
+                      setRelationshipTargetDocumentId("");
+                      setRelationshipTargetGroupingId("");
                     }}
                   />
                   <button
@@ -330,6 +347,7 @@ export function MobileAddRelationshipModal({
                             if (isDisabled) return;
                             setRelationshipTargetSystemId(el.id);
                             setRelationshipTargetDocumentId("");
+                            setRelationshipTargetGroupingId("");
                             setRelationshipSystemQuery(optionLabel);
                             setShowRelationshipSystemOptions(false);
                           }}
@@ -346,13 +364,13 @@ export function MobileAddRelationshipModal({
                   </div>
                 )}
               </div> : null}
-              {!allowDocumentTargets && !allowSystemTargets ? (
+              {!allowGroupingTargets && !allowDocumentTargets && !allowSystemTargets ? (
                 <div className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                  No valid target component types are available for this source in Bow Tie mode.
+                  No valid target component types are available for this source.
                 </div>
               ) : null}
             </>
-          )}
+          ) : null}
           <div>
             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Disciplines</div>
             <div className="relative">
@@ -400,10 +418,14 @@ export function MobileAddRelationshipModal({
                 value={relationshipCategory}
                 onChange={(e) => setRelationshipCategory(e.target.value as RelationshipCategory)}
               >
-                {relationshipCategoryOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                {relationshipCategoryGroups.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-black">?</span>

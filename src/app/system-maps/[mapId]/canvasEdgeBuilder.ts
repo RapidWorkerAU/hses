@@ -17,6 +17,8 @@ import {
   imageMinWidth,
   incidentDefaultWidth,
   incidentSquareSize,
+  isOrgChartPersonElement,
+  isPersonElementType,
   lineIntersectsRect,
   minorGridSize,
   type NodeRelationRow,
@@ -80,8 +82,8 @@ export const buildFlowEdgesBase = (params: {
   const getElementDimensions = (el: CanvasElementRow) => {
     if (el.element_type === "system_circle") return { width: systemCircleDiameter, height: systemCircleElementHeight };
     if (el.element_type === "process_component") return { width: processComponentWidth, height: processComponentElementHeight };
-    if (el.element_type === "person") {
-      if (mapCategoryId === "org_chart") {
+    if (isPersonElementType(el.element_type)) {
+      if (isOrgChartPersonElement(el)) {
         return {
           width: orgChartPersonWidth,
           height: orgChartPersonHeight,
