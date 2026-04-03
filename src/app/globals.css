@@ -20,6 +20,12 @@ html {
   scroll-behavior: smooth;
 }
 
+html:has([data-home-page]),
+body:has([data-home-page]) {
+  background: #000000;
+  overflow-x: clip;
+}
+
 *,
 *::before,
 *::after {

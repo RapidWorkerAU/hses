@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-home-page>
       <header className={styles.hero}>
         <div className={`${styles.shell} ${styles.header}`}>
           <div className={styles.headerRow}>
@@ -172,10 +172,12 @@ export default function HomePage() {
               <p className={styles.documentsEyebrow}>Documents</p>
               <h2 className={styles.documentsTitle}>
                 We develop technical documents that don&apos;t sound like generic
-                safety cr*p...
+                {" "}
+                <span className={styles.noWrapMobile}>safety cr*p...</span>
               </h2>
               <p className={styles.documentsSubhead}>
-                or we can improve the documents you already have
+                or we can improve the documents{" "}
+                <span className={styles.noWrapMobile}>you already have.</span>
               </p>
             </div>
 

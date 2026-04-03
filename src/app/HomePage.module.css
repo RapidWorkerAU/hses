@@ -1182,6 +1182,10 @@
   color: rgba(255, 255, 255, 0.88);
 }
 
+.noWrapMobile {
+  white-space: normal;
+}
+
 .footer {
   margin-top: 54px;
   padding: 14px 0 16px;
@@ -1587,9 +1591,24 @@
   }
 
   .technologyHeader {
+    width: 100%;
     max-width: none;
     display: grid;
     justify-items: center;
+    text-align: center;
+  }
+
+  .technology .sectionTitleLeft {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+
+  .technologyIntro {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
     text-align: center;
   }
 
@@ -1660,6 +1679,10 @@
   .headerRow {
     min-height: 36px;
     gap: 12px;
+  }
+
+  .noWrapMobile {
+    white-space: nowrap;
   }
 
   .mobilePanel {
