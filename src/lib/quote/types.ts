@@ -52,6 +52,18 @@ export type QuoteMilestone = {
   margin_percent: number | null;
 };
 
+export type QuoteAttachment = {
+  id: string;
+  quote_id: string;
+  storage_bucket: string;
+  storage_path: string;
+  file_name: string;
+  file_size: number | null;
+  content_type: string | null;
+  created_at: string;
+  public_url: string;
+};
+
 export type QuotePublicPayload = {
   quote: {
     title: string | null;
@@ -70,4 +82,5 @@ export type QuotePublicPayload = {
   version: QuoteVersion;
   deliverables: QuoteDeliverable[];
   milestones: QuoteMilestone[];
+  attachments: QuoteAttachment[];
 };

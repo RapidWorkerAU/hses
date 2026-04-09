@@ -183,7 +183,7 @@ export default function LoginClient() {
     : "/forgot-password";
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-login-page>
       <div className={styles.shell}>
         <section className={styles.panel}>
           <div className={styles.panelInner}>

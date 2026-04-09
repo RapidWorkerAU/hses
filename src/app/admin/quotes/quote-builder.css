@@ -937,6 +937,10 @@
   flex: 0 0 auto;
 }
 
+.qb-field-row--stack {
+  align-items: stretch;
+}
+
 .qb-btn--fixed {
   min-width: 240px;
 }
@@ -1194,6 +1198,10 @@
   padding-top: 8px;
 }
 
+.qb-footer-actions--left {
+  justify-content: flex-start;
+}
+
 .qb-table-actions {
   display: flex;
   justify-content: flex-end;
@@ -1209,4 +1217,104 @@
 .qb-muted {
   color: #94a3b8;
   font-size: 0.75rem;
+}
+
+.qb-error-note {
+  margin-top: 8px;
+  color: #b91c1c;
+  font-size: 0.75rem;
+}
+
+.qb-empty-cell {
+  text-align: center;
+  color: #64748b;
+  padding: 16px 8px !important;
+}
+
+.qb-table--attachments thead th:last-child,
+.qb-table--attachments tbody td:last-child {
+  width: 180px;
+  text-align: right;
+}
+
+.qb-table--attachments tbody td {
+  vertical-align: middle;
+}
+
+.qb-table--attachments tbody td:last-child {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.qb-table--attachments thead th:nth-child(1),
+.qb-table--attachments tbody td:nth-child(1) {
+  width: 30% !important;
+}
+
+.qb-table--attachments thead th:nth-child(2),
+.qb-table--attachments tbody td:nth-child(2) {
+  width: 30% !important;
+}
+
+.qb-table--attachments thead th:nth-child(3),
+.qb-table--attachments tbody td:nth-child(3) {
+  width: 10% !important;
+}
+
+.qb-table--attachments thead th:nth-child(4),
+.qb-table--attachments tbody td:nth-child(4) {
+  width: 15% !important;
+}
+
+.qb-table--attachments thead th:nth-child(5),
+.qb-table--attachments tbody td:nth-child(5) {
+  width: 15% !important;
+}
+
+.qb-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #d5e0ec;
+  background: #f8fafc;
+  color: #0b2f4a;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.qb-attachment-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.qb-inline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.qb-placeholder-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.qb-placeholder-chip {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.qb-email-preview {
+  white-space: pre-wrap;
+  color: #334155;
 }

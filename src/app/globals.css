@@ -26,6 +26,12 @@ body:has([data-home-page]) {
   overflow-x: clip;
 }
 
+html:has([data-login-page]),
+body:has([data-login-page]) {
+  background: linear-gradient(180deg, #f8f3ea 0%, #f1e6d4 100%);
+  overflow-x: clip;
+}
+
 *,
 *::before,
 *::after {

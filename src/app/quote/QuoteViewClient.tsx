@@ -1,11 +1,21 @@
 ﻿"use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import PortalModal from "@/components/PortalModal";
+import modalStyles from "@/components/PortalModal.module.css";
+import { getQuoteFileTypeLabel } from "@/lib/quote/fileTypeLabel";
 import type { QuotePublicPayload, QuoteMilestone } from "@/lib/quote/types";
 
 type ActionState = {
   clientName: string;
   note: string;
+};
+
+const formatFileSize = (value: number | null | undefined) => {
+  if (!value || value <= 0) return "-";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 const formatMoney = (value: number | null | undefined, currency = "AUD") => {
@@ -22,6 +32,7 @@ export default function QuoteViewClient() {
   const [error, setError] = useState<string | null>(null);
   const [openDeliverableId, setOpenDeliverableId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [actionState, setActionState] = useState<ActionState>({ clientName: "", note: "" });
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<"approved" | "rejected" | null>(null);
@@ -184,6 +195,12 @@ export default function QuoteViewClient() {
     },
     { quantity: 0, total: 0 }
   );
+  const proposalSections = [
+    { label: "Client notes", value: payload.version.client_notes },
+    { label: "Assumptions", value: payload.version.assumptions },
+    { label: "Exclusions", value: payload.version.exclusions },
+    { label: "Terms", value: payload.version.terms },
+  ].filter((section) => section.value?.trim());
 
   return (
     <div className="space-y-6">
@@ -407,6 +424,20 @@ export default function QuoteViewClient() {
                 <strong>{formatMoney(payload.version.total_inc_gst, currency)}</strong>
               </div>
             </div>
+            {payload.attachments.length > 0 && (
+              <div className="qb-footer-actions qb-footer-actions--left">
+                <button
+                  type="button"
+                  className="qb-attachment-link"
+                  onClick={() => setShowAttachmentModal(true)}
+                >
+                  <img src="/icons/file.svg" alt="" aria-hidden="true" className="qb-attachment-icon" />
+                  <span>
+                    Attachments ({payload.attachments.length})
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -488,6 +519,22 @@ export default function QuoteViewClient() {
           </div>
         </div>
       </div>
+
+      {proposalSections.length > 0 && (
+        <div className="qb-panel">
+          <div className="qb-panel-header">Proposal Notes</div>
+          <div className="qb-panel-body space-y-4">
+            {proposalSections.map((section) => (
+              <div key={section.label} className="qb-field">
+                <label>{section.label}</label>
+                <div className="qb-input qb-input--static whitespace-pre-wrap">
+                  {section.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {activeDeliverable && isMobile && (
         <div className="qb-modal">
@@ -576,6 +623,69 @@ export default function QuoteViewClient() {
           </div>
         </div>
       )}
+
+      <PortalModal
+        open={showAttachmentModal}
+        ariaLabel="Quote attachments"
+        eyebrow="Quote Files"
+        title="Quote Attachments"
+        description="Download or open the files shared with this quote."
+        onClose={() => setShowAttachmentModal(false)}
+        size="xl"
+        footer={
+          <button
+            type="button"
+            className={modalStyles.secondaryButton}
+            onClick={() => setShowAttachmentModal(false)}
+          >
+            Close
+          </button>
+        }
+      >
+        <table className="qb-table qb-table--modal qb-table--attachments">
+          <colgroup>
+            <col style={{ width: "30%" }} />
+            <col style={{ width: "30%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "15%" }} />
+            <col style={{ width: "15%" }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Type</th>
+              <th>Size</th>
+              <th>Uploaded</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {payload.attachments.map((attachment) => (
+              <tr key={attachment.id}>
+                <td data-label="File">{attachment.file_name}</td>
+                <td data-label="Type">
+                  {getQuoteFileTypeLabel(attachment.content_type, attachment.file_name)}
+                </td>
+                <td data-label="Size">{formatFileSize(attachment.file_size)}</td>
+                <td data-label="Uploaded">
+                  {new Date(attachment.created_at).toLocaleString()}
+                </td>
+                <td data-label="Action">
+                  <a
+                    className="qb-btn"
+                    href={attachment.public_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    download={attachment.file_name}
+                  >
+                    Download
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </PortalModal>
 
     </div>
   );

@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/supabase/admin";
+import {
+  DEFAULT_QUOTE_EMAIL_TEMPLATE,
+  QUOTE_EMAIL_PLACEHOLDERS,
+  renderQuoteEmailTemplate,
+} from "@/lib/quote/emailTemplate";
 
 type Payload = {
   to?: string;
   cc?: string;
   access_code?: string;
   link?: string;
+  message_template?: string;
 };
 
 export async function POST(
@@ -28,6 +34,7 @@ export async function POST(
   const cc = payload.cc?.trim() ?? "";
   const accessCode = payload.access_code?.trim();
   const link = payload.link?.trim();
+  const messageTemplate = payload.message_template?.trim() || DEFAULT_QUOTE_EMAIL_TEMPLATE;
 
   if (!to) {
     return new NextResponse("Missing recipient email.", { status: 400 });
@@ -70,58 +77,34 @@ export async function POST(
     day: "numeric",
   }).format(new Date());
 
-  const html = `
-    <div style="font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a; line-height: 1.5;">
-      <h2 style="margin: 0 0 12px; color: #0b2f4a;">HSES Quote Access</h2>
-      <p style="margin: 0 0 12px; color: #334155;">Hi,</p>
-      <p style="margin: 0 0 12px; color: #334155;">
-        Thankyou for allowing HSES the opportunity to provide a proposal for your work. Please see below link
-        and access code to view an itemised proposal for your works. You will be able to accept or reject the
-        proposal through the link with any commentary that may be relevant.
-      </p>
-      <p style="margin: 0 0 16px; color: #334155;">
-        The team at HSES will be notified of your response and will follow-up with next steps as soon as possible.
-      </p>
-      <div style="margin: 0 0 16px; color: #0f172a;">
-        ${organisationName ? `<div><strong>Organisation:</strong> ${organisationName}</div>` : ""}
-        <div><strong>Proposal Name:</strong> ${proposalTitle}</div>
-        <div><strong>Date:</strong> ${proposalDate}</div>
-      </div>
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px;">
-        <p style="margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;">
-          Access code
-        </p>
-        <div style="font-size:20px;font-weight:700;color:#0f172a;">${accessCode}</div>
-      </div>
-      <p style="margin:0 0 16px;color:#475569;">Use the link below to view your quote:</p>
-      <a href="${link}" style="display:inline-block;background:#0b2f4a;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none;font-weight:600;">
-        View Quote
-      </a>
-      <p style="margin:16px 0 0;color:#334155;">Kind Regards,<br/>HSES Industry Partners</p>
-    </div>
-  `;
+  const missingPlaceholders = ["{{access_code}}", "{{quote_link}}"].filter(
+    (placeholder) => !messageTemplate.includes(placeholder)
+  );
+  if (missingPlaceholders.length > 0) {
+    return new NextResponse(
+      `Email template must include: ${missingPlaceholders.join(", ")}`,
+      { status: 400 }
+    );
+  }
 
-  const text = [
-    "Hi,",
-    "",
-    "Thankyou for allowing HSES the opportunity to provide a proposal for your work. Please see below link",
-    "and access code to view an itemised proposal for your works. You will be able to accept or reject the",
-    "proposal through the link with any commentary that may be relevant.",
-    "",
-    "The team at HSES will be notified of your response and will follow-up with next steps as soon as possible.",
-    "",
-    organisationName ? `Organisation: ${organisationName}` : null,
-    `Proposal Name: ${proposalTitle}`,
-    `Date: ${proposalDate}`,
-    "",
-    `Access code: ${accessCode}`,
-    `Link: ${link}`,
-    "",
-    "Kind Regards,",
-    "HSES Industry Partners",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const unknownPlaceholders = Array.from(messageTemplate.matchAll(/\{\{[^}]+\}\}/g))
+    .map((match) => match[0])
+    .filter((placeholder) => !QUOTE_EMAIL_PLACEHOLDERS.includes(placeholder as (typeof QUOTE_EMAIL_PLACEHOLDERS)[number]));
+
+  if (unknownPlaceholders.length > 0) {
+    return new NextResponse(
+      `Unknown placeholders found: ${Array.from(new Set(unknownPlaceholders)).join(", ")}`,
+      { status: 400 }
+    );
+  }
+
+  const { html, text } = renderQuoteEmailTemplate(messageTemplate, {
+    organisationName,
+    proposalTitle,
+    proposalDate,
+    accessCode,
+    link,
+  });
 
   const ccList = cc
     .split(/[;,]/)

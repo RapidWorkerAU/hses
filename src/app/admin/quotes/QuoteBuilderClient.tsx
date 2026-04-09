@@ -6,10 +6,30 @@ import { fetchAdmin } from "../lib/adminFetch";
 import PortalModal from "@/components/PortalModal";
 import modalStyles from "@/components/PortalModal.module.css";
 import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
+import {
+  DEFAULT_QUOTE_EMAIL_TEMPLATE,
+  QUOTE_EMAIL_PLACEHOLDERS,
+  renderQuoteEmailTemplate,
+} from "@/lib/quote/emailTemplate";
+import { getQuoteFileTypeLabel } from "@/lib/quote/fileTypeLabel";
 import ContactOrgPicker from "./ContactOrgPicker";
 import DeliverableEditor from "./DeliverableEditor";
 import TotalsSidebar from "./TotalsSidebar";
-import type { AdminDeliverable, AdminMilestone, AdminQuote, AdminQuoteVersion, Contact } from "./types";
+import type {
+  AdminDeliverable,
+  AdminMilestone,
+  AdminQuote,
+  AdminQuoteAttachment,
+  AdminQuoteVersion,
+  Contact,
+} from "./types";
+
+const formatFileSize = (value: number | null | undefined) => {
+  if (!value || value <= 0) return "-";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 type QuotePayload = {
   quote: AdminQuote;
@@ -17,6 +37,7 @@ type QuotePayload = {
   deliverables: AdminDeliverable[];
   milestones: AdminMilestone[];
   contact?: Contact | null;
+  attachments: AdminQuoteAttachment[];
 };
 
 export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
@@ -39,11 +60,14 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
     "idle"
   );
   const [publishEmailError, setPublishEmailError] = useState<string | null>(null);
+  const [publishEmailTemplate, setPublishEmailTemplate] = useState(DEFAULT_QUOTE_EMAIL_TEMPLATE);
+  const [showPublishEmailPreview, setShowPublishEmailPreview] = useState(false);
   const [panelState, setPanelState] = useState({
     info: false,
     items: false,
     notes: false,
     totals: false,
+    attachments: false,
   });
   const [infoStatus, setInfoStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [versionNotes, setVersionNotes] = useState({
@@ -52,6 +76,11 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
     exclusions: "",
     terms: "",
   });
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentStatus, setAttachmentStatus] = useState<"idle" | "uploading" | "error">("idle");
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  const [attachmentInputKey, setAttachmentInputKey] = useState(0);
 
   const refresh = async () => {
     if (!quoteId || quoteId === "undefined") {
@@ -218,6 +247,12 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
     }
   }, [publishModal.open, payload?.contact?.email, publishEmail]);
 
+  useEffect(() => {
+    if (!publishModal.open) return;
+    setPublishEmailTemplate(DEFAULT_QUOTE_EMAIL_TEMPLATE);
+    setShowPublishEmailPreview(false);
+  }, [publishModal.open, publishModal.code]);
+
   const sendPublishEmail = async () => {
     if (!publishModal.code) return;
     if (!publishEmail.trim()) {
@@ -237,6 +272,7 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
         cc: publishCcEmail.trim() || null,
         access_code: publishModal.code,
         link,
+        message_template: publishEmailTemplate,
       }),
     });
     if (!response.ok) {
@@ -248,12 +284,73 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
     setPublishEmailStatus("sent");
   };
 
+  const uploadAttachments = async () => {
+    if (!attachmentFiles.length) {
+      setAttachmentStatus("error");
+      setAttachmentError("Select at least one attachment.");
+      return;
+    }
+
+    setAttachmentStatus("uploading");
+    setAttachmentError(null);
+    const formData = new FormData();
+    attachmentFiles.forEach((file) => formData.append("files", file));
+    const response = await fetchAdmin(`/api/admin/quotes/${quoteId}/attachments`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      setAttachmentStatus("error");
+      setAttachmentError(message || "Unable to upload attachments.");
+      return;
+    }
+
+    setAttachmentFiles([]);
+    setAttachmentInputKey((value) => value + 1);
+    setAttachmentStatus("idle");
+    await syncPayload();
+  };
+
+  const deleteAttachment = async (attachmentId: string) => {
+    setDeletingAttachmentId(attachmentId);
+    setAttachmentError(null);
+    const response = await fetchAdmin(`/api/admin/quote-attachments/${attachmentId}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      setAttachmentError(message || "Unable to delete attachment.");
+    } else {
+      await syncPayload();
+    }
+    setDeletingAttachmentId(null);
+  };
+
   if (isLoading || !payload) {
     if (error) {
       return <div className="text-sm text-slate-600">Error: {error}</div>;
     }
     return <DetailPageSkeleton />;
   }
+
+  const previewDate = new Intl.DateTimeFormat("en-AU", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date());
+  const previewLink = `${(process.env.NEXT_PUBLIC_SITE_URL ?? "/quote").replace(/\/$/, "")}/quote`.replace(
+    /^\/quote\/quote$/,
+    "/quote"
+  );
+  const publishEmailPreview = renderQuoteEmailTemplate(publishEmailTemplate, {
+    organisationName: null,
+    proposalTitle: payload.quote.title ?? "Proposal",
+    proposalDate: previewDate,
+    accessCode: publishModal.code ?? "ACCESS-CODE",
+    link: previewLink,
+  });
 
   return (
     <div className="quote-builder">
@@ -273,7 +370,7 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
             className="qb-btn qb-btn-primary"
             onClick={() => setPublishModal({ open: true })}
           >
-            Save
+            Publish quote
           </button>
         </div>
       </div>
@@ -545,6 +642,115 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
         </div>
       </div>
 
+      <div className="qb-panel">
+        <div className="qb-panel-header">
+          <button
+            type="button"
+            className="qb-panel-toggle"
+            aria-expanded={!panelState.attachments}
+            onClick={() =>
+              setPanelState((prev) => ({ ...prev, attachments: !prev.attachments }))
+            }
+          >
+            <span>Attachments</span>
+            <span className="qb-panel-toggle-icon">
+              {panelState.attachments ? "+" : "−"}
+            </span>
+          </button>
+        </div>
+        {!panelState.attachments && (
+          <div className="qb-panel-body">
+            <div className="qb-field">
+              <label>Upload attachments</label>
+              <div className="qb-field-row qb-field-row--stack">
+                <input
+                  key={attachmentInputKey}
+                  type="file"
+                  className="qb-input"
+                  multiple
+                  onChange={(event) => {
+                    setAttachmentFiles(Array.from(event.target.files ?? []));
+                    setAttachmentStatus("idle");
+                    setAttachmentError(null);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="qb-btn qb-btn-primary qb-btn--fixed"
+                  onClick={() => void uploadAttachments()}
+                  disabled={attachmentStatus === "uploading"}
+                >
+                  {attachmentStatus === "uploading" ? "Uploading..." : "Upload attachments"}
+                </button>
+              </div>
+              {attachmentFiles.length > 0 ? (
+                <div className="qb-muted mt-2">
+                  {attachmentFiles.length} file{attachmentFiles.length === 1 ? "" : "s"} selected
+                </div>
+              ) : null}
+              {attachmentError ? <div className="qb-error-note">{attachmentError}</div> : null}
+            </div>
+
+            <table className="qb-table qb-table--attachments">
+              <colgroup>
+                <col style={{ width: "30%" }} />
+                <col style={{ width: "30%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "15%" }} />
+                <col style={{ width: "15%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Type</th>
+                  <th>Size</th>
+                  <th>Uploaded</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {payload.attachments.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="qb-empty-cell">
+                      No attachments added yet.
+                    </td>
+                  </tr>
+                ) : (
+                  payload.attachments.map((attachment) => (
+                    <tr key={attachment.id}>
+                      <td>{attachment.file_name}</td>
+                      <td>{getQuoteFileTypeLabel(attachment.content_type, attachment.file_name)}</td>
+                      <td>{formatFileSize(attachment.file_size)}</td>
+                      <td>{new Date(attachment.created_at).toLocaleString()}</td>
+                      <td>
+                        <div className="qb-row-actions">
+                          <a
+                            className="qb-btn"
+                            href={attachment.public_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View
+                          </a>
+                          <button
+                            type="button"
+                            className="qb-btn"
+                            onClick={() => void deleteAttachment(attachment.id)}
+                            disabled={deletingAttachmentId === attachment.id}
+                          >
+                            {deletingAttachmentId === attachment.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {publishModal.open && (
         <PortalModal
           open={publishModal.open}
@@ -645,6 +851,48 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
                         }
                       }}
                     />
+                  </div>
+                  <div className={modalStyles.field}>
+                    <div className="qb-inline-header">
+                      <span className={modalStyles.fieldLabel}>Email message</span>
+                      <button
+                        type="button"
+                        className="qb-btn qb-btn--outline"
+                        onClick={() => setShowPublishEmailPreview((prev) => !prev)}
+                      >
+                        {showPublishEmailPreview ? "Edit" : "Preview"}
+                      </button>
+                    </div>
+                    {showPublishEmailPreview ? (
+                      <div
+                        className={`${modalStyles.surface} qb-email-preview`}
+                        dangerouslySetInnerHTML={{ __html: publishEmailPreview.html }}
+                      />
+                    ) : (
+                      <textarea
+                        className={modalStyles.textarea}
+                        rows={12}
+                        value={publishEmailTemplate}
+                        onChange={(event) => {
+                          setPublishEmailTemplate(event.target.value);
+                          if (publishEmailStatus !== "idle") {
+                            setPublishEmailStatus("idle");
+                            setPublishEmailError(null);
+                          }
+                        }}
+                      />
+                    )}
+                    <div className="qb-placeholder-list">
+                      {QUOTE_EMAIL_PLACEHOLDERS.map((placeholder) => (
+                        <span key={placeholder} className="qb-placeholder-chip">
+                          {placeholder}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="qb-muted">
+                      This edit only applies to this email. Keep <code>{"{{access_code}}"}</code> and{" "}
+                      <code>{"{{quote_link}}"}</code> in the message.
+                    </div>
                   </div>
                   {publishEmailError ? <div className={modalStyles.noticeError}>{publishEmailError}</div> : null}
                   {publishEmailStatus === "sent" ? <div className={modalStyles.noticeSuccess}>Email sent.</div> : null}

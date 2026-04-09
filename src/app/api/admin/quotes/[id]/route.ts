@@ -82,12 +82,30 @@ export async function GET(
         .single()
     : { data: null, error: null };
 
+  const attachmentsResponse = await supabase
+    .from("quote_attachments")
+    .select("id,quote_id,storage_bucket,storage_path,file_name,file_size,content_type,created_at")
+    .eq("quote_id", quoteId)
+    .order("created_at", { ascending: false });
+
+  if (attachmentsResponse.error) {
+    return new NextResponse(attachmentsResponse.error.message, { status: 500 });
+  }
+
+  const attachments = (attachmentsResponse.data ?? []).map((attachment) => ({
+    ...attachment,
+    public_url: supabase.storage
+      .from(attachment.storage_bucket)
+      .getPublicUrl(attachment.storage_path).data.publicUrl,
+  }));
+
   return NextResponse.json({
     quote: quoteResponse.data,
     version: versionResponse.data,
     deliverables,
     milestones: milestonesResponse.data ?? [],
     contact: contactResponse.data ?? null,
+    attachments,
   });
 }
 
@@ -206,6 +224,29 @@ export async function DELETE(
       .in("id", versionIds);
     if (versionsDelete.error) {
       return new NextResponse(versionsDelete.error.message, { status: 500 });
+    }
+  }
+
+  const attachmentsResponse = await supabase
+    .from("quote_attachments")
+    .select("id,storage_bucket,storage_path")
+    .eq("quote_id", quoteId);
+
+  if (attachmentsResponse.error) {
+    return new NextResponse(attachmentsResponse.error.message, { status: 500 });
+  }
+
+  const attachmentsByBucket = new Map<string, string[]>();
+  for (const attachment of attachmentsResponse.data ?? []) {
+    const bucketPaths = attachmentsByBucket.get(attachment.storage_bucket) ?? [];
+    bucketPaths.push(attachment.storage_path);
+    attachmentsByBucket.set(attachment.storage_bucket, bucketPaths);
+  }
+
+  for (const [bucket, paths] of attachmentsByBucket.entries()) {
+    const { error: storageDeleteError } = await supabase.storage.from(bucket).remove(paths);
+    if (storageDeleteError) {
+      return new NextResponse(storageDeleteError.message, { status: 500 });
     }
   }
 

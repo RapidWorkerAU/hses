@@ -1,7 +1,15 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  z-index: 9998;
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  appearance: none;
   background: rgba(28, 35, 48, 0.52);
   backdrop-filter: blur(2px);
 }
@@ -9,7 +17,7 @@
 .wrap {
   position: fixed;
   inset: 0;
-  z-index: 71;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -18,7 +26,7 @@
 }
 
 .dialog {
-  width: min(100%, 680px);
+  width: 100%;
   max-height: calc(100dvh - 48px);
   display: flex;
   flex-direction: column;
@@ -39,7 +47,9 @@
 }
 
 .dialogXl {
-  max-width: 980px;
+  width: min(90vw, 1280px);
+  min-width: 60vw;
+  max-width: 1280px;
 }
 
 .header {
@@ -259,6 +269,11 @@
   .dialog {
     max-height: calc(100dvh - 32px);
     border-radius: 22px;
+  }
+
+  .dialogXl {
+    width: 100%;
+    min-width: 0;
   }
 
   .header,

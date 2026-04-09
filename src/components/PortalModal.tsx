@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import styles from "./PortalModal.module.css";
 
 type PortalModalProps = {
@@ -27,12 +28,20 @@ export default function PortalModal({
   footer,
   size = "md",
 }: PortalModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
   if (!open) return null;
+  if (!mounted) return null;
 
   const sizeClass =
     size === "xl" ? styles.dialogXl : size === "lg" ? styles.dialogLg : styles.dialogMd;
 
-  return (
+  return createPortal(
     <>
       <button
         type="button"
@@ -56,6 +65,7 @@ export default function PortalModal({
           {footer ? <div className={styles.footer}>{footer}</div> : null}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

@@ -60,6 +60,18 @@ export type AdminMilestone = {
   margin_percent: number | null;
 };
 
+export type AdminQuoteAttachment = {
+  id: string;
+  quote_id: string;
+  storage_bucket: string;
+  storage_path: string;
+  file_name: string;
+  file_size: number | null;
+  content_type: string | null;
+  created_at: string;
+  public_url: string;
+};
+
 export type Organisation = {
   id: string;
   name: string;
