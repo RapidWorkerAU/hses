@@ -75,9 +75,7 @@ export const buildFlowEdgesBase = (params: {
   const pairSeen = new Map<string, number>();
   const nodesById = new Map(nodes.map((n) => [n.id, n]));
   const relationshipElementsById = new Map(
-    elements
-      .filter((el) => el.element_type !== "sticky_note")
-      .map((el) => [el.id, el])
+    elements.map((el) => [el.id, el])
   );
   const getElementDimensions = (el: CanvasElementRow) => {
     if (el.element_type === "system_circle") return { width: systemCircleDiameter, height: systemCircleElementHeight };
@@ -140,6 +138,26 @@ export const buildFlowEdgesBase = (params: {
       const b = processFlowId(r.target_system_element_id);
       return a < b ? `syssys:${a}|${b}` : `syssys:${b}|${a}`;
     }
+    if (r.source_grouping_element_id && r.to_node_id) {
+      const a = processFlowId(r.source_grouping_element_id);
+      const b = r.to_node_id;
+      return a < b ? `groupdoc:${a}|${b}` : `groupdoc:${b}|${a}`;
+    }
+    if (r.from_node_id && r.target_grouping_element_id) {
+      const a = r.from_node_id;
+      const b = processFlowId(r.target_grouping_element_id);
+      return a < b ? `docgroup:${a}|${b}` : `docgroup:${b}|${a}`;
+    }
+    if (r.source_grouping_element_id && r.target_system_element_id) {
+      const a = processFlowId(r.source_grouping_element_id);
+      const b = processFlowId(r.target_system_element_id);
+      return a < b ? `groupsys:${a}|${b}` : `groupsys:${b}|${a}`;
+    }
+    if (r.source_system_element_id && r.target_grouping_element_id) {
+      const a = processFlowId(r.source_system_element_id);
+      const b = processFlowId(r.target_grouping_element_id);
+      return a < b ? `sysgroup:${a}|${b}` : `sysgroup:${b}|${a}`;
+    }
     return `rel:${r.id}`;
   };
   relations.forEach((r) => {
@@ -166,8 +184,8 @@ export const buildFlowEdgesBase = (params: {
     const targetElement = r.target_system_element_id ? relationshipElementsById.get(r.target_system_element_id) : undefined;
     const sourceGrouping = r.source_grouping_element_id ? relationshipElementsById.get(r.source_grouping_element_id) : undefined;
     const targetGrouping = r.target_grouping_element_id ? relationshipElementsById.get(r.target_grouping_element_id) : undefined;
-    if (!sourceDoc && !sourceElement && !(sourceGrouping && targetGrouping)) return null;
-    if ((sourceDoc || sourceElement) && !targetDoc && !targetElement) return null;
+    if (!sourceDoc && !sourceElement && !sourceGrouping) return null;
+    if (!targetDoc && !targetElement && !targetGrouping) return null;
     const from = r.from_node_id ? nodesById.get(r.from_node_id) : undefined;
     const to = r.to_node_id ? nodesById.get(r.to_node_id) : undefined;
     let source = from ? from.id : "";
@@ -406,6 +424,136 @@ export const buildFlowEdgesBase = (params: {
         targetHandle = best.targetHandle;
       }
     }
+    if (sourceGrouping && targetDoc) {
+      source = processFlowId(sourceGrouping.id);
+      target = targetDoc.id;
+      const sourceSize = getElementDimensions(sourceGrouping);
+      const targetSize = getNodeSize(targetDoc);
+      const sourceAnchors = {
+        top: { x: sourceGrouping.pos_x + sourceSize.width / 2, y: sourceGrouping.pos_y },
+        bottom: { x: sourceGrouping.pos_x + sourceSize.width / 2, y: sourceGrouping.pos_y + sourceSize.height },
+        left: { x: sourceGrouping.pos_x, y: sourceGrouping.pos_y + sourceSize.height / 2 },
+        right: { x: sourceGrouping.pos_x + sourceSize.width, y: sourceGrouping.pos_y + sourceSize.height / 2 },
+      };
+      const targetAnchors = {
+        top: { x: targetDoc.pos_x + targetSize.width / 2, y: targetDoc.pos_y },
+        bottom: { x: targetDoc.pos_x + targetSize.width / 2, y: targetDoc.pos_y + targetSize.height },
+        left: { x: targetDoc.pos_x, y: targetDoc.pos_y + targetSize.height / 2 },
+        right: { x: targetDoc.pos_x + targetSize.width, y: targetDoc.pos_y + targetSize.height / 2 },
+      };
+      const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top-source",
+        bottom: "bottom",
+        left: "left",
+        right: "right",
+      };
+      const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top",
+        bottom: "bottom-target",
+        left: "left-target",
+        right: "right-target",
+      };
+      const blockingRects = [
+        ...nodes
+          .filter((n) => n.id !== targetDoc.id)
+          .map((n) => {
+            const size = getNodeSize(n);
+            return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+          }),
+        ...obstacleElementRects
+          .filter((rect) => rect.id !== sourceGrouping.id)
+          .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+      ];
+      const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
+      let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
+      for (const srcSide of sides) {
+        for (const dstSide of sides) {
+          const srcAnchor = sourceAnchors[srcSide];
+          const dstAnchor = targetAnchors[dstSide];
+          const dx = srcAnchor.x - dstAnchor.x;
+          const dy = srcAnchor.y - dstAnchor.y;
+          const dist2 = dx * dx + dy * dy;
+          const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
+          const score = dist2 + (crosses ? 1_000_000_000 : 0);
+          if (!best || score < best.score) {
+            best = {
+              sourceHandle: sourceSideToHandle[srcSide],
+              targetHandle: targetSideToHandle[dstSide],
+              score,
+            };
+          }
+        }
+      }
+      if (best) {
+        sourceHandle = best.sourceHandle;
+        targetHandle = best.targetHandle;
+      }
+    }
+    if (from && targetGrouping) {
+      source = from.id;
+      target = processFlowId(targetGrouping.id);
+      const fromSize = getNodeSize(from);
+      const targetSize = getElementDimensions(targetGrouping);
+      const fromAnchors = {
+        top: { x: from.pos_x + fromSize.width / 2, y: from.pos_y },
+        bottom: { x: from.pos_x + fromSize.width / 2, y: from.pos_y + fromSize.height },
+        left: { x: from.pos_x, y: from.pos_y + fromSize.height / 2 },
+        right: { x: from.pos_x + fromSize.width, y: from.pos_y + fromSize.height / 2 },
+      };
+      const toAnchors = {
+        top: { x: targetGrouping.pos_x + targetSize.width / 2, y: targetGrouping.pos_y },
+        bottom: { x: targetGrouping.pos_x + targetSize.width / 2, y: targetGrouping.pos_y + targetSize.height },
+        left: { x: targetGrouping.pos_x, y: targetGrouping.pos_y + targetSize.height / 2 },
+        right: { x: targetGrouping.pos_x + targetSize.width, y: targetGrouping.pos_y + targetSize.height / 2 },
+      };
+      const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top-source",
+        bottom: "bottom",
+        left: "left",
+        right: "right",
+      };
+      const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top",
+        bottom: "bottom-target",
+        left: "left-target",
+        right: "right-target",
+      };
+      const blockingRects = [
+        ...nodes
+          .filter((n) => n.id !== from.id)
+          .map((n) => {
+            const size = getNodeSize(n);
+            return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+          }),
+        ...obstacleElementRects
+          .filter((rect) => rect.id !== targetGrouping.id)
+          .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+      ];
+      const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
+      let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
+      for (const srcSide of sides) {
+        for (const dstSide of sides) {
+          const srcAnchor = fromAnchors[srcSide];
+          const dstAnchor = toAnchors[dstSide];
+          const dx = srcAnchor.x - dstAnchor.x;
+          const dy = srcAnchor.y - dstAnchor.y;
+          const dist2 = dx * dx + dy * dy;
+          const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
+          const score = dist2 + (crosses ? 1_000_000_000 : 0);
+          if (!best || score < best.score) {
+            best = {
+              sourceHandle: sourceSideToHandle[srcSide],
+              targetHandle: targetSideToHandle[dstSide],
+              score,
+            };
+          }
+        }
+      }
+      if (best) {
+        sourceHandle = best.sourceHandle;
+        targetHandle = best.targetHandle;
+      }
+    }
     if (sourceElement && targetElement) {
       source = processFlowId(sourceElement.id);
       target = processFlowId(targetElement.id);
@@ -519,6 +667,132 @@ export const buildFlowEdgesBase = (params: {
           sourceHandle = best.sourceHandle;
           targetHandle = best.targetHandle;
         }
+      }
+    }
+    if (sourceGrouping && targetElement) {
+      source = processFlowId(sourceGrouping.id);
+      target = processFlowId(targetElement.id);
+      const sourceSize = getElementDimensions(sourceGrouping);
+      const targetSize = getElementDimensions(targetElement);
+      const sourceAnchors = {
+        top: { x: sourceGrouping.pos_x + sourceSize.width / 2, y: sourceGrouping.pos_y },
+        bottom: { x: sourceGrouping.pos_x + sourceSize.width / 2, y: sourceGrouping.pos_y + sourceSize.height },
+        left: { x: sourceGrouping.pos_x, y: sourceGrouping.pos_y + sourceSize.height / 2 },
+        right: { x: sourceGrouping.pos_x + sourceSize.width, y: sourceGrouping.pos_y + sourceSize.height / 2 },
+      };
+      const targetAnchors = {
+        top: { x: targetElement.pos_x + targetSize.width / 2, y: targetElement.pos_y },
+        bottom: { x: targetElement.pos_x + targetSize.width / 2, y: targetElement.pos_y + targetSize.height },
+        left: { x: targetElement.pos_x, y: targetElement.pos_y + targetSize.height / 2 },
+        right: { x: targetElement.pos_x + targetSize.width, y: targetElement.pos_y + targetSize.height / 2 },
+      };
+      const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top-source",
+        bottom: "bottom",
+        left: "left",
+        right: "right",
+      };
+      const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top",
+        bottom: "bottom-target",
+        left: "left-target",
+        right: "right-target",
+      };
+      const blockingRects = [
+        ...nodes.map((n) => {
+          const size = getNodeSize(n);
+          return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+        }),
+        ...obstacleElementRects
+          .filter((rect) => rect.id !== sourceGrouping.id && rect.id !== targetElement.id)
+          .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+      ];
+      const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
+      let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
+      for (const srcSide of sides) {
+        for (const dstSide of sides) {
+          const srcAnchor = sourceAnchors[srcSide];
+          const dstAnchor = targetAnchors[dstSide];
+          const dx = srcAnchor.x - dstAnchor.x;
+          const dy = srcAnchor.y - dstAnchor.y;
+          const dist2 = dx * dx + dy * dy;
+          const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
+          const score = dist2 + (crosses ? 1_000_000_000 : 0);
+          if (!best || score < best.score) {
+            best = {
+              sourceHandle: sourceSideToHandle[srcSide],
+              targetHandle: targetSideToHandle[dstSide],
+              score,
+            };
+          }
+        }
+      }
+      if (best) {
+        sourceHandle = best.sourceHandle;
+        targetHandle = best.targetHandle;
+      }
+    }
+    if (sourceElement && targetGrouping) {
+      source = processFlowId(sourceElement.id);
+      target = processFlowId(targetGrouping.id);
+      const sourceSize = getElementDimensions(sourceElement);
+      const targetSize = getElementDimensions(targetGrouping);
+      const sourceAnchors = {
+        top: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y },
+        bottom: { x: sourceElement.pos_x + sourceSize.width / 2, y: sourceElement.pos_y + sourceSize.height },
+        left: { x: sourceElement.pos_x, y: sourceElement.pos_y + sourceSize.height / 2 },
+        right: { x: sourceElement.pos_x + sourceSize.width, y: sourceElement.pos_y + sourceSize.height / 2 },
+      };
+      const targetAnchors = {
+        top: { x: targetGrouping.pos_x + targetSize.width / 2, y: targetGrouping.pos_y },
+        bottom: { x: targetGrouping.pos_x + targetSize.width / 2, y: targetGrouping.pos_y + targetSize.height },
+        left: { x: targetGrouping.pos_x, y: targetGrouping.pos_y + targetSize.height / 2 },
+        right: { x: targetGrouping.pos_x + targetSize.width, y: targetGrouping.pos_y + targetSize.height / 2 },
+      };
+      const sourceSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top-source",
+        bottom: "bottom",
+        left: "left",
+        right: "right",
+      };
+      const targetSideToHandle: Record<"top" | "bottom" | "left" | "right", string> = {
+        top: "top",
+        bottom: "bottom-target",
+        left: "left-target",
+        right: "right-target",
+      };
+      const blockingRects = [
+        ...nodes.map((n) => {
+          const size = getNodeSize(n);
+          return { x: n.pos_x, y: n.pos_y, width: size.width, height: size.height };
+        }),
+        ...obstacleElementRects
+          .filter((rect) => rect.id !== sourceElement.id && rect.id !== targetGrouping.id)
+          .map((rect) => ({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })),
+      ];
+      const sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"];
+      let best: { sourceHandle: string; targetHandle: string; score: number } | null = null;
+      for (const srcSide of sides) {
+        for (const dstSide of sides) {
+          const srcAnchor = sourceAnchors[srcSide];
+          const dstAnchor = targetAnchors[dstSide];
+          const dx = srcAnchor.x - dstAnchor.x;
+          const dy = srcAnchor.y - dstAnchor.y;
+          const dist2 = dx * dx + dy * dy;
+          const crosses = blockingRects.some((rect) => lineIntersectsRect(srcAnchor, dstAnchor, rect));
+          const score = dist2 + (crosses ? 1_000_000_000 : 0);
+          if (!best || score < best.score) {
+            best = {
+              sourceHandle: sourceSideToHandle[srcSide],
+              targetHandle: targetSideToHandle[dstSide],
+              score,
+            };
+          }
+        }
+      }
+      if (best) {
+        sourceHandle = best.sourceHandle;
+        targetHandle = best.targetHandle;
       }
     }
     if (!source || !target) return null;

@@ -198,13 +198,7 @@ export function useCanvasRelationshipDerived({
     if (!allowSystemTargets) return [];
     const term = relationshipSystemQuery.trim().toLowerCase();
     return elements
-      .filter(
-        (el) =>
-          el.element_type !== "grouping_container" &&
-          el.element_type !== "sticky_note" &&
-          el.element_type !== "text_box" &&
-          el.element_type !== "table"
-      )
+      .filter((el) => el.element_type !== "grouping_container")
       .filter((el) => el.id !== relationshipSourceSystemId)
       .filter((el) => {
         if (!term) return true;

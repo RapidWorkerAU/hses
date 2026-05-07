@@ -15,6 +15,7 @@
 
 .viewport {
   --shell-bg: #f4efe7;
+  --dashboard-icon-gradient: linear-gradient(135deg, #6f7d91 0%, #3f4b5d 52%, #27313f 100%);
   height: 100dvh;
   min-height: 100dvh;
   padding: 0;
@@ -324,23 +325,28 @@
   box-shadow: 0 8px 18px rgba(180, 35, 24, 0.08);
 }
 
+.sidebarIconFrame,
 .sidebarIconWrap {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: currentColor;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
 }
 
 .sidebarIcon {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   transform-origin: center;
   filter: brightness(0) saturate(100%) invert(36%) sepia(11%) saturate(533%) hue-rotate(177deg) brightness(95%) contrast(87%);
-  opacity: 0.98;
-  image-rendering: -webkit-optimize-contrast;
+  opacity: 1;
+  image-rendering: auto;
 }
 
 .sidebarLinkActive .sidebarIcon {
@@ -377,10 +383,10 @@
 }
 
 .sidebarCollapsed .sidebarLink {
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  min-height: 40px;
+  width: 46px;
+  min-width: 46px;
+  height: 46px;
+  min-height: 46px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -404,10 +410,16 @@
   display: none;
 }
 
+.sidebarCollapsed .sidebarIconFrame {
+  width: 24px;
+  height: 24px;
+  flex-basis: 24px;
+}
+
 .sidebarCollapsed .sidebarIcon {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   margin: 0;
   opacity: 1;
 }
@@ -485,8 +497,8 @@
 }
 
 .collapsedIcon {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   transform-origin: center;
   filter: brightness(0) saturate(100%) invert(36%) sepia(11%) saturate(533%) hue-rotate(177deg) brightness(95%) contrast(87%);
@@ -830,30 +842,54 @@
 }
 
 .portalTileDisabled .portalTileIcon {
-  background: linear-gradient(180deg, #d7deea 0%, #bcc8d8 100%);
+  background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
   box-shadow: none;
 }
 
 .portalTileDisabled .portalTileIcon img {
-  filter: brightness(0) saturate(100%) invert(46%) sepia(10%) saturate(432%) hue-rotate(177deg) brightness(91%) contrast(84%);
+  filter: brightness(0) invert(1);
 }
 
 .portalTileIcon {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
   display: grid;
   place-items: center;
-  background: linear-gradient(180deg, #6f94d7 0%, #4a73b9 100%);
+  background: var(--dashboard-icon-gradient);
   color: #ffffff;
-  box-shadow: 0 10px 18px rgba(74, 115, 185, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 18px rgba(39, 49, 63, 0.18);
+  overflow: hidden;
 }
 
 .portalTileIcon img {
-  width: 19px;
-  height: 19px;
+  width: 80%;
+  height: 80%;
   object-fit: contain;
   filter: brightness(0) invert(1);
+  image-rendering: auto;
+}
+
+.portalTile:nth-child(2) .portalTileIcon img,
+.portalTile:nth-child(3) .portalTileIcon img {
+  width: 70%;
+  height: 70%;
+}
+
+.portalTile:nth-child(1) .portalTileIcon {
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 52%, #99f6e4 100%);
+}
+
+.portalTile:nth-child(2) .portalTileIcon {
+  background: linear-gradient(135deg, #1d4ed8 0%, #6366f1 52%, #a5b4fc 100%);
+}
+
+.portalTile:nth-child(3) .portalTileIcon {
+  background: linear-gradient(135deg, #be123c 0%, #f97316 55%, #fed7aa 100%);
+}
+
+.portalTile:nth-child(4) .portalTileIcon {
+  background: linear-gradient(135deg, #6d28d9 0%, #c026d3 52%, #f0abfc 100%);
 }
 
 .portalTile h3 {

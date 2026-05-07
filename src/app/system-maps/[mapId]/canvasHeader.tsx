@@ -51,9 +51,20 @@ export function MapCanvasHeader({
   return (
     <header className="site-header fixed inset-x-0 top-0 z-[90] md:sticky" style={{ backgroundColor: "#000000", borderBottomColor: "#0f172a" }}>
       <div className="header-inner" style={{ paddingLeft: "12px", paddingRight: "20px", backgroundColor: "#000000" }}>
-        <div className="header-left flex items-center gap-8">
-          <a href="/"><img src="/images/logo-white.png" alt="HSES" className="header-logo" /></a>
-          <span className="text-xl font-semibold uppercase tracking-[0.14em]" style={{ color: "#05c3dd" }}>{mapCategoryHeaderLabel}</span>
+        <div className="header-left flex items-center gap-4 md:gap-5">
+          <a href="/" className="shrink-0">
+            <img src="/images/logo-white.png" alt="HSES" className="header-logo" />
+          </a>
+          <span
+            className="inline-flex min-h-[36px] items-center rounded-full border px-4 text-[0.96rem] font-semibold tracking-[-0.02em] text-white md:min-h-[38px] md:px-5 md:text-[1rem]"
+            style={{
+              backgroundColor: "#131922",
+              borderColor: "rgba(148, 163, 184, 0.28)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 18px rgba(0,0,0,0.2)",
+            }}
+          >
+            {mapCategoryHeaderLabel}
+          </span>
         </div>
         <div className="header-actions flex items-center">
           <div className="flex items-center gap-2">

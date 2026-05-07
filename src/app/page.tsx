@@ -4,6 +4,7 @@ import styles from "./HomePage.module.css";
 import PricingEstimator from "./PricingEstimator";
 import HeroRotatingWord from "./HeroRotatingWord";
 import HomePageHeaderActions from "./HomePageHeaderActions";
+import HeroBackgroundVideo from "./HeroBackgroundVideo";
 
 export const metadata: Metadata = {
   title: "HSES Industry Partners",
@@ -57,6 +58,11 @@ export default function HomePage() {
 
         <div className={`${styles.shell} ${styles.heroInner}`}>
           <div className={styles.heroPanel}>
+            <div className={styles.heroMedia} aria-hidden="true">
+              <HeroBackgroundVideo />
+            </div>
+            <div className={styles.heroPanelOverlay} aria-hidden="true"></div>
+            <div className={styles.heroFeatureImage} aria-hidden="true"></div>
             <div className={styles.heroPanelCopy}>
               <h1 className={styles.heroTitle}>
                 <span className={styles.heroTitleTopLine}>
@@ -72,12 +78,12 @@ export default function HomePage() {
               </h1>
 
               <div className={styles.heroActions}>
-                <button
-                  className={`${styles.heroButton} ${styles.heroButtonPrimary} js-open-modal`}
-                  type="button"
+                <a
+                  className={`${styles.heroButton} ${styles.heroButtonPrimary}`}
+                  href="/contact"
                 >
                   Let&apos;s Talk
-                </button>
+                </a>
                 <a
                   className={`${styles.heroButton} ${styles.heroButtonSecondary}`}
                   href="#pricing"
@@ -87,9 +93,13 @@ export default function HomePage() {
               </div>
 
               <a className={styles.heroEmailLink} href="mailto:ask@hses.com.au">
-                Email us directly at ask@hses.com.au
+                <span className={styles.heroEmailPill}>
+                  Email us directly at ask@hses.com.au
+                </span>
                 <span className={styles.heroEmailArrow} aria-hidden="true">
-                  →
+                  <span>›</span>
+                  <span>›</span>
+                  <span>›</span>
                 </span>
               </a>
             </div>
@@ -226,12 +236,12 @@ export default function HomePage() {
                 </p>
 
                 <div className={styles.systemsActionsDesktop}>
-                  <button
-                    className={`${styles.systemsButton} js-open-modal`}
-                    type="button"
+                  <a
+                    className={styles.systemsButton}
+                    href="/contact"
                   >
                     Talk to us about your system
-                  </button>
+                  </a>
                   <a className={styles.systemsLink} href="#pricing">
                     See what a system build involves
                   </a>
@@ -283,12 +293,12 @@ export default function HomePage() {
             </div>
 
             <div className={styles.systemsActionsMobile}>
-              <button
-                className={`${styles.systemsButton} js-open-modal`}
-                type="button"
+              <a
+                className={styles.systemsButton}
+                href="/contact"
               >
                 Talk to us about your system
-              </button>
+              </a>
               <a className={styles.systemsLink} href="#pricing">
                 See what a system build involves
               </a>
@@ -348,12 +358,12 @@ export default function HomePage() {
                   A health and safety document builder that helps businesses
                   generate polished, fit-for-purpose documents quickly.
                 </p>
-                <button
-                  className={`${styles.technologyActionLink} js-open-modal`}
-                  type="button"
+                <a
+                  className={styles.technologyActionLink}
+                  href="/contact"
                 >
                   Join the waitlist
-                </button>
+                </a>
               </article>
 
               <article
@@ -400,12 +410,12 @@ export default function HomePage() {
                   bow-ties, org charts, and the wider safety management
                   infrastructure around them.
                 </p>
-                <button
-                  className={`${styles.technologyActionLink} js-open-modal`}
-                  type="button"
+                <a
+                  className={styles.technologyActionLink}
+                  href="/contact"
                 >
                   Request access
-                </button>
+                </a>
               </article>
             </div>
 
@@ -425,12 +435,12 @@ export default function HomePage() {
                     A health and safety document builder that helps businesses
                     generate polished, fit-for-purpose documents quickly.
                   </p>
-                  <button
-                    className={`${styles.technologyActionLink} js-open-modal`}
-                    type="button"
+                  <a
+                    className={styles.technologyActionLink}
+                    href="/contact"
                   >
                     Join the waitlist
-                  </button>
+                  </a>
                 </article>
                 <img
                   src="/images/safedoxexample.png"
@@ -487,12 +497,12 @@ export default function HomePage() {
                     bow-ties, org charts, and the wider safety management
                     infrastructure around them.
                   </p>
-                  <button
-                    className={`${styles.technologyActionLink} js-open-modal`}
-                    type="button"
+                  <a
+                    className={styles.technologyActionLink}
+                    href="/contact"
                   >
                     Request access
-                  </button>
+                  </a>
                 </article>
                 <img
                   src="/images/hsesportalexample.png"
@@ -616,19 +626,12 @@ export default function HomePage() {
             <p>Share what you need. We&apos;ll confirm fit and next steps.</p>
             <form
               className="lead-form"
-              name="consult-request"
+              name="contact-request"
               method="post"
-              data-netlify="true"
-              data-netlify-honeypot="bot-field"
-              action="/consult-thank-you"
+              action="/api/public/contact-request"
             >
-              <input type="hidden" name="form-name" value="consult-request" />
-              <p className="field" hidden>
-                <label>
-                  Don&apos;t fill this out:
-                  <input name="bot-field" />
-                </label>
-              </p>
+              <input type="hidden" name="form-name" value="contact-request" />
+              <input type="hidden" name="bot-field" />
               <label className="field">
                 <span>Name</span>
                 <input type="text" name="name" required />

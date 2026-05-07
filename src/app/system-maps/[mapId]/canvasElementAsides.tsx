@@ -381,6 +381,10 @@ type StickyNoteAsideProps = {
   onDelete: () => Promise<void>;
   onSave: () => Promise<void>;
   onClose: () => void;
+  onAddRelationship: () => void;
+  relatedRows: NodeRelationRow[];
+  resolveLabels: (row: NodeRelationRow) => RelationLabels;
+  relationshipSectionProps: Omit<RelationshipSectionProps, "rows" | "resolveLabels">;
 };
 
 export function StickyNoteAside({
@@ -392,10 +396,25 @@ export function StickyNoteAside({
   onDelete,
   onSave,
   onClose,
+  onAddRelationship,
+  relatedRows,
+  resolveLabels,
+  relationshipSectionProps,
 }: StickyNoteAsideProps) {
   if (!open) return null;
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Sticky Note" onClose={onClose}>
+      <div className="mt-3">
+        <button
+          title="Add Relationship"
+          aria-label="Add Relationship"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
+          onClick={onAddRelationship}
+        >
+          <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
+          <span className="truncate">Relationship</span>
+        </button>
+      </div>
       <div className="mt-4 space-y-3">
         <label className="text-sm text-white">Note Text
           <textarea
@@ -416,6 +435,7 @@ export function StickyNoteAside({
         </button>
         <button className="ml-2 w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black hover:bg-slate-100" onClick={() => void onSave()}>Save note</button>
       </div>
+      <RelationshipSection rows={relatedRows} resolveLabels={resolveLabels} {...relationshipSectionProps} />
     </AsideShell>
   );
 }
@@ -509,6 +529,10 @@ type TextBoxAsideProps = {
   onDelete: () => Promise<void>;
   onSave: () => Promise<void>;
   onClose: () => void;
+  onAddRelationship: () => void;
+  relatedRows: NodeRelationRow[];
+  resolveLabels: (row: NodeRelationRow) => RelationLabels;
+  relationshipSectionProps: Omit<RelationshipSectionProps, "rows" | "resolveLabels">;
 };
 
 export function TextBoxAside({
@@ -530,11 +554,26 @@ export function TextBoxAside({
   onDelete,
   onSave,
   onClose,
+  onAddRelationship,
+  relatedRows,
+  resolveLabels,
+  relationshipSectionProps,
 }: TextBoxAsideProps) {
   if (!open) return null;
   const textSizeOptions = [16, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72, 84, 96, 112, 128, 144, 168];
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Text Box" onClose={onClose}>
+      <div className="mt-3">
+        <button
+          title="Add Relationship"
+          aria-label="Add Relationship"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
+          onClick={onAddRelationship}
+        >
+          <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
+          <span className="truncate">Relationship</span>
+        </button>
+      </div>
       <div className="mt-4 space-y-3">
         <label className="text-sm text-white">Text
           <textarea
@@ -610,6 +649,7 @@ export function TextBoxAside({
           Save text
         </button>
       </div>
+      <RelationshipSection rows={relatedRows} resolveLabels={resolveLabels} {...relationshipSectionProps} />
     </AsideShell>
   );
 }
@@ -645,6 +685,10 @@ type FlowShapeAsideProps = {
   onDelete: () => Promise<void>;
   onSave: () => Promise<void>;
   onClose: () => void;
+  onAddRelationship: () => void;
+  relatedRows: NodeRelationRow[];
+  resolveLabels: (row: NodeRelationRow) => RelationLabels;
+  relationshipSectionProps: Omit<RelationshipSectionProps, "rows" | "resolveLabels">;
 };
 
 type TableAsideProps = {
@@ -674,6 +718,10 @@ type TableAsideProps = {
   onDelete: () => Promise<void>;
   onSave: () => Promise<void>;
   onClose: () => void;
+  onAddRelationship: () => void;
+  relatedRows: NodeRelationRow[];
+  resolveLabels: (row: NodeRelationRow) => RelationLabels;
+  relationshipSectionProps: Omit<RelationshipSectionProps, "rows" | "resolveLabels">;
 };
 
 export function TableAside({
@@ -693,6 +741,10 @@ export function TableAside({
   onDelete,
   onSave,
   onClose,
+  onAddRelationship,
+  relatedRows,
+  resolveLabels,
+  relationshipSectionProps,
 }: TableAsideProps) {
   if (!open) return null;
   const safeColor = /^#[0-9a-fA-F]{6}$/.test(tableHeaderBgDraft) ? tableHeaderBgDraft : "#1E3A8A";
@@ -714,6 +766,17 @@ export function TableAside({
   };
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title="Table Properties" onClose={onClose}>
+      <div className="mt-3">
+        <button
+          title="Add Relationship"
+          aria-label="Add Relationship"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
+          onClick={onAddRelationship}
+        >
+          <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
+          <span className="truncate">Relationship</span>
+        </button>
+      </div>
       <div className="mt-4 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm text-white">Rows (min {tableMinRows})
@@ -862,6 +925,7 @@ export function TableAside({
           Save table
         </button>
       </div>
+      <RelationshipSection rows={relatedRows} resolveLabels={resolveLabels} {...relationshipSectionProps} />
     </AsideShell>
   );
 }
@@ -897,12 +961,27 @@ export function FlowShapeAside({
   onDelete,
   onSave,
   onClose,
+  onAddRelationship,
+  relatedRows,
+  resolveLabels,
+  relationshipSectionProps,
 }: FlowShapeAsideProps) {
   if (!open) return null;
   const textSizeOptions = [16, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72, 84, 96, 112, 128, 144, 168];
   const safeColor = /^#[0-9a-fA-F]{6}$/.test(shapeColorDraft) ? shapeColorDraft : "#249BC7";
   return (
     <AsideShell isMobile={isMobile} leftAsideSlideIn={leftAsideSlideIn} title={title} onClose={onClose}>
+      <div className="mt-3">
+        <button
+          title="Add Relationship"
+          aria-label="Add Relationship"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-none border border-black bg-white px-2 text-[11px] font-medium text-black hover:bg-slate-100"
+          onClick={onAddRelationship}
+        >
+          <img src="/icons/relationship.svg" alt="" className="h-4 w-4" />
+          <span className="truncate">Relationship</span>
+        </button>
+      </div>
       <div className="mt-4 space-y-3">
         {supportsText ? (
           <>
@@ -1067,6 +1146,7 @@ export function FlowShapeAside({
           Save shape
         </button>
       </div>
+      <RelationshipSection rows={relatedRows} resolveLabels={resolveLabels} {...relationshipSectionProps} />
     </AsideShell>
   );
 }

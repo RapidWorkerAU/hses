@@ -76,9 +76,9 @@ export default function HomePageHeaderActions({
 
   const content = (
     <>
-      <button className={`${secondaryClass} js-open-modal`} type="button">
+      <a className={secondaryClass} href="/contact">
         Let&apos;s Talk
-      </button>
+      </a>
       <a className={secondaryClass} href="/login">
         Portal Login
       </a>

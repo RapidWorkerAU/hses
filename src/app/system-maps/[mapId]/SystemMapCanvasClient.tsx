@@ -1954,6 +1954,46 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     },
     [canEditElement, canWriteMap, mapId, setElements, setError]
   );
+  const handleTableResize = useCallback(
+    async (elementId: string, width: number, height: number, options?: { commit?: boolean }) => {
+      const current = elementsById.get(elementId);
+      if (!current || !canEditElement(current)) return;
+      const nextWidth = Math.max(tableMinWidth, snapToMinorGrid(width));
+      const nextHeight = Math.max(tableMinHeight, snapToMinorGrid(height));
+
+      setFlowNodes((prev) =>
+        prev.map((node) =>
+          node.id === processFlowId(elementId)
+            ? {
+                ...node,
+                style: {
+                  ...(node.style ?? {}),
+                  width: nextWidth,
+                  height: nextHeight,
+                },
+              }
+            : node
+        )
+      );
+
+      if (!options?.commit) return;
+
+      setElements((prev) =>
+        prev.map((el) => (el.id === elementId ? { ...el, width: nextWidth, height: nextHeight } : el))
+      );
+
+      if (!canWriteMap) return;
+
+      const { error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .update({ width: nextWidth, height: nextHeight })
+        .eq("id", elementId)
+        .eq("map_id", mapId);
+      if (e && !isAbortLikeError(e)) setError(e.message || "Unable to save table size.");
+    },
+    [elementsById, canEditElement, canWriteMap, mapId, setElements, setError, setFlowNodes, snapToMinorGrid, tableMinWidth, tableMinHeight]
+  );
   const handleOpenEvidenceMediaOverlay = useCallback(
     (elementId: string) => {
       const element = elements.find((el) => el.id === elementId && el.element_type === "incident_evidence");
@@ -2050,6 +2090,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             orgDirectReportCountByPersonId,
             onTableCellCommit: handleTableCellCommit,
             onTableCellStyleCommit: handleTableCellStyleCommit,
+            onTableResize: handleTableResize,
             onToggleIncidentDetail: handleToggleIncidentDetail,
           });
           if (primaryElementNode !== undefined) return primaryElementNode;
@@ -2065,7 +2106,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         }).filter(Boolean) as Node<FlowData>[],
       ];
     setFlowNodes(nextNodes);
-  }, [nodes, canvasPreviewElements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, selectedTableId, canWriteMap, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, mapCategoryId, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive, handleTableCellCommit, handleTableCellStyleCommit, handleOpenEvidenceMediaOverlay, handleToggleIncidentDetail]);
+  }, [nodes, canvasPreviewElements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, selectedTableId, canWriteMap, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, mapCategoryId, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive, handleTableCellCommit, handleTableCellStyleCommit, handleTableResize, handleOpenEvidenceMediaOverlay, handleToggleIncidentDetail]);
 
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
@@ -5206,6 +5247,22 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     if (!selectedImageId) return [];
     return relations.filter((r) => r.target_system_element_id === selectedImageId || r.source_system_element_id === selectedImageId);
   }, [relations, selectedImageId]);
+  const relatedStickyRows = useMemo(() => {
+    if (!selectedStickyId) return [];
+    return relations.filter((r) => r.target_system_element_id === selectedStickyId || r.source_system_element_id === selectedStickyId);
+  }, [relations, selectedStickyId]);
+  const relatedTextBoxRows = useMemo(() => {
+    if (!selectedTextBoxId) return [];
+    return relations.filter((r) => r.target_system_element_id === selectedTextBoxId || r.source_system_element_id === selectedTextBoxId);
+  }, [relations, selectedTextBoxId]);
+  const relatedTableRows = useMemo(() => {
+    if (!selectedTableId) return [];
+    return relations.filter((r) => r.target_system_element_id === selectedTableId || r.source_system_element_id === selectedTableId);
+  }, [relations, selectedTableId]);
+  const relatedFlowShapeRows = useMemo(() => {
+    if (!selectedFlowShapeId) return [];
+    return relations.filter((r) => r.target_system_element_id === selectedFlowShapeId || r.source_system_element_id === selectedFlowShapeId);
+  }, [relations, selectedFlowShapeId]);
   const startEditRelation = useCallback((r: NodeRelationRow) => {
     setEditingRelationId(r.id);
     setEditingRelationDescription(r.relationship_description ?? "");
@@ -6474,6 +6531,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             },
             onSave: handleSaveStickyNote,
             onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onAddRelationship: () => {
+              if (!selectedSticky) return;
+              openAddRelationshipFromSource({ systemId: selectedSticky.id });
+            },
+            relatedRows: relatedStickyRows,
+            resolveLabels: resolvePersonRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
           }}
           imageProps={{
             open: !!selectedImage,
@@ -6524,6 +6588,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             },
             onSave: handleSaveTextBox,
             onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onAddRelationship: () => {
+              if (!selectedTextBox) return;
+              openAddRelationshipFromSource({ systemId: selectedTextBox.id });
+            },
+            relatedRows: relatedTextBoxRows,
+            resolveLabels: resolvePersonRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
           }}
           tableProps={{
             open: !!selectedTable,
@@ -6556,6 +6627,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             },
             onSave: handleSaveTable,
             onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onAddRelationship: () => {
+              if (!selectedTable) return;
+              openAddRelationshipFromSource({ systemId: selectedTable.id });
+            },
+            relatedRows: relatedTableRows,
+            resolveLabels: resolvePersonRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
           }}
           flowShapeProps={{
             open: !!selectedFlowShape,
@@ -6605,6 +6683,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             },
             onSave: handleSaveFlowShape,
             onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onAddRelationship: () => {
+              if (!selectedFlowShape) return;
+              openAddRelationshipFromSource({ systemId: selectedFlowShape.id });
+            },
+            relatedRows: relatedFlowShapeRows,
+            resolveLabels: resolvePersonRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
           }}
           documentProps={{
             open: !!selectedNode && !isMobile,

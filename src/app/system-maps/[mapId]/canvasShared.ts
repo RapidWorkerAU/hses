@@ -238,6 +238,7 @@ export type FlowData = {
       fontSize?: number;
     }
   ) => void;
+  onTableResize?: (width: number, height: number, options?: { commit?: boolean }) => void;
   orgChartPerson?: {
     displayName: string;
     positionLine: string;
@@ -249,7 +250,7 @@ export type FlowData = {
     directReportCount: number;
   };
 };
-export type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "training";
+export type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "quality" | "training";
 export type RelationshipCategory =
   | "information"
   | "systems"
@@ -531,6 +532,7 @@ export const disciplineOptions: Array<{ key: DisciplineKey; label: string; lette
   { key: "environment", label: "Environment", letter: "E" },
   { key: "security", label: "Security", letter: "S" },
   { key: "communities", label: "Communities", letter: "C" },
+  { key: "quality", label: "Quality", letter: "Q" },
   { key: "training", label: "Training", letter: "T" },
 ];
 export const disciplineKeySet = new Set<DisciplineKey>(disciplineOptions.map((option) => option.key));
@@ -548,6 +550,21 @@ export const parseDisciplines = (value: string | null | undefined): DisciplineKe
       selected.add("health");
       selected.add("safety");
       selected.add("environment");
+      selected.add("training");
+      return;
+    }
+    if (t === "hseq") {
+      selected.add("health");
+      selected.add("safety");
+      selected.add("environment");
+      selected.add("quality");
+      return;
+    }
+    if (t === "hseqt") {
+      selected.add("health");
+      selected.add("safety");
+      selected.add("environment");
+      selected.add("quality");
       selected.add("training");
       return;
     }

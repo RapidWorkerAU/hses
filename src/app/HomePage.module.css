@@ -182,20 +182,53 @@
   min-height: 520px;
   border-radius: 0;
   background-color: #05c3dd;
-  background-image: url("/images/hero.png");
-  background-repeat: no-repeat;
-  background-position: right bottom;
-  background-size: auto 100%;
   overflow: hidden;
   display: block;
   container-type: inline-size;
+  isolation: isolate;
   box-shadow: inset 0 0 0 1px rgba(76, 71, 255, 0.45);
   border-bottom: 3px solid #ffffff;
 }
 
+.heroMedia {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: #05c3dd;
+}
+
+.heroVideo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  background-color: transparent;
+}
+
+.heroPanelOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(5, 195, 221, 0.68) 0%, rgba(5, 195, 221, 0.56) 42%, rgba(5, 195, 221, 0.48) 68%, rgba(5, 195, 221, 0.62) 100%),
+    linear-gradient(180deg, rgba(5, 195, 221, 0.36) 0%, rgba(5, 195, 221, 0.24) 100%);
+}
+
+.heroFeatureImage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-image: url("/images/hero-graphic.png");
+  background-repeat: no-repeat;
+  background-position: right bottom;
+  background-size: auto 100%;
+  pointer-events: none;
+}
+
 .heroPanelCopy {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   display: grid;
   align-content: start;
   gap: 20px;
@@ -257,21 +290,92 @@
 .heroEmailLink {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  color: rgba(255, 255, 255, 0.92);
+  gap: 14px;
+  margin-top: 16px;
+  color: inherit;
   text-decoration: none;
-  font-size: 0.9rem;
-  line-height: 1.4;
+  font-size: 0.94rem;
+  line-height: 1;
   width: fit-content;
   max-width: 100%;
   flex-wrap: wrap;
+  font-weight: 400;
+  vertical-align: middle;
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease;
+}
+
+.heroEmailPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: auto;
+  padding: 0;
+  border-radius: 0;
+  color: rgba(255, 255, 255, 0.94);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  line-height: 1;
+  transform: translateY(2px);
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.heroEmailLink:hover {
+  transform: translateY(-1px);
+}
+
+.heroEmailLink:hover .heroEmailPill {
+  color: #ffffff;
+  opacity: 0.96;
 }
 
 .heroEmailArrow {
-  display: inline-block;
-  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-width: auto;
+  min-height: auto;
+  padding: 0;
+  color: #ff9b3d;
+  align-self: center;
   line-height: 1;
+  transform: translateY(-0.22em);
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease,
+    text-shadow 0.2s ease;
+}
+
+.heroEmailArrow span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;
+  line-height: 0;
+  font-weight: 900;
+  letter-spacing: -0.08em;
+  text-shadow: 0 10px 22px rgba(6, 24, 34, 0.18);
+  min-height: 1em;
+}
+
+.heroEmailArrow span::before {
+  content: "\203A";
+  display: block;
+  font-size: 2.6rem;
+  line-height: 0.72;
+  transform: translateY(0.02em);
+}
+
+.heroEmailLink:hover .heroEmailArrow {
+  color: #ffc15c;
+  transform: translate(3px, -0.22em);
 }
 
 .heroButton {
@@ -1498,6 +1602,9 @@
   .heroPanel {
     height: auto;
     min-height: max(700px, 84vh);
+  }
+
+  .heroFeatureImage {
     background-size: auto 50%;
     background-position: 72% bottom;
   }
@@ -1713,6 +1820,9 @@
   .heroPanel {
     height: auto;
     min-height: max(560px, 70vh);
+  }
+
+  .heroFeatureImage {
     background-size: auto 50%;
     background-position: 76% bottom;
   }

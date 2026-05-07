@@ -11,6 +11,16 @@ const nextConfig: NextConfig = {
         destination: "/dashboard/:path*",
         permanent: false,
       },
+      {
+        source: "/consult",
+        destination: "/contact",
+        permanent: true,
+      },
+      {
+        source: "/consult-thank-you",
+        destination: "/contact/success",
+        permanent: true,
+      },
     ];
   },
 };

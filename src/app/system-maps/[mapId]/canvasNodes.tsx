@@ -118,6 +118,8 @@ function MaybeNodeInfoBadge({
 }
 
 function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
+  const visibleDisciplineOptions = disciplineOptions.filter((option) => data.disciplineKeys.includes(option.key));
+
   if (data.isUnconfigured) {
     return (
       <div className="relative flex h-full w-full items-center justify-center border border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
@@ -167,20 +169,21 @@ function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
           </div>
           <div className="space-y-[1px] px-1 py-[2px]">
             <div className="text-center font-semibold text-slate-700">Discipline</div>
-            <div className="mt-0.5 grid grid-cols-6 gap-[2px]">
-              {disciplineOptions.map((option) => {
-                const active = data.disciplineKeys.includes(option.key);
-                return (
+            {visibleDisciplineOptions.length ? (
+              <div className="mt-0.5 flex flex-wrap items-center justify-center gap-[2px]">
+                {visibleDisciplineOptions.map((option) => (
                   <div
                     key={option.key}
                     title={option.label}
-                    className={`flex h-4 w-full items-center justify-center border border-slate-300 text-[8px] leading-none ${active ? "bg-emerald-200 font-bold text-emerald-900" : "bg-white font-medium text-slate-500"}`}
+                    className="flex h-4 min-w-4 items-center justify-center border border-slate-300 bg-emerald-200 px-[3px] text-[8px] font-bold leading-none text-emerald-900"
                   >
                     {option.letter}
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-0.5 text-center text-[8px] text-slate-500">None</div>
+            )}
           </div>
         </div>
       </div>
@@ -360,7 +363,7 @@ function GroupingContainerNode({ data, selected }: NodeProps<Node<FlowData>>) {
   );
 }
 
-function FlowTableNode({ data, selected }: NodeProps<Node<FlowData>>) {
+function FlowTableNode({ data, selected, width, height }: NodeProps<Node<FlowData>>) {
   const rows = Math.max(1, Math.floor(data.tableConfig?.rows ?? 2));
   const columns = Math.max(1, Math.floor(data.tableConfig?.columns ?? 2));
   const headerBg = data.tableConfig?.headerRowBg ?? null;
@@ -415,10 +418,58 @@ function FlowTableNode({ data, selected }: NodeProps<Node<FlowData>>) {
   const tableRootRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const toolbarInteractionUntilRef = useRef<number>(0);
+  const currentWidth = Math.max(minorGridSize * 5, Number(width ?? minorGridSize * 10));
+  const currentHeight = Math.max(minorGridSize * 2, Number(height ?? minorGridSize * 4));
   const showResizeHandles = Boolean(data.canEdit) && selected;
+  const tableResizeHandleStyle = {
+    width: 10,
+    height: 10,
+    borderRadius: 0,
+    border: "1px solid #334155",
+    background: "#ffffff",
+    pointerEvents: "auto" as const,
+    zIndex: 40,
+  };
   const markToolbarInteraction = useCallback(() => {
     toolbarInteractionUntilRef.current = Date.now() + 700;
   }, []);
+  const startTableResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>, direction: "right" | "bottom" | "corner") => {
+      const onTableResize = data.onTableResize;
+      if (!data.canEdit || !onTableResize) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startWidth = currentWidth;
+      const startHeight = currentHeight;
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        moveEvent.preventDefault();
+        const deltaX = moveEvent.clientX - startX;
+        const deltaY = moveEvent.clientY - startY;
+        const nextWidth = direction === "bottom" ? startWidth : Math.max(minorGridSize * 5, startWidth + deltaX);
+        const nextHeight = direction === "right" ? startHeight : Math.max(minorGridSize * 2, startHeight + deltaY);
+        onTableResize(nextWidth, nextHeight);
+      };
+
+      const handlePointerUp = (upEvent: PointerEvent) => {
+        upEvent.preventDefault();
+        const deltaX = upEvent.clientX - startX;
+        const deltaY = upEvent.clientY - startY;
+        const nextWidth = direction === "bottom" ? startWidth : Math.max(minorGridSize * 5, startWidth + deltaX);
+        const nextHeight = direction === "right" ? startHeight : Math.max(minorGridSize * 2, startHeight + deltaY);
+        onTableResize(nextWidth, nextHeight, { commit: true });
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
+      };
+
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp);
+    },
+    [data, currentWidth, currentHeight]
+  );
 
   useEffect(() => {
     setDraftCellTexts(normalizedCellTexts);
@@ -643,6 +694,25 @@ function FlowTableNode({ data, selected }: NodeProps<Node<FlowData>>) {
     <div ref={tableRootRef} className="relative h-full w-full overflow-visible">
       <MaybeNodeInfoBadge data={data} text={getNodeInfoText(data)} />
       <HiddenEdgeHandles />
+      {showResizeHandles ? (
+        <>
+          <div
+            className="nodrag nopan absolute right-0 top-1/2 -translate-y-1/2"
+            style={{ ...tableResizeHandleStyle, cursor: "ew-resize" }}
+            onPointerDown={(event) => startTableResize(event, "right")}
+          />
+          <div
+            className="nodrag nopan absolute bottom-0 left-1/2 -translate-x-1/2"
+            style={{ ...tableResizeHandleStyle, cursor: "ns-resize" }}
+            onPointerDown={(event) => startTableResize(event, "bottom")}
+          />
+          <div
+            className="nodrag nopan absolute bottom-0 right-0"
+            style={{ ...tableResizeHandleStyle, cursor: "nwse-resize" }}
+            onPointerDown={(event) => startTableResize(event, "corner")}
+          />
+        </>
+      ) : null}
       {canEdit && selectedCellIndices.size > 0 && editingCellIndex == null && activeCellStyle ? (
         <div
           ref={toolbarRef}
@@ -806,7 +876,7 @@ function FlowTableNode({ data, selected }: NodeProps<Node<FlowData>>) {
         </div>
       ) : null}
       <div
-        className="relative h-full w-full overflow-hidden border bg-white"
+        className="table-drag-handle relative h-full w-full overflow-hidden border bg-white"
         style={{
           borderColor: "rgba(148, 163, 184, 0.55)",
           borderWidth: "0.5px",
@@ -814,34 +884,6 @@ function FlowTableNode({ data, selected }: NodeProps<Node<FlowData>>) {
           boxShadow: "0 14px 34px rgba(15,23,42,0.12)",
         }}
       >
-      {showResizeHandles ? (
-        <>
-          <NodeResizeControl
-            position={Position.Left}
-            minWidth={minorGridSize * 5}
-            minHeight={minorGridSize * 2}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-          <NodeResizeControl
-            position={Position.Right}
-            minWidth={minorGridSize * 5}
-            minHeight={minorGridSize * 2}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-          <NodeResizeControl
-            position={Position.Bottom}
-            minWidth={minorGridSize * 5}
-            minHeight={minorGridSize * 2}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-          <NodeResizeControl
-            position="bottom-right"
-            minWidth={minorGridSize * 5}
-            minHeight={minorGridSize * 2}
-            style={{ width: 10, height: 10, borderRadius: 0, border: "1px solid #334155", background: "#ffffff" }}
-          />
-        </>
-      ) : null}
         <div
           className="grid h-full w-full"
           style={{
@@ -983,6 +1025,7 @@ function StickyNoteNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div className="relative h-full w-full border border-[#facc15] bg-[#fef08a] p-2 text-[11px] leading-snug text-black shadow-[0_10px_24px_rgba(15,23,42,0.22)]">
       <MaybeNodeInfoBadge data={data} text={getNodeInfoText(data)} />
+      <HiddenEdgeHandles />
       {selected && canEdit ? (
         <>
           <NodeResizeControl
@@ -1065,6 +1108,7 @@ function TextBoxNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div className="relative h-full w-full overflow-visible">
       <MaybeNodeInfoBadge data={data} text={getNodeInfoText(data)} />
+      <HiddenEdgeHandles />
       {selected ? (
         <>
           <NodeResizeControl

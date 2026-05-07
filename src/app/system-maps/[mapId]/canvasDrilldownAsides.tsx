@@ -208,8 +208,7 @@ export function AddRelationshipAside({
               )}
             </div>
           ) : null}
-          {!relationshipModeGrouping ? (
-            <>
+          <>
               {allowDocumentTargets ? <div className="relative">
                 <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Documents</div>
                 <div className="relative flex">
@@ -344,7 +343,6 @@ export function AddRelationshipAside({
                 </div>
               ) : null}
             </>
-          ) : null}
           <div>
             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Disciplines</div>
             <div className="relative">

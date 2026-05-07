@@ -24,7 +24,7 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
     description: "Access administration pages and business management features.",
     href: "/dashboard/business-admin",
     requiresAdmin: true,
-    icon: "/icons/businessadmin.svg",
+    icon: "/icons/admin.svg",
     children: [
       {
         key: "business-admin-home",
@@ -46,6 +46,11 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
         title: "Management System Design",
         href: "/dashboard/business-admin/management-system-design-dashboard",
       },
+      {
+        key: "document-builder-admin",
+        title: "Document Builder",
+        href: "/admin/document-builder",
+      },
     ],
   },
   {
@@ -54,7 +59,7 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
     description: "Open diagnostics, code register, and access landing resources.",
     href: "/dashboard/diagnostics",
     requiresAdmin: true,
-    icon: "/icons/diagnostics.svg",
+    icon: "/icons/diagnose.svg",
     children: [
       {
         key: "diagnostics-list",
@@ -78,6 +83,14 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
     title: "Canvas Creator",
     description: "Create and manage document maps, bow ties, investigation maps, org charts, and process flows from one workspace.",
     href: "/dashboard/map-builders",
+    requiresAdmin: false,
+    icon: "/icons/canvas.svg",
+  },
+  {
+    key: "document-builder",
+    title: "Document Builder",
+    description: "Build structured documents from template versions, guided questions, AI localisation, and styled export workflows.",
+    href: "/dashboard/document-builder",
     requiresAdmin: false,
     icon: "/icons/documentmap.svg",
   },

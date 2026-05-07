@@ -507,6 +507,7 @@ export const buildPrimaryElementFlowNode = (params: {
       fontSize?: number;
     }
   ) => void;
+  onTableResize?: (elementId: string, width: number, height: number, options?: { commit?: boolean }) => void;
   onToggleIncidentDetail?: (elementId: string, nextOpen: boolean) => void;
 }): Node<FlowData> | null | undefined => {
   const {
@@ -527,6 +528,7 @@ export const buildPrimaryElementFlowNode = (params: {
     orgDirectReportCountByPersonId,
     onTableCellCommit,
     onTableCellStyleCommit,
+    onTableResize,
     onToggleIncidentDetail,
   } = params;
 
@@ -712,6 +714,7 @@ export const buildPrimaryElementFlowNode = (params: {
       zIndex: 40,
       selected: isMarked,
       draggable: canEditThis,
+      dragHandle: ".table-drag-handle",
       selectable: canWriteMap,
       style: {
         width: Math.max(tableMinWidth, el.width || computedWidth || tableDefaultWidth),
@@ -746,6 +749,7 @@ export const buildPrimaryElementFlowNode = (params: {
         onTableCellStyleCommit: onTableCellStyleCommit
           ? (rowIndex, columnIndex, style) => onTableCellStyleCommit(el.id, rowIndex, columnIndex, style)
           : undefined,
+        onTableResize: onTableResize ? (width, height, options) => onTableResize(el.id, width, height, options) : undefined,
         canEdit: canEditThis,
         userGroup: "",
         disciplineKeys: [],

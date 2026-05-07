@@ -3,6 +3,7 @@ import "./globals.css";
 import "./public-shared.css";
 import "./diagnostic-public.css";
 import HashRedirector from "./HashRedirector";
+import GoogleTag from "./GoogleTag";
 
 export const metadata: Metadata = {
   title: {
@@ -23,6 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <body>
+        <GoogleTag tagId={process.env.NEXT_PUBLIC_GOOGLE_TAG_ID} />
         <HashRedirector />
         {children}
       </body>

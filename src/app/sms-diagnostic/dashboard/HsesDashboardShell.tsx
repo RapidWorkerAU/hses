@@ -129,7 +129,7 @@ export default function HsesDashboardShell({
 
   const sidebarLinks = useMemo<SidebarLink[]>(() => {
     const base: SidebarLink[] = [
-      { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: "/icons/house.svg" },
+      { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: "/icons/home.svg" },
     ];
 
     const portalLinks = DASHBOARD_PORTALS.filter((portal) => !(portal.requiresAdmin && !isAdmin)).map((portal) => ({
@@ -236,7 +236,9 @@ export default function HsesDashboardShell({
                         onClick={() => toggleSection(link.key)}
                       >
                         <span className={styles.sidebarTriggerMain}>
-                          <Image src={link.icon} alt="" width={24} height={24} className={styles.sidebarIcon} />
+                          <span className={styles.sidebarIconFrame} aria-hidden="true">
+                            <Image src={link.icon} alt="" width={24} height={24} className={styles.sidebarIcon} />
+                          </span>
                           <span className={styles.sidebarLinkLabel}>{link.label}</span>
                         </span>
                         <span className={styles.sidebarToggleChevron} aria-hidden="true" />
@@ -265,7 +267,9 @@ export default function HsesDashboardShell({
                         aria-label={`${link.label}. This module has not been enabled for your account`}
                         aria-disabled="true"
                       >
-                        <Image src={link.icon} alt="" width={24} height={24} className={styles.sidebarIcon} />
+                        <span className={styles.sidebarIconFrame} aria-hidden="true">
+                          <Image src={link.icon} alt="" width={24} height={24} className={styles.sidebarIcon} />
+                        </span>
                         <span className={styles.sidebarLinkLabel}>{link.label}</span>
                         <Image src="/icons/lock.svg" alt="" width={16} height={16} className={styles.sidebarLockIcon} />
                       </div>
@@ -276,7 +280,9 @@ export default function HsesDashboardShell({
                         title={link.label}
                         aria-label={link.label}
                       >
-                        <Image src={link.icon} alt="" width={24} height={24} className={styles.sidebarIcon} />
+                        <span className={styles.sidebarIconFrame} aria-hidden="true">
+                          <Image src={link.icon} alt="" width={24} height={24} className={styles.sidebarIcon} />
+                        </span>
                         <span className={styles.sidebarLinkLabel}>{link.label}</span>
                       </Link>
                     )
@@ -293,7 +299,9 @@ export default function HsesDashboardShell({
                 aria-label={logoutConfirmArmed ? "Confirm logout" : "Logout"}
                 onClick={() => void handleLogout()}
               >
-                <Image src="/icons/logout.svg" alt="" width={24} height={24} className={styles.sidebarIcon} />
+                <span className={styles.sidebarIconFrame} aria-hidden="true">
+                  <Image src="/icons/logout.svg" alt="" width={24} height={24} className={styles.sidebarIcon} />
+                </span>
                 <span className={styles.sidebarLinkLabel}>{logoutConfirmArmed ? "Confirm Logout" : "Logout"}</span>
               </button>
             </div>
