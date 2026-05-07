@@ -6,13 +6,17 @@ import styles from "./DashboardShell.module.css";
 import { ADMIN_EMAIL, DASHBOARD_PORTALS } from "./dashboardPortals";
 
 export default function DashboardPortalTiles() {
-  const [userEmail, setUserEmail] = useState("");
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     setUserEmail(localStorage.getItem("hses_user_email")?.toLowerCase() ?? "");
   }, []);
 
   const isAdmin = userEmail === ADMIN_EMAIL;
+  if (userEmail === null) {
+    return <div className={styles.portalTiles} />;
+  }
+
   const visibleTiles = DASHBOARD_PORTALS.filter((tile) => !(tile.requiresAdmin && !isAdmin));
   const sortedTiles = visibleTiles
     .map((tile, index) => ({
@@ -33,7 +37,14 @@ export default function DashboardPortalTiles() {
     <div className={styles.portalTiles}>
       {sortedTiles.map((tile) => {
         const isDisabled = !!tile.lockedForStandardUsers && !isAdmin;
-        const tileClassName = isDisabled ? `${styles.portalTile} ${styles.portalTileDisabled}` : styles.portalTile;
+        const tileKeyClass = styles[`portalTileKey_${tile.key.replace(/-/g, "_")}`] ?? "";
+        const tileClassName = [
+          styles.portalTile,
+          tileKeyClass,
+          isDisabled ? styles.portalTileDisabled : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
         const tileTitle = isDisabled ? "This module has not been enabled for your account" : tile.title;
 
         return isDisabled ? (

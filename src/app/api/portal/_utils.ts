@@ -9,6 +9,11 @@ export const getSupabaseConfig = () => ({
 });
 
 export const getUserIdFromToken = async (token: string) => {
+  const user = await getUserFromToken(token);
+  return user.id;
+};
+
+export const getUserFromToken = async (token: string) => {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Missing Supabase configuration.");
   }
@@ -25,12 +30,15 @@ export const getUserIdFromToken = async (token: string) => {
     throw new Error(errorText || "Invalid session.");
   }
 
-  const payload = (await response.json()) as { id?: string };
+  const payload = (await response.json()) as { id?: string; email?: string };
   if (!payload.id) {
     throw new Error("Missing user id.");
   }
 
-  return payload.id;
+  return {
+    id: payload.id,
+    email: payload.email ?? "",
+  };
 };
 
 export const getAccountIdsForUser = async (userId: string) => {
@@ -63,4 +71,3 @@ export const getAccountIdsForUser = async (userId: string) => {
     .map((row) => row.account_id)
     .filter((value): value is string => Boolean(value && value !== "undefined" && isUuid(value)));
 };
-

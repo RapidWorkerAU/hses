@@ -876,6 +876,11 @@
   height: 70%;
 }
 
+.portalTileKey_canvas_creator .portalTileIcon img {
+  width: 56%;
+  height: 56%;
+}
+
 .portalTile:nth-child(1) .portalTileIcon {
   background: linear-gradient(135deg, #0f766e 0%, #14b8a6 52%, #99f6e4 100%);
 }

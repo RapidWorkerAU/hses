@@ -49,7 +49,7 @@ export default function HsesDashboardShell({
   backLabel = "Back",
 }: HsesDashboardShellProps) {
   const pathname = usePathname();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState<string | null>(null);
   const [logoutConfirmArmed, setLogoutConfirmArmed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
@@ -111,7 +111,7 @@ export default function HsesDashboardShell({
     await logoutPortalUser();
   };
 
-  const isAdmin = email.toLowerCase() === ADMIN_EMAIL;
+  const isAdmin = (email ?? "").toLowerCase() === ADMIN_EMAIL;
   const accessLevel = useMemo(() => {
     if (isAdmin) {
       return { label: "Administrator Access", toneClass: styles.accessPillAdmin };
@@ -132,6 +132,8 @@ export default function HsesDashboardShell({
       { key: "dashboard", href: "/dashboard", label: "Dashboard", icon: "/icons/home.svg" },
     ];
 
+    if (email === null) return base;
+
     const portalLinks = DASHBOARD_PORTALS.filter((portal) => !(portal.requiresAdmin && !isAdmin)).map((portal) => ({
       key: portal.key,
       href: portal.href,
@@ -146,7 +148,7 @@ export default function HsesDashboardShell({
     }));
 
     return [...base, ...portalLinks];
-  }, [isAdmin]);
+  }, [email, isAdmin]);
 
   const isLinkActive = (href: string) => isPathActive(pathname, href);
   const isSectionActive = (link: SidebarLink) =>
@@ -332,7 +334,7 @@ export default function HsesDashboardShell({
                     <div className={styles.accountSummaryText}>
                     <div className={styles.accountSummaryPrimary}>
                       <span className={styles.accountSummaryLabel}>My account</span>
-                      <span className={styles.accountSummaryValue}>{email || "Logged in"}</span>
+                      <span className={styles.accountSummaryValue}>{email ?? "Logged in"}</span>
                     </div>
                       <span className={`${styles.accessPill} ${accessLevel.toneClass}`}>{accessLevel.label}</span>
                     </div>

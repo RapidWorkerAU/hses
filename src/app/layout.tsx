@@ -23,8 +23,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
+      <head>
+        <GoogleTag />
+      </head>
       <body>
-        <GoogleTag tagId={process.env.NEXT_PUBLIC_GOOGLE_TAG_ID} />
         <HashRedirector />
         {children}
       </body>

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { DocumentExportPayload } from "@/lib/document-builder/export/service";
 import { LoadingRow } from "@/components/loading/HsesLoaders";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import styles from "./DocumentExportClient.module.css";
@@ -13,10 +12,8 @@ type ExportResult = {
 
 export default function DocumentExportClient({
   documentId,
-  payload,
 }: {
   documentId: string;
-  payload: DocumentExportPayload;
 }) {
   const router = useRouter();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -78,20 +75,6 @@ export default function DocumentExportClient({
     };
   }, [documentId]);
 
-  const hasContent = payload.sections.some((section) => section.content.trim().length > 0);
-
-  if (!hasContent) {
-    return (
-      <div className={styles.stateCard}>
-        <h3>No PDF content yet</h3>
-        <p>Save or generate section content in the editor before opening the PDF preview.</p>
-        <button type="button" className={styles.secondaryButton} onClick={() => router.push(`/dashboard/document-builder/${documentId}/edit`)}>
-          Return to editor
-        </button>
-      </div>
-    );
-  }
-
   if (isExporting) {
     return (
       <div className={styles.stateCard}>
@@ -130,7 +113,7 @@ export default function DocumentExportClient({
 
       <div className={styles.viewerFrame}>
         <iframe
-          title={`${payload.projectTitle} PDF preview`}
+          title="Document PDF preview"
           src={pdfUrl}
           className={styles.iframe}
         />

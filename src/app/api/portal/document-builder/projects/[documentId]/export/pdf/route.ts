@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { getUserIdFromToken } from "@/app/api/portal/_utils";
+import { getUserFromToken } from "@/app/api/portal/_utils";
 import { createPdfExportForDocument } from "@/lib/document-builder/export/pipeline";
+import { hasAdminEmail } from "@/lib/access/admin";
 
 export async function POST(
   request: Request,
@@ -16,7 +17,13 @@ export async function POST(
 
   let userId: string;
   try {
-    userId = await getUserIdFromToken(token);
+    const user = await getUserFromToken(token);
+    if (!hasAdminEmail(user.email)) {
+      return new Response("Document Builder is restricted to the site administrator.", {
+        status: 403,
+      });
+    }
+    userId = user.id;
   } catch (error) {
     return new Response(error instanceof Error ? error.message : "Unable to validate session.", {
       status: 401,

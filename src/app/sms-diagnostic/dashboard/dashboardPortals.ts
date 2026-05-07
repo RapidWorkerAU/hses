@@ -1,6 +1,8 @@
 "use client";
 
-export const ADMIN_EMAIL = "ashleigh.phillips@hses.com.au";
+import { ADMIN_EMAIL, hasAdminEmail } from "@/lib/access/admin";
+
+export { ADMIN_EMAIL };
 
 export type PortalItem = {
   key: string;
@@ -92,6 +94,7 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
     description: "Build structured documents from template versions, guided questions, AI localisation, and styled export workflows.",
     href: "/dashboard/document-builder",
     requiresAdmin: false,
+    lockedForStandardUsers: true,
     icon: "/icons/documentmap.svg",
   },
   {
@@ -106,7 +109,7 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
 ];
 
 export const hasAdminAccess = (email: string | null | undefined) =>
-  (email ?? "").trim().toLowerCase() === ADMIN_EMAIL;
+  hasAdminEmail(email);
 
 export const hasPortalAccess = (email: string | null | undefined, portalKey: string) => {
   const portal = DASHBOARD_PORTALS.find((item) => item.key === portalKey);
