@@ -169,7 +169,7 @@ export default function HsesDashboardShell({
       <div className={styles.deviceShell}>
         <div className={styles.deviceBezel}>
           <header className={styles.mobileHeader}>
-            <Link href="/" className={styles.mobileHeaderBrand} aria-label="HSES Industry Partners home">
+            <Link href="/" prefetch={false} className={styles.mobileHeaderBrand} aria-label="HSES Industry Partners home">
               <Image
                 src="/images/favicon.png"
                 alt="HSES Industry Partners"
@@ -196,7 +196,7 @@ export default function HsesDashboardShell({
 
           <aside className={`${styles.sidebar} ${desktopSidebarCollapsed ? styles.sidebarCollapsed : ""}`}>
             <div className={styles.sidebarTop}>
-              <Link href="/" className={styles.brand} aria-label="HSES Industry Partners home">
+              <Link href="/" prefetch={false} className={styles.brand} aria-label="HSES Industry Partners home">
                 <span className={styles.brandMark}>
                   <Image
                     src="/images/favicon.png"
@@ -353,6 +353,7 @@ export default function HsesDashboardShell({
           <div className={styles.mobileMenuHeader}>
             <Link
               href="/"
+              prefetch={false}
               className={styles.mobileMenuBrand}
               aria-label="HSES Industry Partners home"
               onClick={() => setMobileMenuOpen(false)}

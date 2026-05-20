@@ -33,6 +33,76 @@ type MapMemberRow = {
   role: string;
 };
 
+type DocumentTypeRow = {
+  id: string;
+  map_id: string | null;
+  name: string;
+  level_rank: number;
+  band_y_min: number | null;
+  band_y_max: number | null;
+  is_active: boolean;
+};
+
+type DocumentNodeRow = {
+  id: string;
+  map_id: string;
+  type_id: string;
+  title: string;
+  document_number: string | null;
+  discipline: string | null;
+  owner_user_id: string | null;
+  owner_name: string | null;
+  user_group: string | null;
+  pos_x: number;
+  pos_y: number;
+  width: number | null;
+  height: number | null;
+  is_archived: boolean;
+};
+
+type CanvasElementRow = {
+  id: string;
+  map_id: string;
+  element_type: string;
+  heading: string;
+  color_hex: string | null;
+  created_by_user_id: string | null;
+  element_config: Record<string, unknown> | null;
+  pos_x: number;
+  pos_y: number;
+  width: number;
+  height: number;
+};
+
+type NodeRelationRow = {
+  id: string;
+  map_id: string;
+  from_node_id: string | null;
+  to_node_id: string | null;
+  source_grouping_element_id: string | null;
+  target_grouping_element_id: string | null;
+  source_system_element_id: string | null;
+  target_system_element_id: string | null;
+  relation_type: string;
+  relationship_description: string | null;
+  relationship_disciplines: string[] | null;
+  relationship_category: string | null;
+  relationship_custom_type: string | null;
+};
+
+type DocumentOutlineItemRow = {
+  id: string;
+  map_id: string;
+  node_id: string;
+  kind: "heading" | "content";
+  heading_level: 1 | 2 | 3 | null;
+  parent_heading_id: string | null;
+  heading_id: string | null;
+  title: string | null;
+  content_text: string | null;
+  sort_order: number;
+};
+
 const formatDateTime = (value: string) =>
   new Date(value).toLocaleString("en-AU", {
     day: "2-digit",
@@ -65,6 +135,232 @@ const getStoredUserEmail = () => {
 
 const getCategoryForMap = (mapCategory: MapBuilderCategory["mapCategory"] | null | undefined) =>
   (mapCategory ? MAP_BUILDER_CATEGORY_BY_ID.get(mapCategory) : null) ?? MAP_BUILDER_CATEGORY_BY_ID.get(DEFAULT_MAP_CATEGORY)!;
+
+const getResponseErrorMessage = (...messages: Array<string | null | undefined>) =>
+  messages.find((message) => typeof message === "string" && message.trim().length > 0) ?? null;
+
+const cloneMapContent = async (sourceMapId: string, targetMapId: string) => {
+  const [typesRes, nodesRes, elementsRes, relationsRes, outlineRes] = await Promise.all([
+    supabaseBrowser
+      .schema("ms")
+      .from("document_types")
+      .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active")
+      .eq("map_id", sourceMapId),
+    supabaseBrowser
+      .schema("ms")
+      .from("document_nodes")
+      .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
+      .eq("map_id", sourceMapId),
+    supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .select("id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height")
+      .eq("map_id", sourceMapId),
+    supabaseBrowser
+      .schema("ms")
+      .from("node_relations")
+      .select(
+        "id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,source_system_element_id,target_system_element_id,relation_type,relationship_description,relationship_disciplines,relationship_category,relationship_custom_type"
+      )
+      .eq("map_id", sourceMapId),
+    supabaseBrowser
+      .schema("ms")
+      .from("document_outline_items")
+      .select("id,map_id,node_id,kind,heading_level,parent_heading_id,heading_id,title,content_text,sort_order")
+      .eq("map_id", sourceMapId),
+  ]);
+
+  const sourceLoadError = getResponseErrorMessage(
+    typesRes.error?.message,
+    nodesRes.error?.message,
+    elementsRes.error?.message,
+    relationsRes.error?.message,
+    outlineRes.error?.message
+  );
+  if (sourceLoadError) {
+    throw new Error(sourceLoadError);
+  }
+
+  const sourceTypes = (typesRes.data ?? []) as DocumentTypeRow[];
+  const sourceNodes = (nodesRes.data ?? []) as DocumentNodeRow[];
+  const sourceElements = (elementsRes.data ?? []) as CanvasElementRow[];
+  const sourceRelations = (relationsRes.data ?? []) as NodeRelationRow[];
+  const sourceOutlineItems = (outlineRes.data ?? []) as DocumentOutlineItemRow[];
+
+  const typeIdMap = new Map<string, string>();
+  const nodeIdMap = new Map<string, string>();
+  const elementIdMap = new Map<string, string>();
+  const outlineHeadingIdMap = new Map<string, string>();
+
+  for (const sourceType of sourceTypes) {
+    const { data: insertedType, error } = await supabaseBrowser
+      .schema("ms")
+      .from("document_types")
+      .insert({
+        map_id: targetMapId,
+        name: sourceType.name,
+        level_rank: sourceType.level_rank,
+        band_y_min: sourceType.band_y_min,
+        band_y_max: sourceType.band_y_max,
+        is_active: sourceType.is_active,
+      })
+      .select("id")
+      .single();
+
+    if (error || !insertedType?.id) {
+      throw new Error(error?.message || "Unable to duplicate document hierarchy.");
+    }
+
+    typeIdMap.set(sourceType.id, insertedType.id);
+  }
+
+  for (const sourceNode of sourceNodes) {
+    const { data: insertedNode, error } = await supabaseBrowser
+      .schema("ms")
+      .from("document_nodes")
+      .insert({
+        map_id: targetMapId,
+        type_id: typeIdMap.get(sourceNode.type_id) ?? sourceNode.type_id,
+        title: sourceNode.title,
+        document_number: sourceNode.document_number,
+        discipline: sourceNode.discipline,
+        owner_user_id: sourceNode.owner_user_id,
+        owner_name: sourceNode.owner_name,
+        user_group: sourceNode.user_group,
+        pos_x: sourceNode.pos_x,
+        pos_y: sourceNode.pos_y,
+        width: sourceNode.width,
+        height: sourceNode.height,
+        is_archived: sourceNode.is_archived,
+      })
+      .select("id")
+      .single();
+
+    if (error || !insertedNode?.id) {
+      throw new Error(error?.message || "Unable to duplicate document nodes.");
+    }
+
+    nodeIdMap.set(sourceNode.id, insertedNode.id);
+  }
+
+  for (const sourceElement of sourceElements) {
+    const { data: insertedElement, error } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .insert({
+        map_id: targetMapId,
+        element_type: sourceElement.element_type,
+        heading: sourceElement.heading,
+        color_hex: sourceElement.color_hex,
+        created_by_user_id: sourceElement.created_by_user_id,
+        element_config: sourceElement.element_config,
+        pos_x: sourceElement.pos_x,
+        pos_y: sourceElement.pos_y,
+        width: sourceElement.width,
+        height: sourceElement.height,
+      })
+      .select("id")
+      .single();
+
+    if (error || !insertedElement?.id) {
+      throw new Error(error?.message || "Unable to duplicate canvas components.");
+    }
+
+    elementIdMap.set(sourceElement.id, insertedElement.id);
+  }
+
+  for (const sourceRelation of sourceRelations) {
+    const { error } = await supabaseBrowser
+      .schema("ms")
+      .from("node_relations")
+      .insert({
+        map_id: targetMapId,
+        from_node_id: sourceRelation.from_node_id ? nodeIdMap.get(sourceRelation.from_node_id) ?? null : null,
+        to_node_id: sourceRelation.to_node_id ? nodeIdMap.get(sourceRelation.to_node_id) ?? null : null,
+        source_grouping_element_id: sourceRelation.source_grouping_element_id
+          ? elementIdMap.get(sourceRelation.source_grouping_element_id) ?? null
+          : null,
+        target_grouping_element_id: sourceRelation.target_grouping_element_id
+          ? elementIdMap.get(sourceRelation.target_grouping_element_id) ?? null
+          : null,
+        source_system_element_id: sourceRelation.source_system_element_id
+          ? elementIdMap.get(sourceRelation.source_system_element_id) ?? null
+          : null,
+        target_system_element_id: sourceRelation.target_system_element_id
+          ? elementIdMap.get(sourceRelation.target_system_element_id) ?? null
+          : null,
+        relation_type: sourceRelation.relation_type,
+        relationship_description: sourceRelation.relationship_description,
+        relationship_disciplines: sourceRelation.relationship_disciplines,
+        relationship_category: sourceRelation.relationship_category,
+        relationship_custom_type: sourceRelation.relationship_custom_type,
+      });
+
+    if (error) {
+      throw new Error(error.message || "Unable to duplicate relationships.");
+    }
+  }
+
+  const sourceHeadings = sourceOutlineItems
+    .filter((item) => item.kind === "heading")
+    .sort((a, b) => (a.heading_level ?? 0) - (b.heading_level ?? 0) || a.sort_order - b.sort_order);
+
+  for (const sourceHeading of sourceHeadings) {
+    const { data: insertedHeading, error } = await supabaseBrowser
+      .schema("ms")
+      .from("document_outline_items")
+      .insert({
+        map_id: targetMapId,
+        node_id: nodeIdMap.get(sourceHeading.node_id) ?? sourceHeading.node_id,
+        kind: sourceHeading.kind,
+        heading_level: sourceHeading.heading_level,
+        parent_heading_id: sourceHeading.parent_heading_id ? outlineHeadingIdMap.get(sourceHeading.parent_heading_id) ?? null : null,
+        heading_id: null,
+        title: sourceHeading.title,
+        content_text: sourceHeading.content_text,
+        sort_order: sourceHeading.sort_order,
+      })
+      .select("id")
+      .single();
+
+    if (error || !insertedHeading?.id) {
+      throw new Error(error?.message || "Unable to duplicate map structure headings.");
+    }
+
+    outlineHeadingIdMap.set(sourceHeading.id, insertedHeading.id);
+  }
+
+  for (const sourceContent of sourceOutlineItems.filter((item) => item.kind === "content")) {
+    const { error } = await supabaseBrowser
+      .schema("ms")
+      .from("document_outline_items")
+      .insert({
+        map_id: targetMapId,
+        node_id: nodeIdMap.get(sourceContent.node_id) ?? sourceContent.node_id,
+        kind: sourceContent.kind,
+        heading_level: sourceContent.heading_level,
+        parent_heading_id: sourceContent.parent_heading_id ? outlineHeadingIdMap.get(sourceContent.parent_heading_id) ?? null : null,
+        heading_id: sourceContent.heading_id ? outlineHeadingIdMap.get(sourceContent.heading_id) ?? null : null,
+        title: sourceContent.title,
+        content_text: sourceContent.content_text,
+        sort_order: sourceContent.sort_order,
+      });
+
+    if (error) {
+      throw new Error(error.message || "Unable to duplicate map structure content.");
+    }
+  }
+};
+
+const cleanupDuplicatedMap = async (mapId: string, ownerId: string) => {
+  await supabaseBrowser.schema("ms").from("document_outline_items").delete().eq("map_id", mapId);
+  await supabaseBrowser.schema("ms").from("node_relations").delete().eq("map_id", mapId);
+  await supabaseBrowser.schema("ms").from("canvas_elements").delete().eq("map_id", mapId);
+  await supabaseBrowser.schema("ms").from("document_nodes").delete().eq("map_id", mapId);
+  await supabaseBrowser.schema("ms").from("document_types").delete().eq("map_id", mapId);
+  await supabaseBrowser.schema("ms").from("map_members").delete().eq("map_id", mapId);
+  await supabaseBrowser.schema("ms").from("system_maps").delete().eq("id", mapId).eq("owner_id", ownerId);
+};
 
 const getTitlePlaceholder = (category: MapBuilderCategory) => {
   switch (category.mapCategory) {
@@ -348,12 +644,19 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
         createdMapId = latestMap.data.id;
       }
 
+      if (!createdMapId) {
+        setError("Map created, but the new map id could not be resolved.");
+        return;
+      }
+
+      const newMapId = createdMapId;
+
       const { error: memberInsertError } = await supabaseBrowser
         .schema("ms")
         .from("map_members")
         .upsert(
           {
-            map_id: createdMapId,
+            map_id: newMapId,
             user_id: user.id,
             role: "full_write",
           },
@@ -366,11 +669,11 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
       }
 
       if (selectedMapCategory === "incident_investigation") {
-        router.push(`/dashboard/map-builders/investigation-maps/${createdMapId}`);
+        router.push(`/dashboard/map-builders/investigation-maps/${newMapId}`);
         return;
       }
 
-      router.push(`/system-maps/${createdMapId}`);
+      router.push(`/system-maps/${newMapId}`);
     } catch {
       setError("Unable to create map.");
     } finally {
@@ -496,6 +799,9 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
   };
 
   const handleDuplicateMap = async (row: SystemMapRow) => {
+    let createdMapId: string | null = null;
+    let duplicateOwnerId: string | null = null;
+
     try {
       setDuplicatingMapId(row.id);
       setError(null);
@@ -506,7 +812,13 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
         return;
       }
 
-      let createdMapId: string | null = null;
+      const canDuplicate = row.owner_id === user.id || !!row.role;
+      if (!canDuplicate) {
+        setError("You do not have access to duplicate this map.");
+        return;
+      }
+
+      duplicateOwnerId = user.id;
       const duplicateTitle = `${row.title} (Copy)`;
 
       const { data, error: createErrorResponse } = await supabaseBrowser
@@ -516,7 +828,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
           owner_id: user.id,
           title: duplicateTitle,
           description: row.description,
-          map_category: row.map_category,
+          map_category: row.map_category ?? DEFAULT_MAP_CATEGORY,
         })
         .select("id")
         .single();
@@ -531,7 +843,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
             owner_id: user.id,
             title: duplicateTitle,
             description: row.description,
-            map_category: row.map_category,
+            map_category: row.map_category ?? DEFAULT_MAP_CATEGORY,
           });
 
         if (fallbackInsert.error) {
@@ -544,7 +856,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
           .from("system_maps")
           .select("id")
           .eq("owner_id", user.id)
-          .eq("map_category", row.map_category)
+          .eq("title", duplicateTitle)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -557,12 +869,19 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
         createdMapId = latestMap.data.id;
       }
 
+      if (!createdMapId) {
+        setError("Map duplicated, but the new map id could not be resolved.");
+        return;
+      }
+
+      const newMapId = createdMapId;
+
       const { error: memberInsertError } = await supabaseBrowser
         .schema("ms")
         .from("map_members")
         .upsert(
           {
-            map_id: createdMapId,
+            map_id: newMapId,
             user_id: user.id,
             role: "full_write",
           },
@@ -570,18 +889,33 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
         );
 
       if (memberInsertError) {
+        try {
+          await cleanupDuplicatedMap(newMapId, user.id);
+        } catch {
+          // Preserve the permission error for the user.
+        }
         setError(memberInsertError.message || "Map duplicated, but owner permissions could not be assigned.");
         return;
       }
 
+      await cloneMapContent(row.id, newMapId);
+      setPendingDuplicateRow(null);
+
       if (row.map_category === "incident_investigation") {
-        router.push(`/dashboard/map-builders/investigation-maps/${createdMapId}`);
+        router.push(`/dashboard/map-builders/investigation-maps/${newMapId}`);
         return;
       }
 
-      router.push(`/system-maps/${createdMapId}`);
-    } catch {
-      setError("Unable to duplicate map.");
+      router.push(`/system-maps/${newMapId}`);
+    } catch (duplicateError) {
+      if (createdMapId && duplicateOwnerId) {
+        try {
+          await cleanupDuplicatedMap(createdMapId, duplicateOwnerId);
+        } catch {
+          // Preserve the original duplication error for the user.
+        }
+      }
+      setError(duplicateError instanceof Error ? duplicateError.message : "Unable to duplicate map.");
     } finally {
       setDuplicatingMapId(null);
     }
