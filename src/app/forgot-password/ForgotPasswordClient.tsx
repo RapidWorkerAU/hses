@@ -403,7 +403,7 @@ export default function ForgotPasswordClient() {
             </div>
 
             <div className={styles.visualBadge}>
-              Client account recovery for HSES dashboard, diagnostics, and map builder access.
+              Client account recovery for HSES dashboard, reporting, and map builder access.
             </div>
           </div>
         </aside>

@@ -201,7 +201,7 @@ export default function LoginClient() {
             <div className={styles.copyBlock}>
               <h1>Secure access for HSES clients.</h1>
               <p>
-                Sign in to access your dashboard, diagnostics, reporting, and map builder tools.
+                Sign in to access your dashboard, reporting, and map builder tools.
               </p>
             </div>
 

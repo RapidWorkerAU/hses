@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "../quote-builder.css";
-import HsesDashboardShell from "@/app/sms-diagnostic/dashboard/HsesDashboardShell";
-import PortalAccessGate from "@/app/sms-diagnostic/dashboard/PortalAccessGate";
+import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
+import PortalAccessGate from "@/components/dashboard/portal/PortalAccessGate";
 import QuoteBuilderClient from "../QuoteBuilderClient";
 
 export const metadata: Metadata = {

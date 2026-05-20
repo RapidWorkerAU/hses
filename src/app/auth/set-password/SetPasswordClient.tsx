@@ -294,7 +294,7 @@ export default function SetPasswordClient() {
             </div>
 
             <div className={styles.visualBadge}>
-              Password setup for HSES diagnostics, portal reporting, and map builder access.
+              Password setup for HSES portal reporting and map builder access.
             </div>
           </div>
         </aside>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import HsesDashboardShell from "@/app/sms-diagnostic/dashboard/HsesDashboardShell";
-import PortalAccessGate from "@/app/sms-diagnostic/dashboard/PortalAccessGate";
+import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
+import PortalAccessGate from "@/components/dashboard/portal/PortalAccessGate";
 import ProjectsListClient from "./ProjectsListClient";
 
 export const metadata: Metadata = {

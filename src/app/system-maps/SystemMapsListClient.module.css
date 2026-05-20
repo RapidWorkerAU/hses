@@ -249,3 +249,505 @@
 .progressFillAborted {
   background: #b54708;
 }
+
+.accountCard {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+
+.accountSummary {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.accountSummaryText {
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.accountSummaryPrimary {
+  display: grid;
+  gap: 3px;
+  padding: 10px 14px;
+  border: 1px solid rgba(24, 29, 39, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1d2430;
+  text-align: right;
+  box-shadow: 0 10px 22px rgba(24, 29, 39, 0.06);
+}
+
+.accountSummaryPrimary strong {
+  font-size: 0.84rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.accountSummaryLabel {
+  color: #7a8493;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tableToolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolbarControls,
+.headerButtons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #243041;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(24, 29, 39, 0.08);
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(24, 29, 39, 0.12);
+}
+
+.button:disabled,
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.buttonAccent {
+  color: #ffffff;
+  border-color: #0d6179;
+  background: linear-gradient(180deg, #126f89 0%, #0d6179 100%);
+}
+
+.buttonSecondary {
+  color: #263445;
+  border-color: #d7dee8;
+  background: #ffffff;
+}
+
+.buttonDanger {
+  color: #8f1d12;
+  border-color: #8f1d12;
+  background: #fde8e6;
+}
+
+.buttonIcon,
+.actionIcon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.buttonAccent .buttonIcon {
+  filter: brightness(0) invert(1);
+}
+
+.linkControl,
+.tableFilter {
+  position: relative;
+}
+
+.linkPanel,
+.tableFilterMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(420px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid rgba(24, 29, 39, 0.1);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 22px 44px rgba(24, 29, 39, 0.16);
+}
+
+.linkLabel,
+.tableFilterMenuHeader {
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.linkInputRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.linkInput {
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  padding: 0 12px;
+  color: #1f2937;
+  font: inherit;
+}
+
+.tableFilterOptions {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.templatePickerOption {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(24, 29, 39, 0.08);
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #263445;
+  text-align: left;
+  cursor: pointer;
+}
+
+.templatePickerOption:hover:not(:disabled) {
+  border-color: #0d6179;
+  background: #f0f8fa;
+}
+
+.templatePickerOption span {
+  color: #667085;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.message {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.messageError {
+  color: #8f1d12;
+  background: #fde8e6;
+}
+
+.messageSuccess {
+  color: #05603a;
+  background: #e7f6ec;
+}
+
+.tableWrap {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid rgba(24, 29, 39, 0.08);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 16px 30px rgba(24, 29, 39, 0.08);
+}
+
+.reportDataTableWrap {
+  min-height: 420px;
+}
+
+.table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  color: #263445;
+  font-size: 0.82rem;
+}
+
+.table th {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(24, 29, 39, 0.08);
+  background: #f8fafc;
+  color: #667085;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(24, 29, 39, 0.06);
+  vertical-align: middle;
+}
+
+.reportDataTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.clickableRow {
+  cursor: pointer;
+}
+
+.clickableRow:hover {
+  background: #f8fafc;
+}
+
+.mapCell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.mapCellText {
+  min-width: 0;
+}
+
+.tableClamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+}
+
+.tableDate {
+  display: inline-block;
+  color: #667085;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.tableStateCell {
+  padding: 32px !important;
+}
+
+.tableEmptyState {
+  color: #667085;
+  text-align: center;
+}
+
+.actionButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actionButton {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d7dee8;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.actionButtonDanger {
+  border-color: rgba(180, 35, 24, 0.28);
+  background: #fff7f6;
+}
+
+.dashboardMobileList {
+  display: none;
+}
+
+.dashboardMobileState {
+  padding: 18px;
+  border: 1px solid rgba(24, 29, 39, 0.08);
+  border-radius: 16px;
+  background: #ffffff;
+  color: #667085;
+}
+
+.dashboardMobileCard {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(24, 29, 39, 0.08);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(24, 29, 39, 0.08);
+}
+
+.dashboardMobileCardToggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dashboardMobileCardHeader,
+.dashboardMobileCardTitleBlock {
+  display: grid;
+  gap: 5px;
+}
+
+.dashboardMobileCardTitleBlock strong {
+  color: #1d2430;
+  font-size: 0.98rem;
+}
+
+.dashboardMobileCardTitleBlock span {
+  color: #667085;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.dashboardMobileMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.dashboardMobileMeta div {
+  display: grid;
+  gap: 3px;
+}
+
+.dashboardMobileMeta dt {
+  color: #7a8493;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.dashboardMobileMeta dd {
+  margin: 0;
+  color: #263445;
+  font-size: 0.82rem;
+}
+
+.dashboardMobileMetaDate {
+  min-width: 0;
+}
+
+.dashboardMobileActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dashboardMobileActionButton {
+  flex: 1 1 140px;
+}
+
+.dashboardModalCard {
+  padding: 20px;
+}
+
+.modalTitle {
+  margin: 0;
+  color: #1d2430;
+  font-size: 1.22rem;
+  line-height: 1.2;
+}
+
+.modalText {
+  margin: 10px 0 0;
+  color: #526071;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.modalListWrap {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.modalWarning {
+  margin: 12px 0 0;
+  color: #b42318;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.progressError {
+  background: #b42318;
+}
+
+.progressSuccess {
+  background: #027a48;
+}
+
+.progressAborted {
+  background: #b54708;
+}
+
+@media (max-width: 900px) {
+  .accountSummary,
+  .tableToolbar,
+  .toolbarControls,
+  .headerButtons {
+    justify-content: stretch;
+  }
+
+  .headerButtons {
+    width: 100%;
+  }
+
+  .linkControl,
+  .tableFilter,
+  .button {
+    width: 100%;
+  }
+
+  .linkPanel,
+  .tableFilterMenu {
+    left: 0;
+    right: auto;
+    width: 100%;
+  }
+
+  .tableWrap {
+    display: none;
+  }
+
+  .dashboardMobileList {
+    display: grid;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboardMobileMeta {
+    grid-template-columns: 1fr;
+  }
+
+  .linkInputRow {
+    grid-template-columns: 1fr;
+  }
+}

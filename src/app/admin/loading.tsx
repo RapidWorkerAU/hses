@@ -1,4 +1,4 @@
-import HsesDashboardShell from "@/app/sms-diagnostic/dashboard/HsesDashboardShell";
+import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
 import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
 
 export default function AdminLoading() {

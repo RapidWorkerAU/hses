@@ -1,0 +1,75 @@
+.linkControl {
+  position: relative;
+}
+
+.button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #243041;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.buttonAccent {
+  color: #ffffff;
+  border-color: #0d6179;
+  background: #0d6179;
+}
+
+.buttonSecondary {
+  color: #263445;
+  background: #ffffff;
+}
+
+.buttonIcon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.linkPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(420px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid rgba(24, 29, 39, 0.1);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 22px 44px rgba(24, 29, 39, 0.16);
+}
+
+.linkLabel {
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.linkInputRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.linkInput {
+  min-height: 40px;
+  width: 100%;
+  border: 1px solid #d7dee8;
+  border-radius: 12px;
+  padding: 0 12px;
+  color: #1f2937;
+  font: inherit;
+}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   type Edge,
@@ -9,15 +10,21 @@ import {
   type Node,
   ReactFlow,
   ReactFlowProvider,
-  useNodesState,
   type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { supabaseBrowser } from "@/lib/supabase/client";
-import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
-import { hasMapCategoryAccess } from "@/app/sms-diagnostic/dashboard/dashboardPortals";
+import { type BillingAccessState } from "@/lib/access";
 import {
-  A4_RATIO,
+  hasActiveTemplateAccess,
+  templateAccessDisabledReason,
+  type InvestigationTemplateVisibility,
+} from "@/lib/investigationTemplates";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import {
+  anchorNodeHeight,
+  anchorNodeMinHeight,
+  anchorNodeMinWidth,
+  anchorNodeWidth,
   bowtieControlHeight,
   bowtieDefaultWidth,
   bowtieHazardHeight,
@@ -30,65 +37,53 @@ import {
   incidentSquareSize,
   incidentThreeOneHeight,
   incidentThreeTwoHeight,
+  type AnchorLinkRow,
   type CanvasElementRow,
   categoryColorOptions,
-  ccw,
   clamp,
-  defaultCategoryColor,
   defaultHeight,
   defaultWidth,
   type DisciplineKey,
   disciplineKeySet,
   disciplineLabelByKey,
-  disciplineLetterByKey,
   disciplineOptions,
   getElementDisplayName,
-  getElementRelationshipTypeLabel,
   getElementRelationshipDisplayLabel,
   type DocumentNodeRow,
   type DocumentTypeRow,
-  fallbackHierarchy,
   getCanonicalTypeName,
   getDisplayRelationType,
   getDisplayTypeName,
   getNormalizedDocumentSize,
   getRelationshipCategoryLabel,
   getRelationshipCategoryOptions,
-  getRelationshipCategoryGroups,
   getDefaultRelationshipCategoryForMap,
   normalizeRelationshipCategoryForMap,
   getRelationshipDisciplineLetters,
-  getTypeBannerStyle,
   groupingDefaultHeight,
   groupingDefaultWidth,
   groupingMinHeight,
   groupingMinHeightSquares,
   groupingMinWidth,
   groupingMinWidthSquares,
-  hashString,
   isAbortLikeError,
-  isOrgChartPersonElement,
-  isPersonElementType,
   isLandscapeTypeName,
-  laneHeight,
   landscapeDefaultHeight,
   landscapeDefaultWidth,
-  lineIntersectsRect,
   majorGridSize,
   minorGridSize,
   type FlowData,
-  normalizeTypeRanks,
   type NodeRelationRow,
   type OutlineItemRow,
   parseDisciplines,
+  parseEquipmentLabels,
+  parseEnvironmentLabels,
   buildPersonHeading,
   parsePersonLabels,
   parseOrgChartPersonConfig,
   orgChartDepartmentOptions,
   parseProcessFlowId,
-  processComponentBodyHeight,
   processComponentElementHeight,
-  processComponentLabelHeight,
   processComponentWidth,
   processFlowId,
   processHeadingHeight,
@@ -97,10 +92,8 @@ import {
   processMinHeightSquares,
   processMinWidth,
   processMinWidthSquares,
-  type Rect,
   type RelationshipCategory,
   type SelectionMarquee,
-  segmentsIntersect,
   serializeDisciplines,
   stickyDefaultSize,
   stickyMinSize,
@@ -133,17 +126,12 @@ import {
   shapeDefaultFillColor,
   systemCircleDiameter,
   systemCircleElementHeight,
-  systemCircleLabelHeight,
-  tileGridSpan,
   type SystemMap,
   type MapMemberProfileRow,
+  type SystemMapCanvasSnapshot,
   unconfiguredDocumentTitle,
   userGroupOptions,
   boxesOverlap,
-  pointInRect,
-  personIconSize,
-  personRoleLabelHeight,
-  personDepartmentLabelHeight,
   personElementWidth,
   personElementHeight,
   orgChartPersonWidth,
@@ -160,8 +148,11 @@ import { MobileAddRelationshipModal, MobileNodeActionSheet } from "./canvasMobil
 import { CanvasDrilldownOverlays } from "./canvasDrilldownAsides";
 import { CanvasConfirmDialogs } from "./canvasDialogs";
 import { CanvasElementPropertyOverlays } from "./canvasPropertyOverlays";
+import { CanvasNodeSelectionToolbar } from "./canvasNodeSelectionToolbar";
+import { GuestMapNotesLayer } from "./GuestMapNotesLayer";
 import { SystemMapWelcomeModal } from "./SystemMapWelcomeModal";
-import { defaultMapCategoryId, getAllowedNodeKindsForCategory, mapCategoryConfigs, type MapCategoryId } from "./mapCategories";
+import { CanvasHelpModal } from "./CanvasHelpModal";
+import { defaultMapCategoryId, getAllowedNodeKindsForCategory, type MapCategoryId } from "./mapCategories";
 import { useCanvasRelationNodeActions } from "./useCanvasRelationNodeActions";
 import { useCanvasElementActions } from "./useCanvasElementActions";
 import { useCanvasDeleteSelectionActions } from "./useCanvasDeleteSelectionActions";
@@ -171,7 +162,20 @@ import { useCanvasPaneSelectionActions } from "./useCanvasPaneSelectionActions";
 import { useCanvasNodeDragStop } from "./useCanvasNodeDragStop";
 import { useCanvasRelationshipDerived } from "./useCanvasRelationshipDerived";
 import { useCanvasImageUpload } from "./useCanvasImageUpload";
+import { useCanvasAsideController } from "./useCanvasAsideController";
+import { usePrimaryAsideRegistry } from "./usePrimaryAsideRegistry";
+import { useCanvasRelationshipController } from "./useCanvasRelationshipController";
+import { useMapSuggestions } from "./useMapSuggestions";
+import { useInvestigationTemplates } from "./useInvestigationTemplates";
+import { useMapSessionHistory } from "./useMapSessionHistory";
+import { useCanvasPrintController } from "./useCanvasPrintController";
+import { useCanvasSearch } from "./useCanvasSearch";
+import { useSystemMapBootstrap } from "./useSystemMapBootstrap";
+import { formatShortAuDate } from "./dateFormatters";
+import { resolveMapSessionHistorySnapshotState, type MapSessionHistorySnapshot } from "./mapSnapshotUtils";
+import { useOutsidePointerDismiss, useStackedOutsidePointerDismiss } from "./useOutsidePointerDismiss";
 import { handleCanvasNodeClick } from "./canvasNodeClickHandler";
+import { syncCanvasSelectionFromFlowNode, type CanvasSelectionSetters } from "./canvasSelection";
 import {
   SystemMapWizardModal,
   type SystemMapWizardCommitPayload,
@@ -182,21 +186,26 @@ import {
   buildPrimaryElementFlowNode,
   buildSecondaryElementFlowNode,
   buildOrgDirectReportCountByPersonNormalizedId,
-  normalizeElementRef,
   sortGroupingElementsForRender,
 } from "./canvasFlowNodeBuilder";
 import {
   PRINT_HEADER_HEIGHT_PX,
-  buildPrintPreviewHtml,
-  cropDataUrl,
-  loadHtml2Canvas,
-  loadHtmlToImage,
 } from "./canvasPrintUtils";
 import { SystemMapLoadingView } from "./SystemMapLoadingView";
+
 const canvasElementSelectColumns =
   "id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height,created_at,updated_at";
+const platformAdminUserId = "420266a0-2087-4f36-8c28-340443dd1a82";
+const anchorLinksPersistenceEnabled = true;
 const isMethodologyElementType = (elementType: string) =>
   elementType.startsWith("bowtie_") || elementType.startsWith("incident_");
+const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
+  if (left.size !== right.size) return false;
+  for (const value of left) {
+    if (!right.has(value)) return false;
+  }
+  return true;
+};
 const methodologyDefaultLabelByType: Record<string, string> = {
   bowtie_hazard: "Hazard",
   bowtie_top_event: "Top Event",
@@ -206,7 +215,7 @@ const methodologyDefaultLabelByType: Record<string, string> = {
   bowtie_escalation_factor: "Escalation Factor",
   bowtie_recovery_measure: "Recovery Measure",
   bowtie_degradation_indicator: "Degradation Indicator",
-  bowtie_risk_rating: "Risk Level",
+  bowtie_risk_rating: "Risk Level: Medium",
   incident_sequence_step: "Sequence Step",
   incident_outcome: "Outcome",
   incident_task_condition: "Task / Condition",
@@ -214,23 +223,31 @@ const methodologyDefaultLabelByType: Record<string, string> = {
   incident_system_factor: "System Factor",
   incident_control_barrier: "Control / Barrier",
   incident_evidence: "Evidence",
+  incident_response_recovery: "Response / Recovery",
   incident_finding: "Finding",
   incident_recommendation: "Recommendation",
 };
-const isDescriptionDrivenMethodologyType = (elementType: string) =>
-  isMethodologyElementType(elementType) && elementType !== "bowtie_risk_rating";
 
-function buildMethodologyDraft(element: CanvasElementRow) {
-  const currentConfig = ((element.element_config as Record<string, unknown> | null) ?? {}) as Record<string, string | boolean>;
-  if (!isDescriptionDrivenMethodologyType(element.element_type)) return currentConfig;
-  const defaultLabel = methodologyDefaultLabelByType[element.element_type] ?? "Node";
-  const currentHeading = String(element.heading ?? "").trim();
-  if (!currentHeading || currentHeading === defaultLabel) return currentConfig;
-  return {
-    ...currentConfig,
-    description: currentHeading,
-  };
-}
+const getMethodologyEditableLabel = (elementType: string, headingRaw: string | null | undefined) => {
+  const defaultLabel = methodologyDefaultLabelByType[elementType] ?? "Node";
+  const legacyDefaultLabel = elementType === "incident_outcome" ? "Outcome" : defaultLabel;
+  const heading = String(headingRaw ?? "").trim();
+  if (!heading || heading === defaultLabel || heading === legacyDefaultLabel) return "";
+  return heading;
+};
+
+const getMethodologyBodyDisplayMode = (
+  labelRaw: string | null | undefined,
+  descriptionRaw: string | null | undefined,
+  modeRaw: unknown
+) => {
+  if (modeRaw === "label" || modeRaw === "description") return modeRaw;
+  const label = String(labelRaw ?? "").trim();
+  const description = String(descriptionRaw ?? "").trim();
+  if (description) return "description";
+  if (label) return "label";
+  return "description";
+};
 
 type CanvasElementInsertPayload = {
   map_id: string;
@@ -250,86 +267,80 @@ type CanvasElementUpdatePayload = {
   fields: Partial<Pick<CanvasElementRow, "heading" | "element_config" | "pos_x" | "pos_y" | "width" | "height">>;
 };
 
-type DocumentNodeInsertPayload = {
-  map_id: string;
-  type_id: string;
-  title: string;
-  document_number: string;
-  discipline: string;
-  owner_user_id: string | null;
-  owner_name: string;
-  user_group: string;
-  pos_x: number;
-  pos_y: number;
-  width: number;
-  height: number;
-  is_archived: boolean;
+type OrgAccessCandidate = {
+  userId: string;
+  fullName: string;
+  email: string;
+  organisations: string[];
+  currentRole: "read" | "partial_write" | "full_write" | null;
 };
 
-const wizardGroupHeadingByStep: Record<string, string> = {
+type BowtieDraftState = Record<string, string | boolean | string[]>;
+
+const stepGroupHeadingByWizardStep: Record<SystemMapWizardCommitPayload["step"], string> = {
   sequence: "Sequence",
+  outcome: "Outcomes",
   people: "People",
   "task-condition": "Task / Condition",
   factors: "Factors",
   "control-barrier": "Controls / Barriers",
   evidence: "Evidence",
+  "response-recovery": "Response / Recovery",
   finding: "Findings",
   recommendation: "Recommendations",
-  systems: "Systems",
-  processes: "Processes",
-  documents: "Documents",
-  hierarchy: "Hierarchy",
-  overview: "Overview",
-  threats: "Threats",
-  consequences: "Consequences",
-  controls: "Controls",
-  assurance: "Escalation / Recovery",
-  departments: "Departments",
-  leadership: "Leadership",
-  team: "Team",
-  lanes: "Lanes",
-  steps: "Steps",
-  "inputs-outputs": "Inputs / Outputs",
-  roles: "Roles",
 };
 
-const wizardElementTypesByStep: Record<string, string[]> = {
+const stepElementTypesByWizardStep: Record<SystemMapWizardCommitPayload["step"], string[]> = {
   sequence: ["incident_sequence_step"],
+  outcome: ["incident_outcome"],
   people: ["person"],
   "task-condition": ["incident_task_condition"],
   factors: ["incident_factor", "incident_system_factor"],
   "control-barrier": ["incident_control_barrier"],
   evidence: ["incident_evidence"],
+  "response-recovery": ["incident_response_recovery"],
   finding: ["incident_finding"],
   recommendation: ["incident_recommendation"],
-  systems: ["system_circle"],
-  processes: ["process_component"],
-  hierarchy: ["category"],
-  overview: ["bowtie_hazard", "bowtie_top_event", "bowtie_risk_rating"],
-  threats: ["bowtie_threat"],
-  consequences: ["bowtie_consequence"],
-  controls: ["bowtie_control"],
-  assurance: ["bowtie_escalation_factor", "bowtie_recovery_measure", "bowtie_degradation_indicator"],
-  departments: ["category"],
-  leadership: ["person"],
-  team: ["person"],
-  lanes: ["category"],
-  steps: ["process_component", "shape_rectangle", "shape_pill"],
-  "inputs-outputs": ["shape_rectangle"],
-  roles: ["person"],
 };
 
-function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: string; showWelcomeOnLoad?: boolean }) {
+function SystemMapCanvasInner({
+  mapId,
+  showWelcomeOnLoad,
+  templateEditorTemplateId,
+  templateEditorTemplateName,
+  templateEditorVisibility,
+  entrySource,
+  viewerMode,
+  initialSnapshot,
+  guestSessionEmail,
+  guestCampaignSlug,
+}: {
+  mapId: string;
+  showWelcomeOnLoad: boolean;
+  templateEditorTemplateId: string | null;
+  templateEditorTemplateName: string | null;
+  templateEditorIsGlobal: boolean;
+  templateEditorVisibility: InvestigationTemplateVisibility;
+  entrySource: "dashboard" | "templates";
+  viewerMode: "member" | "guest";
+  initialSnapshot: SystemMapCanvasSnapshot | null;
+  guestSessionEmail: string | null;
+  guestCampaignSlug: string | null;
+}) {
+  const isGuestViewer = viewerMode === "guest";
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const relationshipPopupRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const suggestionMenuRef = useRef<HTMLDivElement | null>(null);
+  const templateMenuRef = useRef<HTMLDivElement | null>(null);
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
   const printMenuRef = useRef<HTMLDivElement | null>(null);
-  const printPreviewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const mapInfoAsideRef = useRef<HTMLDivElement | null>(null);
   const mapInfoButtonRef = useRef<HTMLButtonElement | null>(null);
   const disciplineMenuRef = useRef<HTMLDivElement | null>(null);
   const saveViewportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const anchorNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const anchorNavigateRef = useRef<((anchorId: string, direction: "previous" | "next") => void) | null>(null);
   const resizePersistTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const resizePersistValuesRef = useRef<Map<string, { width: number; height: number }>>(new Map());
   const savedPos = useRef<Record<string, { x: number; y: number }>>({});
@@ -337,25 +348,30 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const lastMobileTapRef = useRef<{ id: string; ts: number } | null>(null);
   const clipboardPasteCountRef = useRef(1);
   const isNodeDragActiveRef = useRef(false);
+  const flowNodesRef = useRef<Node<FlowData>[]>([]);
+  const pendingFlowNodePositionChangesRef = useRef<NodeChange<Node<FlowData>>[]>([]);
+  const flowNodeChangeFrameRef = useRef<number | null>(null);
   const imagePathPairsRef = useRef<Array<{ id: string; path: string }>>([]);
-  const loadingMapIdRef = useRef<string | null>(null);
-  const loadingProgressRef = useRef<25 | 50 | 75 | 100>(25);
-  const loadingStageStartedAtRef = useRef<number>(Date.now());
-
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>("");
   const [mapRole, setMapRole] = useState<"read" | "partial_write" | "full_write" | null>(null);
+  const [accessState, setAccessState] = useState<BillingAccessState | null>(null);
   const [map, setMap] = useState<SystemMap | null>(null);
   const [mapCategoryId, setMapCategoryId] = useState<MapCategoryId>(defaultMapCategoryId);
   const [types, setTypes] = useState<DocumentTypeRow[]>([]);
   const [nodes, setNodes] = useState<DocumentNodeRow[]>([]);
   const [elements, setElements] = useState<CanvasElementRow[]>([]);
   const [relations, setRelations] = useState<NodeRelationRow[]>([]);
+  const [anchorLinks, setAnchorLinks] = useState<AnchorLinkRow[]>([]);
+  const [outlineItems, setOutlineItems] = useState<OutlineItemRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(25);
   const [loadingMessage, setLoadingMessage] = useState("Checking workspace access...");
   const [error, setError] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 768px), (pointer: coarse)").matches || window.innerWidth <= 768;
+  });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [isEditingMapTitle, setIsEditingMapTitle] = useState(false);
   const [mapTitleDraft, setMapTitleDraft] = useState("");
@@ -369,6 +385,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const [savingMapInfo, setSavingMapInfo] = useState(false);
   const [mapMembers, setMapMembers] = useState<MapMemberProfileRow[]>([]);
   const [savingMemberRoleUserId, setSavingMemberRoleUserId] = useState<string | null>(null);
+  const [orgAccessCandidates, setOrgAccessCandidates] = useState<OrgAccessCandidate[]>([]);
+  const [orgAccessSearch, setOrgAccessSearch] = useState("");
+  const [orgAccessLoading, setOrgAccessLoading] = useState(false);
+  const [orgAccessError, setOrgAccessError] = useState<string | null>(null);
+  const [grantingOrgAccessUserId, setGrantingOrgAccessUserId] = useState<string | null>(null);
+  const [showOrgAccessModal, setShowOrgAccessModal] = useState(false);
+  const [ownerHasActiveOrganisation, setOwnerHasActiveOrganisation] = useState(false);
 
   const [rf, setRf] = useState<{
     fitView: (opts?: { duration?: number; padding?: number }) => void;
@@ -376,48 +399,66 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setViewport: (v: Viewport, opts?: { duration?: number }) => void;
   } | null>(null);
   const [pendingViewport, setPendingViewport] = useState<Viewport | null>(null);
+  const [hasStoredViewport, setHasStoredViewport] = useState(false);
+  const mobileViewportInitializedRef = useRef<string | null>(null);
+  useEffect(() => {
+    return () => {
+      if (anchorNoticeTimerRef.current) clearTimeout(anchorNoticeTimerRef.current);
+    };
+  }, []);
 
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [canvasLocked, setCanvasLocked] = useState(false);
+  const [showSuggestionsMenu, setShowSuggestionsMenu] = useState(false);
   const [showWizardModal, setShowWizardModal] = useState(false);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [wizardSaving, setWizardSaving] = useState(false);
   const [isNodeDragActive, setIsNodeDragActive] = useState(false);
-  const [showSearchMenu, setShowSearchMenu] = useState(false);
-  const [showPrintMenu, setShowPrintMenu] = useState(false);
-  const [isPreparingPrint, setIsPreparingPrint] = useState(false);
-  const [showPrintPreview, setShowPrintPreview] = useState(false);
-  const [printPreviewImageDataUrl, setPrintPreviewImageDataUrl] = useState<string | null>(null);
-  const [printOrientation, setPrintOrientation] = useState<"portrait" | "landscape">("portrait");
-  const [printSelectionMode, setPrintSelectionMode] = useState(false);
-  const [isCopyingPrintImage, setIsCopyingPrintImage] = useState(false);
-  const [printSelectionCopyMessage, setPrintSelectionCopyMessage] = useState<string | null>(null);
-  const [printSelectionDraft, setPrintSelectionDraft] = useState<{
-    active: boolean;
-    startX: number;
-    startY: number;
-    currentX: number;
-    currentY: number;
-  } | null>(null);
-  const [printSelectionRect, setPrintSelectionRect] = useState<{
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  } | null>(null);
-  const [showPrintSelectionConfirm, setShowPrintSelectionConfirm] = useState(false);
-  const printPreviewHtml = useMemo(
-    () =>
-      printPreviewImageDataUrl
-        ? buildPrintPreviewHtml({
-            mapTitle: map?.title || "System Map",
-            imageDataUrl: printPreviewImageDataUrl,
-            orientation: printOrientation,
-          })
-        : null,
-    [map?.title, printOrientation, printPreviewImageDataUrl]
-  );
-  const [searchQuery, setSearchQuery] = useState("");
+  const [hasCurrentPassAssignment, setHasCurrentPassAssignment] = useState(true);
+  const {
+    printPreviewFrameRef,
+    showPrintMenu,
+    setShowPrintMenu,
+    isPreparingPrint,
+    showPrintPreview,
+    printPreviewHtml,
+    printOrientation,
+    setPrintOrientation,
+    printSelectionMode,
+    isCopyingPrintImage,
+    printSelectionCopyMessage,
+    activePrintSelectionRect,
+    showPrintSelectionConfirm,
+    setShowPrintPreview,
+    exitPrintSelectionMode,
+    handlePrintCurrentView,
+    handlePrintSelectArea,
+    handleConfirmPrintArea,
+    handleCopyPrintAreaImageToClipboard,
+    handlePrintOverlayPointerDown,
+    handlePrintOverlayPointerMove,
+    handlePrintOverlayPointerUp,
+  } = useCanvasPrintController({
+    canvasRef,
+    mapTitle: map?.title || "System Map",
+    setError,
+  });
+  const {
+    showSearchMenu,
+    setShowSearchMenu,
+    searchQuery,
+    setSearchQuery,
+    searchCatalog,
+    searchResults,
+    handleSelectSearchResult,
+  } = useCanvasSearch({
+    rf,
+    canvasRef,
+    types,
+    nodes,
+    elements,
+    outlineItems,
+  });
   const snapToMinorGrid = useCallback((v: number) => Math.round(v / minorGridSize) * minorGridSize, []);
   const getCanvasFlowCenter = useCallback(() => {
     if (!rf || !canvasRef.current) return null;
@@ -431,17 +472,62 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       y: snapToMinorGrid(flowPoint.y),
     };
   }, [rf, snapToMinorGrid]);
-  const canWriteMap = mapRole === "partial_write" || mapRole === "full_write";
-  const canManageMapMetadata = mapRole === "full_write" && !!map && !!userId && map.owner_id === userId;
-  const canUseContextMenu = mapRole !== "read";
-  const canCreateSticky = !!userId;
+  const passScopedWriteBlocked =
+    accessState?.currentAccessStatus === "active" &&
+    accessState.currentAccessType === "pass_30d" &&
+    !hasCurrentPassAssignment;
+  const accessAllowsEditing = !isGuestViewer && (accessState?.canEditMaps ?? true) && !passScopedWriteBlocked;
+  const canSaveTemplate = hasActiveTemplateAccess(accessState);
+  const isTemplateEditor = Boolean(templateEditorTemplateId);
+  const isPlatformAdmin = userId === platformAdminUserId || accessState?.userId === platformAdminUserId;
+  const canWriteMap = accessAllowsEditing && (mapRole === "partial_write" || mapRole === "full_write");
+  const canManageMapMetadata = accessAllowsEditing && mapRole === "full_write" && !!map && !!userId && map.owner_id === userId;
+  const canUseContextMenu = accessAllowsEditing && mapRole !== "read";
+  const canCreateSticky = accessAllowsEditing && !!userId;
   const allowedNodeKinds = useMemo(() => getAllowedNodeKindsForCategory(mapCategoryId), [mapCategoryId]);
-  const canUseWizard = canWriteMap;
-  const addDisabledReason = canWriteMap || canCreateSticky ? undefined : "Adding components is unavailable for this map.";
-  const wizardDisabledReason = canWriteMap ? undefined : "You need write access to use the wizard.";
-  const canvasLockTitle = canvasLocked
-    ? "Unlock canvas navigation and re-enable node interaction."
-    : "Lock the canvas so you can pan around without selecting or moving nodes.";
+  const canUseWizard = canWriteMap && allowedNodeKinds.some((kind) => kind.startsWith("incident_"));
+  const canUseSuggestionCheck = canWriteMap && !!map;
+  const {
+    isLoadingSuggestions,
+    suggestionProgress,
+    suggestionOverview,
+    suggestionPrompt,
+    setSuggestionPrompt,
+    mapSuggestions,
+    suggestionError,
+    suggestionsLastUpdatedAt,
+    loadPersistedMapSuggestions,
+    handleDismissMapSuggestion,
+    handleRunSuggestionCheck,
+  } = useMapSuggestions({
+    canUseSuggestionCheck,
+    map,
+    mapId,
+    mapCategoryId,
+    types,
+    nodes,
+    elements,
+    relations,
+    userId,
+  });
+  const readOnlyActionReason = !accessAllowsEditing
+    ? passScopedWriteBlocked
+      ? "This map belongs to an older 30 Day Access period. Start monthly access to restore full editing across older pass maps."
+      : accessState?.readOnlyReason || "This map is read only for your current access."
+    : undefined;
+  const deleteDisabledReason = !canWriteMap
+    ? readOnlyActionReason || "You have view access only for this map."
+    : undefined;
+  const backHref = entrySource === "templates" ? "/templates" : "/dashboard";
+  const backTitle = entrySource === "templates" ? "Back to templates" : "Back to dashboard";
+  const canPrintMap = accessAllowsEditing;
+  const addDisabledReason = !accessAllowsEditing
+    ? accessState?.readOnlyReason || "This map is read only for your current access."
+    : "Adding components is unavailable for this map.";
+  const wizardDisabledReason = !accessAllowsEditing
+    ? accessState?.readOnlyReason || "The wizard is unavailable while this map is read only."
+    : "The wizard is unavailable for this map.";
+  const templateDisabledReason = canSaveTemplate ? undefined : templateAccessDisabledReason;
   useEffect(() => {
     if (!showWelcomeOnLoad) return;
     setShowWelcomeModal(true);
@@ -454,7 +540,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     }
   }, [showWelcomeOnLoad]);
   const relationshipCategoryOptions = useMemo(() => getRelationshipCategoryOptions(mapCategoryId), [mapCategoryId]);
-  const relationshipCategoryGroups = useMemo(() => getRelationshipCategoryGroups(mapCategoryId), [mapCategoryId]);
   const canEditElement = useCallback(
     (element: CanvasElementRow) =>
       canWriteMap || (mapRole === "read" && element.element_type === "sticky_note" && !!userId && element.created_by_user_id === userId),
@@ -466,16 +551,38 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     if (normalized === "partial_write") return "Partial write";
     return "Read";
   }, []);
-  const formatStickyDate = useCallback((value: string | null | undefined) => {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleDateString("en-AU", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  }, []);
+  const formatStickyDate = useCallback(formatShortAuDate, []);
+  const {
+    showTemplateMenu,
+    setShowTemplateMenu,
+    templateQuery,
+    templateResults,
+    isLoadingTemplates,
+    isSavingTemplate,
+    templateSaveMessage,
+    templateVisibility,
+    handleTemplateQueryChange,
+    handleSelectTemplateResult,
+    handleSetTemplateVisibility,
+    handleSaveTemplate,
+  } = useInvestigationTemplates({
+    canSaveTemplate,
+    formatStickyDate,
+    setError,
+    initialTemplateVisibility: templateEditorVisibility,
+    isTemplateEditor,
+    templateEditorTemplateId,
+    templateEditorTemplateName,
+    templateEditorVisibility,
+    loading,
+    map,
+    types,
+    nodes,
+    elements,
+    relations,
+    anchorLinks,
+    outlineItems,
+  });
   const memberDisplayNameByUserId = useMemo(() => {
     const m = new Map<string, string>();
     mapMembers.forEach((member) => {
@@ -484,220 +591,172 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     });
     return m;
   }, [mapMembers]);
-  const activePrintSelectionRect = useMemo(() => {
-    if (printSelectionDraft) {
-      const left = Math.min(printSelectionDraft.startX, printSelectionDraft.currentX);
-      const top = Math.min(printSelectionDraft.startY, printSelectionDraft.currentY);
-      const width = Math.abs(printSelectionDraft.currentX - printSelectionDraft.startX);
-      const height = Math.abs(printSelectionDraft.currentY - printSelectionDraft.startY);
-      return { left, top, width, height };
-    }
-    return printSelectionRect;
-  }, [printSelectionDraft, printSelectionRect]);
-  const loadingLabel = useMemo(() => {
-    const mapCategory = map?.map_category as MapCategoryId | null | undefined;
-    if (mapCategory && mapCategory in mapCategoryConfigs) {
-      return mapCategoryConfigs[mapCategory].label;
-    }
-    return mapCategoryConfigs[mapCategoryId]?.label ?? "Map";
-  }, [map?.map_category, mapCategoryId]);
-  const backHref = useMemo(() => {
-    const category = (map?.map_category as MapCategoryId | null | undefined) ?? mapCategoryId;
-    if (category === "incident_investigation") return "/dashboard/map-builders";
-    if (category === "document_map") return "/dashboard/map-builders";
-    if (category === "bow_tie") return "/dashboard/map-builders";
-    if (category === "org_chart") return "/dashboard/map-builders";
-    if (category === "process_flow") return "/dashboard/map-builders";
-    return "/dashboard";
-  }, [map?.map_category, mapCategoryId]);
-  const backLabel = useMemo(() => `Back to ${loadingLabel}`, [loadingLabel]);
-  const exitPrintSelectionMode = useCallback(() => {
-    setPrintSelectionMode(false);
-    setPrintSelectionDraft(null);
-    setPrintSelectionRect(null);
-    setShowPrintSelectionConfirm(false);
-    setPrintSelectionCopyMessage(null);
-  }, []);
-  const openPrintPreviewFromDataUrl = useCallback(
-    (imageDataUrl: string) => {
-      setPrintPreviewImageDataUrl(imageDataUrl);
-      setShowPrintPreview(true);
-    },
-    []
+  const anchorElements = useMemo(
+    () => elements.filter((element) => element.element_type === "anchor"),
+    [elements]
   );
-  const capturePrintImage = useCallback(
-    async (mode: "current" | "area", options?: { openPreview?: boolean }) => {
-      const root = canvasRef.current as HTMLElement | null;
-      if (!root) {
-        setError("Unable to capture canvas for print.");
-        return null;
-      }
-      const target = (root.querySelector(".react-flow") as HTMLElement | null) ?? root;
-      const targetBounds = target.getBoundingClientRect();
-      const captureWidth = Math.max(1, Math.floor(target.clientWidth || targetBounds.width));
-      const captureHeight = Math.max(1, Math.floor(target.clientHeight || targetBounds.height));
-      let crop: { x: number; y: number; width: number; height: number } | null = null;
-      if (mode === "area") {
-        if (!printSelectionRect || printSelectionRect.width < 12 || printSelectionRect.height < 12) {
-          setError("Please select a larger area to print.");
-          return null;
-        }
-        const x = clamp(printSelectionRect.left - targetBounds.left, 0, targetBounds.width);
-        const y = clamp(printSelectionRect.top - targetBounds.top, 0, targetBounds.height);
-        const width = clamp(printSelectionRect.width, 1, targetBounds.width - x);
-        const height = clamp(printSelectionRect.height, 1, targetBounds.height - y);
-        crop = { x, y, width, height };
-      } else {
-        crop = { x: 0, y: 0, width: captureWidth, height: captureHeight };
-      }
-      setIsPreparingPrint(true);
-      const previousTargetBackgroundColor = target.style.backgroundColor;
-      target.style.backgroundColor = "#ffffff";
-      try {
-        let dataUrl = "";
-        try {
-          const htmlToImage = await loadHtmlToImage();
-          const fullDataUrl = await htmlToImage.toPng(target, {
-            cacheBust: true,
-            pixelRatio: 2,
-            backgroundColor: "#ffffff",
-            width: captureWidth,
-            height: captureHeight,
-            filter: (node: Node) => {
-              const el = node as unknown as HTMLElement;
-              if (!el?.classList) return true;
-              return !(
-                el.classList.contains("react-flow__background") ||
-                el.classList.contains("print-hidden") ||
-                el.dataset?.printIgnore === "true"
-              );
-            },
-          });
-          dataUrl = crop
-            ? await cropDataUrl({
-                dataUrl: fullDataUrl,
-                crop,
-                sourceWidth: captureWidth,
-                sourceHeight: captureHeight,
-              })
-            : fullDataUrl;
-        } catch {
-          const html2canvas = await loadHtml2Canvas();
-          const canvas = await html2canvas(target, {
-            backgroundColor: "#ffffff",
-            useCORS: true,
-            logging: false,
-            scale: 2,
-            x: crop?.x ?? 0,
-            y: crop?.y ?? 0,
-            width: crop?.width ?? captureWidth,
-            height: crop?.height ?? captureHeight,
-            ignoreElements: (element: Element) => {
-              const el = element as HTMLElement;
-              return (
-                el.classList.contains("react-flow__background") ||
-                el.classList.contains("print-hidden") ||
-                el.dataset.printIgnore === "true"
-              );
-            },
-          });
-          dataUrl = canvas.toDataURL("image/png");
-        }
-        if (options?.openPreview !== false) {
-          openPrintPreviewFromDataUrl(dataUrl);
-        }
-        return dataUrl;
-      } catch (e) {
-        setError((e as Error)?.message || "Unable to prepare print preview.");
-        return null;
-      } finally {
-        target.style.backgroundColor = previousTargetBackgroundColor;
-        setIsPreparingPrint(false);
-      }
-    },
-    [openPrintPreviewFromDataUrl, printSelectionRect, setError]
+  const anchorById = useMemo(
+    () => new Map(anchorElements.map((anchor) => [anchor.id, anchor])),
+    [anchorElements]
   );
-  const handlePrintCurrentView = useCallback(async () => {
-    setShowPrintMenu(false);
-    setShowPrintSelectionConfirm(false);
-    setPrintSelectionMode(false);
-    setPrintSelectionDraft(null);
-    setPrintSelectionRect(null);
-    await capturePrintImage("current");
-  }, [capturePrintImage]);
-  const handlePrintSelectArea = useCallback(() => {
-    setShowPrintMenu(false);
-    setShowPrintSelectionConfirm(false);
-    setPrintSelectionDraft(null);
-    setPrintSelectionRect(null);
-    setPrintSelectionCopyMessage(null);
-    setPrintSelectionMode(true);
-  }, []);
-  const handleConfirmPrintArea = useCallback(async () => {
-    setPrintSelectionCopyMessage(null);
-    setShowPrintSelectionConfirm(false);
-    await capturePrintImage("area");
-    setPrintSelectionMode(false);
-  }, [capturePrintImage]);
-  const handleCopyPrintAreaImageToClipboard = useCallback(async () => {
-    setPrintSelectionCopyMessage(null);
-    const dataUrl = await capturePrintImage("area", { openPreview: false });
-    if (!dataUrl) return;
-    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-      setPrintSelectionCopyMessage("Clipboard image copy is not supported in this browser.");
-      return;
-    }
-    setIsCopyingPrintImage(true);
-    try {
-      const response = await fetch(dataUrl);
-      const blob = await response.blob();
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
-      setPrintSelectionCopyMessage("Image copied to clipboard. You can paste it elsewhere.");
-    } catch (e) {
-      const message = (e as Error)?.message?.trim();
-      setPrintSelectionCopyMessage(message ? `Unable to copy image: ${message}` : "Unable to copy image to clipboard.");
-    } finally {
-      setIsCopyingPrintImage(false);
-    }
-  }, [capturePrintImage]);
-  const handlePrintOverlayPointerDown = useCallback((event: { clientX: number; clientY: number }) => {
-    if (showPrintSelectionConfirm) return;
-    setPrintSelectionCopyMessage(null);
-    setPrintSelectionDraft({
-      active: true,
-      startX: event.clientX,
-      startY: event.clientY,
-      currentX: event.clientX,
-      currentY: event.clientY,
+  const getAnchorCreatorName = useCallback(
+    (anchor: CanvasElementRow) =>
+      (anchor.created_by_user_id ? memberDisplayNameByUserId.get(anchor.created_by_user_id) : null) ||
+      (anchor.created_by_user_id === userId ? userEmail : null) ||
+      "Unknown user",
+    [memberDisplayNameByUserId, userEmail, userId]
+  );
+  const anchorSequenceNumberById = useMemo(() => {
+    const sequenceNumbers = new Map<string, number>();
+    const anchors = anchorElements
+      .slice()
+      .sort((a, b) => {
+        const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (createdA !== createdB) return createdA - createdB;
+        return a.id.localeCompare(b.id);
+      });
+    const anchorIds = new Set(anchors.map((anchor) => anchor.id));
+    const adjacency = new Map<string, Set<string>>();
+    anchorLinks.forEach((link) => {
+      if (!anchorIds.has(link.anchor_id) || !anchorIds.has(link.linked_anchor_id)) return;
+      if (!adjacency.has(link.anchor_id)) adjacency.set(link.anchor_id, new Set());
+      if (!adjacency.has(link.linked_anchor_id)) adjacency.set(link.linked_anchor_id, new Set());
+      adjacency.get(link.anchor_id)?.add(link.linked_anchor_id);
+      adjacency.get(link.linked_anchor_id)?.add(link.anchor_id);
     });
-  }, [showPrintSelectionConfirm]);
-  const handlePrintOverlayPointerMove = useCallback((event: { clientX: number; clientY: number }) => {
-    setPrintSelectionDraft((prev) =>
-      prev
-        ? {
-            ...prev,
-            currentX: event.clientX,
-            currentY: event.clientY,
-          }
-        : prev
-    );
-  }, []);
-  const handlePrintOverlayPointerUp = useCallback(() => {
-    setPrintSelectionDraft((prev) => {
-      if (!prev) return prev;
-      const left = Math.min(prev.startX, prev.currentX);
-      const top = Math.min(prev.startY, prev.currentY);
-      const width = Math.abs(prev.currentX - prev.startX);
-      const height = Math.abs(prev.currentY - prev.startY);
-      if (width < 12 || height < 12) {
-        setPrintSelectionRect(null);
-        return null;
+    const fallbackOrderById = new Map(anchors.map((anchor, index) => [anchor.id, index]));
+    const visited = new Set<string>();
+    anchors.forEach((startAnchor) => {
+      if (visited.has(startAnchor.id)) return;
+      const componentIds = new Set<string>();
+      const stack = [startAnchor.id];
+      while (stack.length) {
+        const id = stack.pop();
+        if (!id || componentIds.has(id)) continue;
+        componentIds.add(id);
+        adjacency.get(id)?.forEach((nextId) => {
+          if (!componentIds.has(nextId)) stack.push(nextId);
+        });
       }
-      setPrintSelectionRect({ left, top, width, height });
-      setShowPrintSelectionConfirm(true);
-      return null;
+      const orderByAnchorId = new Map<string, number>();
+      anchorLinks.forEach((link) => {
+        if (!componentIds.has(link.anchor_id) || !componentIds.has(link.linked_anchor_id)) return;
+        const order = Number(link.sort_order);
+        if (!Number.isFinite(order)) return;
+        const current = orderByAnchorId.get(link.linked_anchor_id);
+        if (current == null || order < current) orderByAnchorId.set(link.linked_anchor_id, order);
+      });
+      const orderedIds = anchors
+        .filter((anchor) => componentIds.has(anchor.id))
+        .sort((a, b) => {
+          const orderA = orderByAnchorId.get(a.id);
+          const orderB = orderByAnchorId.get(b.id);
+          if (orderA != null && orderB != null && orderA !== orderB) return orderA - orderB;
+          if (orderA != null && orderB == null) return -1;
+          if (orderA == null && orderB != null) return 1;
+          return (fallbackOrderById.get(a.id) ?? 0) - (fallbackOrderById.get(b.id) ?? 0);
+        })
+        .map((anchor) => anchor.id);
+      orderedIds.forEach((id, index) => {
+        visited.add(id);
+        sequenceNumbers.set(id, index + 1);
+      });
     });
-  }, []);
+    return sequenceNumbers;
+  }, [anchorElements, anchorLinks]);
+  const anchorGroupIdsById = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    const anchors = anchorElements
+      .slice()
+      .sort((a, b) => {
+        const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (createdA !== createdB) return createdA - createdB;
+        return a.id.localeCompare(b.id);
+      });
+    const anchorIds = new Set(anchors.map((anchor) => anchor.id));
+    const adjacency = new Map<string, Set<string>>();
+    anchorLinks.forEach((link) => {
+      if (!anchorIds.has(link.anchor_id) || !anchorIds.has(link.linked_anchor_id)) return;
+      if (!adjacency.has(link.anchor_id)) adjacency.set(link.anchor_id, new Set());
+      if (!adjacency.has(link.linked_anchor_id)) adjacency.set(link.linked_anchor_id, new Set());
+      adjacency.get(link.anchor_id)?.add(link.linked_anchor_id);
+      adjacency.get(link.linked_anchor_id)?.add(link.anchor_id);
+    });
+    const visited = new Set<string>();
+    anchors.forEach((startAnchor) => {
+      if (visited.has(startAnchor.id)) return;
+      const componentIds = new Set<string>();
+      const stack = [startAnchor.id];
+      while (stack.length) {
+        const id = stack.pop();
+        if (!id || componentIds.has(id) || !anchorIds.has(id)) continue;
+        componentIds.add(id);
+        adjacency.get(id)?.forEach((nextId) => {
+          if (!componentIds.has(nextId)) stack.push(nextId);
+        });
+      }
+      const orderedIds = anchors.filter((anchor) => componentIds.has(anchor.id)).map((anchor) => anchor.id);
+      orderedIds.forEach((id) => {
+        visited.add(id);
+        groups.set(id, orderedIds);
+      });
+    });
+    return groups;
+  }, [anchorElements, anchorLinks]);
+  const applyHistorySnapshotLocally = useCallback((snapshot: MapSessionHistorySnapshot) => {
+    if (!map) return;
+    const restored = resolveMapSessionHistorySnapshotState(snapshot);
+    setMap({
+      ...map,
+      ...restored.mapPatch,
+    });
+    setMapTitleDraft(restored.titleDraft);
+    setMapInfoNameDraft(restored.titleDraft);
+    setMapInfoDescriptionDraft(restored.descriptionDraft);
+    setMapCodeDraft(restored.codeDraft);
+    setMapCategoryId(restored.mapCategory);
+    setTypes(restored.types);
+    setNodes(restored.nodes);
+    setElements(restored.elements);
+    setRelations(restored.relations);
+    setAnchorLinks(restored.anchorLinks);
+    setOutlineItems(restored.outlineItems);
+  }, [map]);
+  const {
+    canUndoSessionMapChanges,
+    canRedoSessionMapChanges,
+    handleUndoSessionChanges,
+    handleRedoSessionChanges,
+  } = useMapSessionHistory({
+    canWriteMap,
+    loading,
+    mapId,
+    userId,
+    map,
+    types,
+    nodes,
+    elements,
+    relations,
+    anchorLinks,
+    outlineItems,
+    applyHistorySnapshotLocally,
+    setError,
+  });
+
+  const handleToggleSuggestionsMenu = useCallback(() => {
+    setShowAddMenu(false);
+    setShowTemplateMenu(false);
+    setShowSearchMenu(false);
+    setShowPrintMenu(false);
+    setShowSuggestionsMenu((prev) => !prev);
+  }, [setShowPrintMenu, setShowSearchMenu, setShowTemplateMenu]);
+
+  useEffect(() => {
+    if (!canUseSuggestionCheck) return;
+    void loadPersistedMapSuggestions();
+  }, [canUseSuggestionCheck, loadPersistedMapSuggestions]);
 
   const loadMapMembers = useCallback(
     async (ownerId?: string | null) => {
@@ -740,12 +799,102 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     },
     [mapId, map?.owner_id]
   );
+  const loadOrgAccessCandidates = useCallback(async (searchOverride?: string) => {
+    if (!canManageMapMetadata) {
+      setOrgAccessCandidates([]);
+      setOrgAccessError(null);
+      setOwnerHasActiveOrganisation(false);
+      return;
+    }
+
+    const search = (searchOverride ?? orgAccessSearch).trim();
+    if (search.length < 2) {
+      setOrgAccessCandidates([]);
+      setOrgAccessError(null);
+      setOrgAccessLoading(false);
+      return;
+    }
+
+    setOrgAccessLoading(true);
+    setOrgAccessError(null);
+
+    try {
+      const {
+        data: { session },
+      } = await supabaseBrowser.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("You are no longer signed in.");
+      }
+
+      const params = new URLSearchParams({ q: search });
+      const response = await fetch(`/api/system-maps/${mapId}/org-access?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const payload = (await response.json()) as {
+        hasActiveOrganisation?: boolean;
+        hasOrganisationMembership?: boolean;
+        users?: OrgAccessCandidate[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to load organisation users.");
+      }
+
+      setOwnerHasActiveOrganisation(Boolean(payload.hasOrganisationMembership ?? payload.hasActiveOrganisation));
+      setOrgAccessCandidates(payload.users ?? []);
+    } catch (loadError) {
+      setOrgAccessError(loadError instanceof Error ? loadError.message : "Unable to load organisation users.");
+    } finally {
+      setOrgAccessLoading(false);
+    }
+  }, [canManageMapMetadata, mapId, orgAccessSearch]);
+
+  const loadOrgAccessStatus = useCallback(async () => {
+    if (!canManageMapMetadata) {
+      setOwnerHasActiveOrganisation(false);
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabaseBrowser.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("You are no longer signed in.");
+      }
+
+      const response = await fetch(`/api/system-maps/${mapId}/org-access`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const payload = (await response.json()) as {
+        hasActiveOrganisation?: boolean;
+        hasOrganisationMembership?: boolean;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to load organisation access status.");
+      }
+
+      setOwnerHasActiveOrganisation(Boolean(payload.hasOrganisationMembership ?? payload.hasActiveOrganisation));
+    } catch {
+      setOwnerHasActiveOrganisation(false);
+    }
+  }, [canManageMapMetadata, mapId]);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [selectedSystemId, setSelectedSystemId] = useState<string | null>(null);
   const [selectedProcessComponentId, setSelectedProcessComponentId] = useState<string | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(null);
   const [selectedGroupingId, setSelectedGroupingId] = useState<string | null>(null);
   const [selectedStickyId, setSelectedStickyId] = useState<string | null>(null);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -753,6 +902,25 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [selectedFlowShapeId, setSelectedFlowShapeId] = useState<string | null>(null);
   const [selectedBowtieElementId, setSelectedBowtieElementId] = useState<string | null>(null);
+  const selectedFlowIdsRef = useRef<Set<string>>(new Set());
+  const canvasSelectionSetters = useMemo<CanvasSelectionSetters>(
+    () => ({
+      setSelectedNodeId,
+      setSelectedProcessId,
+      setSelectedSystemId,
+      setSelectedProcessComponentId,
+      setSelectedPersonId,
+      setSelectedAnchorId,
+      setSelectedGroupingId,
+      setSelectedStickyId,
+      setSelectedImageId,
+      setSelectedTextBoxId,
+      setSelectedTableId,
+      setSelectedFlowShapeId,
+      setSelectedBowtieElementId,
+    }),
+    []
+  );
   const [title, setTitle] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState("");
   const [disciplineSelection, setDisciplineSelection] = useState<DisciplineKey[]>([]);
@@ -766,8 +934,12 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const [processWidthDraft, setProcessWidthDraft] = useState<string>(String(Math.round(processHeadingWidth / minorGridSize)));
   const [processHeightDraft, setProcessHeightDraft] = useState<string>(String(Math.round(processHeadingHeight / minorGridSize)));
   const [processColorDraft, setProcessColorDraft] = useState<string | null>(null);
+  const [processFillModeDraft, setProcessFillModeDraft] = useState<"fill" | "outline">("fill");
+  const [processOutlineColorDraft, setProcessOutlineColorDraft] = useState<string | null>(null);
+  const [processOutlineWidthDraft, setProcessOutlineWidthDraft] = useState("1");
   const [processComponentLabelDraft, setProcessComponentLabelDraft] = useState("");
   const [systemNameDraft, setSystemNameDraft] = useState("");
+  const [personTypeDraft, setPersonTypeDraft] = useState("");
   const [personRoleDraft, setPersonRoleDraft] = useState("");
   const [personRoleIdDraft, setPersonRoleIdDraft] = useState("");
   const [personDepartmentDraft, setPersonDepartmentDraft] = useState("");
@@ -778,10 +950,27 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const [personActingStartDateDraft, setPersonActingStartDateDraft] = useState("");
   const [personRecruitingDraft, setPersonRecruitingDraft] = useState(false);
   const [personProposedRoleDraft, setPersonProposedRoleDraft] = useState(false);
+  const [equipmentTypeDraft, setEquipmentTypeDraft] = useState("");
+  const [equipmentIdentifierDraft, setEquipmentIdentifierDraft] = useState("");
+  const [environmentDetailDraft, setEnvironmentDetailDraft] = useState("");
+  const [environmentFactorTypeDraft, setEnvironmentFactorTypeDraft] = useState("Weather");
+  const [anchorTitleDraft, setAnchorTitleDraft] = useState("");
+  const [anchorColorDraft, setAnchorColorDraft] = useState("#0F766E");
+  const [anchorSearchDraft, setAnchorSearchDraft] = useState("");
+  const [anchorLinkedOrderDraft, setAnchorLinkedOrderDraft] = useState<string[]>([]);
+  const [anchorNavigationNotice, setAnchorNavigationNotice] = useState<{ message: string; left: number; top: number } | null>(null);
   const [groupingLabelDraft, setGroupingLabelDraft] = useState("");
+  const [groupingHeaderColorDraft, setGroupingHeaderColorDraft] = useState("#FFFFFF");
+  const [groupingHeaderFontSizeDraft, setGroupingHeaderFontSizeDraft] = useState("11");
+  const [groupingOutlineWidthDraft, setGroupingOutlineWidthDraft] = useState("1");
   const [groupingWidthDraft, setGroupingWidthDraft] = useState<string>(String(Math.round(groupingDefaultWidth / minorGridSize)));
   const [groupingHeightDraft, setGroupingHeightDraft] = useState<string>(String(Math.round(groupingDefaultHeight / minorGridSize)));
+  const [processFontSizeDraft, setProcessFontSizeDraft] = useState("12");
   const [stickyTextDraft, setStickyTextDraft] = useState("");
+  const [stickyBackgroundColorDraft, setStickyBackgroundColorDraft] = useState("#FEF08A");
+  const [stickyOutlineColorDraft, setStickyOutlineColorDraft] = useState("#F59E0B");
+  const [stickyFillModeDraft, setStickyFillModeDraft] = useState<"fill" | "outline">("fill");
+  const [stickyOutlineWidthDraft, setStickyOutlineWidthDraft] = useState("1");
   const [imageDescriptionDraft, setImageDescriptionDraft] = useState("");
   const [textBoxContentDraft, setTextBoxContentDraft] = useState("");
   const [textBoxBoldDraft, setTextBoxBoldDraft] = useState(false);
@@ -789,10 +978,15 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const [textBoxUnderlineDraft, setTextBoxUnderlineDraft] = useState(false);
   const [textBoxAlignDraft, setTextBoxAlignDraft] = useState<"left" | "center" | "right">("left");
   const [textBoxFontSizeDraft, setTextBoxFontSizeDraft] = useState("24");
+  const [textBoxBackgroundColorDraft, setTextBoxBackgroundColorDraft] = useState("#FFFFFF");
+  const [textBoxOutlineDraft, setTextBoxOutlineDraft] = useState(false);
+  const [textBoxOutlineColorDraft, setTextBoxOutlineColorDraft] = useState("#111827");
+  const [textBoxOutlineWidthDraft, setTextBoxOutlineWidthDraft] = useState("2");
   const [tableRowsDraft, setTableRowsDraft] = useState("2");
   const [tableColumnsDraft, setTableColumnsDraft] = useState("2");
   const [tableHeaderBgDraft, setTableHeaderBgDraft] = useState("");
-  const [tableHeaderFillModeDraft, setTableHeaderFillModeDraft] = useState<"fill" | "outline">("fill");
+  const [tableGridLineColorDraft, setTableGridLineColorDraft] = useState("");
+  const [tableGridLineWeightDraft, setTableGridLineWeightDraft] = useState("0.5");
   const [tableBoldDraft, setTableBoldDraft] = useState(false);
   const [tableItalicDraft, setTableItalicDraft] = useState(false);
   const [tableUnderlineDraft, setTableUnderlineDraft] = useState(false);
@@ -806,36 +1000,85 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const [flowShapeFontSizeDraft, setFlowShapeFontSizeDraft] = useState("24");
   const [flowShapeColorDraft, setFlowShapeColorDraft] = useState(shapeDefaultFillColor);
   const [flowShapeFillModeDraft, setFlowShapeFillModeDraft] = useState<"fill" | "outline">("fill");
+  const [flowShapeOutlineColorDraft, setFlowShapeOutlineColorDraft] = useState(shapeDefaultFillColor);
+  const [flowShapeOutlineWidthDraft, setFlowShapeOutlineWidthDraft] = useState("3");
   const [flowShapeDirectionDraft, setFlowShapeDirectionDraft] = useState<"left" | "right">("right");
   const [flowShapeRotationDraft, setFlowShapeRotationDraft] = useState<0 | 90 | 180 | 270>(0);
   const hydratedFlowShapeDraftIdRef = useRef<string | null>(null);
-  const [bowtieHeadingDraft, setBowtieHeadingDraft] = useState("");
-  const [bowtieDraft, setBowtieDraft] = useState<Record<string, string | boolean>>({});
+  const [bowtieDraft, setBowtieDraft] = useState<BowtieDraftState>({});
   const [imageUrlsByElementId, setImageUrlsByElementId] = useState<Record<string, string>>({});
   const [evidenceUploadFile, setEvidenceUploadFile] = useState<File | null>(null);
   const [evidenceUploadPreviewUrl, setEvidenceUploadPreviewUrl] = useState<string | null>(null);
-  const methodologyMigrationInFlightRef = useRef(false);
+  useSystemMapBootstrap({
+    initialSnapshot,
+    isGuestViewer,
+    mapId,
+    canvasElementSelectColumns,
+    loadMapMembers,
+    savedPos,
+    setLoading,
+    setLoadingProgress,
+    setLoadingMessage,
+    setError,
+    setUserId,
+    setMapRole,
+    setAccessState,
+    setHasCurrentPassAssignment,
+    setMapMembers,
+    setMap,
+    setMapTitleDraft,
+    setMapInfoNameDraft,
+    setMapInfoDescriptionDraft,
+    setMapCodeDraft,
+    setMapCategoryId,
+    setTypes,
+    setNodes,
+    setElements,
+    setRelations,
+    setAnchorLinks,
+    setImageUrlsByElementId,
+    setHasStoredViewport,
+    setPendingViewport,
+  });
 
-  const [desktopNodeAction, setDesktopNodeAction] = useState<"relationship" | "structure" | "delete" | null>(null);
   const [mobileNodeMenuId, setMobileNodeMenuId] = useState<string | null>(null);
-  const [showAddRelationship, setShowAddRelationship] = useState(false);
-  const [relationshipSourceNodeId, setRelationshipSourceNodeId] = useState<string | null>(null);
-  const [relationshipSourceSystemId, setRelationshipSourceSystemId] = useState<string | null>(null);
-  const [relationshipSourceGroupingId, setRelationshipSourceGroupingId] = useState<string | null>(null);
-  const [relationshipDocumentQuery, setRelationshipDocumentQuery] = useState("");
-  const [relationshipSystemQuery, setRelationshipSystemQuery] = useState("");
-  const [relationshipGroupingQuery, setRelationshipGroupingQuery] = useState("");
-  const [relationshipTargetDocumentId, setRelationshipTargetDocumentId] = useState("");
-  const [relationshipTargetSystemId, setRelationshipTargetSystemId] = useState("");
-  const [relationshipTargetGroupingId, setRelationshipTargetGroupingId] = useState("");
-  const [showRelationshipDocumentOptions, setShowRelationshipDocumentOptions] = useState(false);
-  const [showRelationshipSystemOptions, setShowRelationshipSystemOptions] = useState(false);
-  const [showRelationshipGroupingOptions, setShowRelationshipGroupingOptions] = useState(false);
-  const [relationshipDescription, setRelationshipDescription] = useState("");
-  const [relationshipDisciplineSelection, setRelationshipDisciplineSelection] = useState<DisciplineKey[]>([]);
-  const [showRelationshipDisciplineMenu, setShowRelationshipDisciplineMenu] = useState(false);
-  const [relationshipCategory, setRelationshipCategory] = useState<RelationshipCategory>(getDefaultRelationshipCategoryForMap(defaultMapCategoryId));
-  const [relationshipCustomType, setRelationshipCustomType] = useState("");
+  const {
+    showAddRelationship,
+    setShowAddRelationship,
+    relationshipSourceNodeId,
+    relationshipSourceSystemId,
+    relationshipSourceGroupingId,
+    relationshipDocumentQuery,
+    setRelationshipDocumentQuery,
+    relationshipSystemQuery,
+    setRelationshipSystemQuery,
+    relationshipGroupingQuery,
+    setRelationshipGroupingQuery,
+    relationshipTargetDocumentId,
+    setRelationshipTargetDocumentId,
+    relationshipTargetSystemId,
+    setRelationshipTargetSystemId,
+    relationshipTargetGroupingId,
+    setRelationshipTargetGroupingId,
+    showRelationshipDocumentOptions,
+    setShowRelationshipDocumentOptions,
+    showRelationshipSystemOptions,
+    setShowRelationshipSystemOptions,
+    showRelationshipGroupingOptions,
+    setShowRelationshipGroupingOptions,
+    relationshipDescription,
+    setRelationshipDescription,
+    relationshipDisciplineSelection,
+    setRelationshipDisciplineSelection,
+    showRelationshipDisciplineMenu,
+    setShowRelationshipDisciplineMenu,
+    relationshipCategory,
+    setRelationshipCategory,
+    relationshipCustomType,
+    setRelationshipCustomType,
+    closeAddRelationshipModal,
+    openAddRelationshipFromSource: openRelationshipStateFromSource,
+  } = useCanvasRelationshipController({ mapCategoryId });
   const [editingRelationId, setEditingRelationId] = useState<string | null>(null);
   const [editingRelationDescription, setEditingRelationDescription] = useState("");
   const [editingRelationCategory, setEditingRelationCategory] = useState<RelationshipCategory>(getDefaultRelationshipCategoryForMap(defaultMapCategoryId));
@@ -843,12 +1086,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   const [editingRelationDisciplines, setEditingRelationDisciplines] = useState<DisciplineKey[]>([]);
   const [showEditingRelationDisciplineMenu, setShowEditingRelationDisciplineMenu] = useState(false);
   useEffect(() => {
-    setRelationshipCategory((prev) => normalizeRelationshipCategoryForMap(prev, mapCategoryId));
     setEditingRelationCategory((prev) => normalizeRelationshipCategoryForMap(prev, mapCategoryId));
   }, [mapCategoryId]);
   const [confirmDeleteNodeId, setConfirmDeleteNodeId] = useState<string | null>(null);
+  const [confirmDeleteElementId, setConfirmDeleteElementId] = useState<string | null>(null);
   const [outlineNodeId, setOutlineNodeId] = useState<string | null>(null);
-  const [outlineItems, setOutlineItems] = useState<OutlineItemRow[]>([]);
   const [outlineCreateMode, setOutlineCreateMode] = useState<"heading" | "content" | null>(null);
   const [outlineEditItemId, setOutlineEditItemId] = useState<string | null>(null);
   const [confirmDeleteOutlineItemId, setConfirmDeleteOutlineItemId] = useState<string | null>(null);
@@ -872,10 +1114,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   } | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [selectedFlowIds, setSelectedFlowIds] = useState<Set<string>>(new Set());
+  const [canvasInteractionLocked, setCanvasInteractionLocked] = useState(false);
+  const canManipulateCanvasElements = canWriteMap && !canvasInteractionLocked;
   const hoveredNodeFrameRef = useRef<number | null>(null);
   const queuedHoveredNodeRef = useRef<string | null>(null);
   const hoveredEdgeFrameRef = useRef<number | null>(null);
   const queuedHoveredEdgeRef = useRef<string | null>(null);
+  const highlightedDocumentIdsRef = useRef<Set<string>>(new Set());
   const [copiedFlowIds, setCopiedFlowIds] = useState<string[]>([]);
   const [selectionMarquee, setSelectionMarquee] = useState<SelectionMarquee>({
     active: false,
@@ -885,7 +1130,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     currentClientY: 0,
   });
   const [showDeleteSelectionConfirm, setShowDeleteSelectionConfirm] = useState(false);
-  const [leftAsideSlideIn, setLeftAsideSlideIn] = useState(false);
   const [collapsedHeadingIds, setCollapsedHeadingIds] = useState<Set<string>>(new Set());
   const [newHeadingTitle, setNewHeadingTitle] = useState("");
   const [newHeadingLevel, setNewHeadingLevel] = useState<1 | 2 | 3>(1);
@@ -903,17 +1147,40 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     };
   }, [evidenceUploadPreviewUrl]);
   useEffect(() => {
+    const objectUrls = convertedMediaObjectUrlsRef.current;
     return () => {
-      convertedMediaObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      convertedMediaObjectUrlsRef.current.clear();
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+      objectUrls.clear();
     };
-  }, []);
+  }, [setShowPrintMenu, setShowSearchMenu, setShowTemplateMenu]);
+  useEffect(() => {
+    if (!canvasInteractionLocked) return;
+    setSelectedFlowIds(new Set());
+    setSelectionMarquee({
+      active: false,
+      startClientX: 0,
+      startClientY: 0,
+      currentClientX: 0,
+      currentClientY: 0,
+    });
+  }, [canvasInteractionLocked]);
   const normalizePreviewHex = useCallback((value: string | null | undefined): string | null => {
     if (!value) return null;
     const trimmed = value.trim();
     if (!/^#[0-9a-fA-F]{6}$/.test(trimmed)) return null;
     return trimmed.toUpperCase();
   }, []);
+  const selectedAnchorGroupIds = useMemo(
+    () => (selectedAnchorId ? (anchorGroupIdsById.get(selectedAnchorId) ?? [selectedAnchorId]) : []),
+    [anchorGroupIdsById, selectedAnchorId]
+  );
+  const selectedAnchorGroupColor = useMemo(() => {
+    const color =
+      selectedAnchorGroupIds
+        .map((id) => normalizePreviewHex(anchorById.get(id)?.color_hex ?? null))
+        .find((value): value is string => Boolean(value)) ?? "#0F766E";
+    return color;
+  }, [anchorById, normalizePreviewHex, selectedAnchorGroupIds]);
   const isHeicLike = useCallback((mimeRaw: string | null | undefined, nameRaw: string | null | undefined) => {
     const mime = String(mimeRaw ?? "").toLowerCase();
     const name = String(nameRaw ?? "").toLowerCase();
@@ -959,7 +1226,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     const cfg = (selectedShape.element_config as Record<string, unknown> | null) ?? {};
     const isArrow = selectedShape.element_type === "shape_arrow";
     const canFlipDirection = selectedShape.element_type === "shape_pentagon" || selectedShape.element_type === "shape_chevron_left";
-    const persistedHeading = isArrow ? "" : selectedShape.heading ?? "Shape text";
+    const persistedHeading = isArrow ? "" : selectedShape.heading ?? "";
     const persistedAlignRaw = String(cfg.align ?? "center");
     const persistedAlign = persistedAlignRaw === "left" || persistedAlignRaw === "right" ? persistedAlignRaw : "center";
     const persistedFontSizeRaw = Number(cfg.font_size ?? 24);
@@ -969,6 +1236,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     const persistedColor = normalizePreviewHex(selectedShape.color_hex ?? shapeDefaultFillColor) ?? shapeDefaultFillColor;
     const draftColor = normalizePreviewHex(flowShapeColorDraft) ?? persistedColor;
     const persistedFillMode = String(cfg.fill_mode ?? "fill") === "outline" ? "outline" : "fill";
+    const persistedOutlineColor =
+      typeof cfg.outline_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.outline_color) ? cfg.outline_color.toUpperCase() : persistedColor;
+    const draftOutlineColor = normalizePreviewHex(flowShapeOutlineColorDraft) ?? persistedOutlineColor;
+    const persistedOutlineWidthRaw = Number(cfg.outline_width ?? 3);
+    const persistedOutlineWidth = Number.isFinite(persistedOutlineWidthRaw) ? Math.max(1, Math.min(12, Math.round(persistedOutlineWidthRaw))) : 3;
+    const draftOutlineWidthRaw = Number(flowShapeOutlineWidthDraft.trim());
+    const draftOutlineWidth = Number.isFinite(draftOutlineWidthRaw) ? Math.max(1, Math.min(12, Math.round(draftOutlineWidthRaw))) : 3;
     const persistedDirection = String(cfg.direction ?? "right") === "left" ? "left" : "right";
     const persistedRotationRaw = Number(cfg.rotation_deg ?? 0);
     const persistedRotation = persistedRotationRaw === 90 || persistedRotationRaw === 180 || persistedRotationRaw === 270 ? persistedRotationRaw : 0;
@@ -981,6 +1255,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       draftFontSize !== persistedFontSize ||
       draftColor !== persistedColor ||
       flowShapeFillModeDraft !== persistedFillMode ||
+      draftOutlineColor !== persistedOutlineColor ||
+      draftOutlineWidth !== persistedOutlineWidth ||
       (canFlipDirection && flowShapeDirectionDraft !== persistedDirection) ||
       (isArrow && flowShapeRotationDraft !== persistedRotation)
     );
@@ -995,186 +1271,44 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     flowShapeFontSizeDraft,
     flowShapeColorDraft,
     flowShapeFillModeDraft,
+    flowShapeOutlineColorDraft,
+    flowShapeOutlineWidthDraft,
     flowShapeDirectionDraft,
     flowShapeRotationDraft,
-    shapeDefaultFillColor,
     normalizePreviewHex,
   ]);
-  const hasUnsavedDocumentDraftChanges = useMemo(() => {
-    if (!selectedNodeId) return false;
-    const current = nodes.find((n) => n.id === selectedNodeId);
-    if (!current) return false;
-    return (
-      selectedTypeId !== current.type_id ||
-      title !== (current.title ?? "Untitled Document") ||
-      documentNumber !== (current.document_number ?? "") ||
-      disciplineSelection.join("|") !== parseDisciplines(current.discipline).join("|") ||
-      userGroup !== (current.user_group ?? "") ||
-      ownerName !== (current.owner_name ?? "")
-    );
-  }, [selectedNodeId, nodes, selectedTypeId, title, documentNumber, disciplineSelection, userGroup, ownerName]);
-  const hasUnsavedProcessDraftChanges = useMemo(() => {
-    if (!selectedProcessId) return false;
-    const current = elements.find((el) => el.id === selectedProcessId && el.element_type === "category");
-    if (!current) return false;
-    const widthSquares = Number(processWidthDraft.trim());
-    const heightSquares = Number(processHeightDraft.trim());
-    const hasValidSize =
-      Number.isInteger(widthSquares) &&
-      Number.isInteger(heightSquares) &&
-      widthSquares >= processMinWidthSquares &&
-      heightSquares >= processMinHeightSquares;
-    return (
-      processHeadingDraft !== (current.heading ?? "New Category") ||
-      (hasValidSize &&
-        (processWidthDraft !== String(Math.round(Math.max(processMinWidth, Number(current.width ?? processHeadingWidth)) / minorGridSize)) ||
-          processHeightDraft !== String(Math.round(Math.max(processMinHeight, Number(current.height ?? processHeadingHeight)) / minorGridSize)))) ||
-      (processColorDraft ?? "") !== (current.color_hex ?? "")
-    );
-  }, [selectedProcessId, elements, processHeadingDraft, processWidthDraft, processHeightDraft, processColorDraft, processMinWidthSquares, processMinHeightSquares, processMinWidth, processHeadingWidth, minorGridSize, processMinHeight, processHeadingHeight]);
-  const hasUnsavedSystemDraftChanges = useMemo(() => {
-    if (!selectedSystemId) return false;
-    const current = elements.find((el) => el.id === selectedSystemId && el.element_type === "system_circle");
-    return current ? systemNameDraft !== (current.heading ?? "System Name") : false;
-  }, [selectedSystemId, elements, systemNameDraft]);
-  const hasUnsavedProcessComponentDraftChanges = useMemo(() => {
-    if (!selectedProcessComponentId) return false;
-    const current = elements.find((el) => el.id === selectedProcessComponentId && el.element_type === "process_component");
-    return current ? processComponentLabelDraft !== (current.heading ?? "Process") : false;
-  }, [selectedProcessComponentId, elements, processComponentLabelDraft]);
-  const hasUnsavedPersonDraftChanges = useMemo(() => {
-    if (!selectedPersonId) return false;
-    const current = elements.find((el) => el.id === selectedPersonId && isPersonElementType(el.element_type));
-    if (!current) return false;
-    const currentConfig = parseOrgChartPersonConfig(current.element_config);
-    if (!isOrgChartPersonElement(current)) {
-      return buildPersonHeading(personRoleDraft, personDepartmentDraft) !== (current.heading ?? buildPersonHeading("", ""));
-    }
-    return (
-      personRoleDraft !== String(currentConfig.position_title ?? "Position Title") ||
-      personRoleIdDraft !== String(currentConfig.role_id ?? "") ||
-      personDepartmentDraft !== String(currentConfig.department ?? "") ||
-      personOccupantNameDraft !== String(currentConfig.occupant_name ?? "") ||
-      personStartDateDraft !== String(currentConfig.start_date ?? "") ||
-      personEmploymentTypeDraft !== (String(currentConfig.employment_type ?? "fte") === "contractor" ? "contractor" : "fte") ||
-      personActingNameDraft !== String(currentConfig.acting_name ?? "") ||
-      personActingStartDateDraft !== String(currentConfig.acting_start_date ?? "") ||
-      personRecruitingDraft !== Boolean(currentConfig.recruiting) ||
-      personProposedRoleDraft !== Boolean(currentConfig.proposed_role)
-    );
-  }, [
-    selectedPersonId,
-    elements,
-    personRoleDraft,
-    personRoleIdDraft,
-    personDepartmentDraft,
-    personOccupantNameDraft,
-    personStartDateDraft,
-    personEmploymentTypeDraft,
-    personActingNameDraft,
-    personActingStartDateDraft,
-    personRecruitingDraft,
-    personProposedRoleDraft,
-  ]);
-  const hasUnsavedGroupingDraftChanges = useMemo(() => {
-    if (!selectedGroupingId) return false;
-    const current = elements.find((el) => el.id === selectedGroupingId && el.element_type === "grouping_container");
-    if (!current) return false;
-    const widthSquares = Number(groupingWidthDraft.trim());
-    const heightSquares = Number(groupingHeightDraft.trim());
-    const hasValidSize =
-      Number.isInteger(widthSquares) &&
-      Number.isInteger(heightSquares) &&
-      widthSquares >= groupingMinWidthSquares &&
-      heightSquares >= groupingMinHeightSquares;
-    return (
-      groupingLabelDraft !== (current.heading ?? "Group label") ||
-      (hasValidSize &&
-        (groupingWidthDraft !== String(Math.round(Math.max(groupingMinWidth, Number(current.width ?? groupingDefaultWidth)) / minorGridSize)) ||
-          groupingHeightDraft !== String(Math.round(Math.max(groupingMinHeight, Number(current.height ?? groupingDefaultHeight)) / minorGridSize))))
-    );
-  }, [selectedGroupingId, elements, groupingLabelDraft, groupingWidthDraft, groupingHeightDraft, groupingMinWidthSquares, groupingMinHeightSquares, groupingMinWidth, groupingDefaultWidth, minorGridSize, groupingMinHeight, groupingDefaultHeight]);
-  const hasUnsavedStickyDraftChanges = useMemo(() => {
-    if (!selectedStickyId) return false;
-    const current = elements.find((el) => el.id === selectedStickyId && el.element_type === "sticky_note");
-    return current ? stickyTextDraft !== (current.heading ?? "Enter Text") : false;
-  }, [selectedStickyId, elements, stickyTextDraft]);
-  const hasUnsavedImageDraftChanges = useMemo(() => {
-    if (!selectedImageId) return false;
-    const current = elements.find((el) => el.id === selectedImageId && el.element_type === "image_asset");
-    if (!current) return false;
-    const currentConfig = (current.element_config as Record<string, unknown> | null) ?? {};
-    return imageDescriptionDraft !== String(currentConfig.description ?? "");
-  }, [selectedImageId, elements, imageDescriptionDraft]);
-  const hasUnsavedTextBoxDraftChanges = useMemo(() => {
-    if (!selectedTextBoxId) return false;
-    const current = elements.find((el) => el.id === selectedTextBoxId && el.element_type === "text_box");
-    if (!current) return false;
-    const cfg = (current.element_config as Record<string, unknown> | null) ?? {};
-    const persistedAlignRaw = String(cfg.align ?? "left");
-    const persistedAlign = persistedAlignRaw === "center" || persistedAlignRaw === "right" ? persistedAlignRaw : "left";
-    const persistedFontSizeRaw = Number(cfg.font_size ?? 16);
-    const persistedFontSize = Number.isFinite(persistedFontSizeRaw) ? Math.max(16, Math.min(168, Math.round(persistedFontSizeRaw))) : 16;
-    const draftFontSizeRaw = Number(textBoxFontSizeDraft.trim());
-    const draftFontSize = Number.isFinite(draftFontSizeRaw) ? Math.max(16, Math.min(168, Math.round(draftFontSizeRaw))) : 16;
-    return (
-      textBoxContentDraft !== (current.heading ?? "Click to edit text box") ||
-      textBoxBoldDraft !== Boolean(cfg.bold) ||
-      textBoxItalicDraft !== Boolean(cfg.italic) ||
-      textBoxUnderlineDraft !== Boolean(cfg.underline) ||
-      textBoxAlignDraft !== persistedAlign ||
-      draftFontSize !== persistedFontSize
-    );
-  }, [selectedTextBoxId, elements, textBoxContentDraft, textBoxBoldDraft, textBoxItalicDraft, textBoxUnderlineDraft, textBoxAlignDraft, textBoxFontSizeDraft]);
-  const hasUnsavedTableDraftChanges = useMemo(() => {
-    if (!selectedTableId) return false;
-    const current = elements.find((el) => el.id === selectedTableId && el.element_type === "table");
-    if (!current) return false;
-    const cfg = (current.element_config as Record<string, unknown> | null) ?? {};
-    const persistedRowsRaw = Number(cfg.rows ?? tableMinRows);
-    const persistedColumnsRaw = Number(cfg.columns ?? tableMinColumns);
-    const persistedRows = Number.isFinite(persistedRowsRaw) ? Math.max(tableMinRows, Math.floor(persistedRowsRaw)) : tableMinRows;
-    const persistedColumns = Number.isFinite(persistedColumnsRaw) ? Math.max(tableMinColumns, Math.floor(persistedColumnsRaw)) : tableMinColumns;
-    const persistedHeaderBg = typeof cfg.header_bg_color === "string" ? cfg.header_bg_color.toUpperCase() : "";
-    const persistedHeaderFillMode = String(cfg.header_fill_mode ?? "fill") === "outline" ? "outline" : "fill";
-    const persistedAlignRaw = String(cfg.align ?? "center");
-    const persistedAlign = persistedAlignRaw === "left" || persistedAlignRaw === "right" ? persistedAlignRaw : "center";
-    const persistedFontSizeRaw = Number(cfg.font_size ?? 10);
-    const persistedFontSize = Number.isFinite(persistedFontSizeRaw) ? Math.max(10, Math.min(72, Math.round(persistedFontSizeRaw))) : 10;
-    const draftFontSizeRaw = Number(tableFontSizeDraft.trim());
-    const draftFontSize = Number.isFinite(draftFontSizeRaw) ? Math.max(10, Math.min(72, Math.round(draftFontSizeRaw))) : 10;
-    return (
-      tableRowsDraft !== String(persistedRows) ||
-      tableColumnsDraft !== String(persistedColumns) ||
-      tableHeaderBgDraft !== persistedHeaderBg ||
-      tableHeaderFillModeDraft !== persistedHeaderFillMode ||
-      tableBoldDraft !== Boolean(cfg.bold) ||
-      tableItalicDraft !== Boolean(cfg.italic) ||
-      tableUnderlineDraft !== Boolean(cfg.underline) ||
-      tableAlignDraft !== persistedAlign ||
-      draftFontSize !== persistedFontSize
-    );
-  }, [selectedTableId, elements, tableMinRows, tableMinColumns, tableRowsDraft, tableColumnsDraft, tableHeaderBgDraft, tableHeaderFillModeDraft, tableBoldDraft, tableItalicDraft, tableUnderlineDraft, tableAlignDraft, tableFontSizeDraft]);
-  const hasUnsavedBowtieDraftChanges = useMemo(() => {
-    if (!selectedBowtieElementId) return false;
-    const current = elements.find((el) => el.id === selectedBowtieElementId && isMethodologyElementType(el.element_type));
-    if (!current) return false;
-    const currentConfig = buildMethodologyDraft(current);
-    return (
-      JSON.stringify(bowtieDraft) !== JSON.stringify(currentConfig) ||
-      !!evidenceUploadFile
-    );
-  }, [selectedBowtieElementId, elements, bowtieDraft, evidenceUploadFile]);
   const canvasPreviewElements = useMemo(() => {
-    if (!selectedProcessId && !selectedTextBoxId && !selectedTableId && !selectedFlowShapeId) return elements;
+    if (!selectedProcessId && !selectedAnchorId && !selectedGroupingId && !selectedStickyId && !selectedTextBoxId && !selectedTableId && !selectedFlowShapeId) return elements;
     let changed = false;
+    const anchorGroupPreviewColor = normalizePreviewHex(anchorColorDraft) ?? selectedAnchorGroupColor;
+    const selectedAnchorGroupIdSet = new Set(selectedAnchorGroupIds);
     const next = elements.map((el) => {
+      if (selectedAnchorId && selectedAnchorGroupIdSet.has(el.id) && el.element_type === "anchor") {
+        changed = true;
+        return {
+          ...el,
+          heading: el.id === selectedAnchorId ? anchorTitleDraft : el.heading,
+          color_hex: anchorGroupPreviewColor,
+        };
+      }
       if (selectedProcessId && el.id === selectedProcessId && el.element_type === "category") {
         changed = true;
+        const parsedProcessSize = Number(processFontSizeDraft.trim());
+        const previewProcessSize = Number.isFinite(parsedProcessSize) ? Math.max(10, Math.min(72, Math.round(parsedProcessSize))) : 12;
         return {
           ...el,
           heading: processHeadingDraft,
           color_hex: processColorDraft ? normalizePreviewHex(processColorDraft) : el.color_hex,
+          element_config: {
+            ...((el.element_config as Record<string, unknown> | null) ?? {}),
+            font_size: previewProcessSize,
+            fill_mode: processFillModeDraft,
+            outline_color: normalizePreviewHex(processOutlineColorDraft) ?? (el.element_config as Record<string, unknown> | null)?.outline_color,
+            outline_width: (() => {
+              const parsed = Number(processOutlineWidthDraft.trim());
+              return Number.isFinite(parsed) ? Math.max(1, Math.min(12, Math.round(parsed))) : 1;
+            })(),
+          },
         };
       }
       if (selectedTextBoxId && el.id === selectedTextBoxId && el.element_type === "text_box") {
@@ -1191,6 +1325,47 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             underline: textBoxUnderlineDraft,
             align: textBoxAlignDraft,
             font_size: previewTextSize,
+            background_color: textBoxBackgroundColorDraft,
+            outline: textBoxOutlineDraft,
+            outline_color: normalizePreviewHex(textBoxOutlineColorDraft) ?? (el.element_config as Record<string, unknown> | null)?.outline_color,
+            outline_width: (() => {
+              const parsed = Number(textBoxOutlineWidthDraft.trim());
+              return Number.isFinite(parsed) ? Math.max(1, Math.min(12, Math.round(parsed))) : 2;
+            })(),
+          },
+        };
+      }
+      if (selectedGroupingId && el.id === selectedGroupingId && el.element_type === "grouping_container") {
+        changed = true;
+        const parsedHeaderFontSize = Number(groupingHeaderFontSizeDraft.trim());
+        const headerFontSize = Number.isFinite(parsedHeaderFontSize) ? Math.max(10, Math.min(48, Math.round(parsedHeaderFontSize))) : 11;
+        const parsedOutlineWidth = Number(groupingOutlineWidthDraft.trim());
+        const outlineWidth = Number.isFinite(parsedOutlineWidth) ? Math.max(1, Math.min(12, Math.round(parsedOutlineWidth))) : 1;
+        return {
+          ...el,
+          heading: groupingLabelDraft,
+          element_config: {
+            ...((el.element_config as Record<string, unknown> | null) ?? {}),
+            header_bg_color: normalizePreviewHex(groupingHeaderColorDraft) ?? (el.element_config as Record<string, unknown> | null)?.header_bg_color,
+            header_font_size: headerFontSize,
+            outline_width: outlineWidth,
+          },
+        };
+      }
+      if (selectedStickyId && el.id === selectedStickyId && el.element_type === "sticky_note") {
+        changed = true;
+        return {
+          ...el,
+          heading: stickyTextDraft,
+          element_config: {
+            ...((el.element_config as Record<string, unknown> | null) ?? {}),
+            background_color: normalizePreviewHex(stickyBackgroundColorDraft) ?? (el.element_config as Record<string, unknown> | null)?.background_color,
+            outline_color: normalizePreviewHex(stickyOutlineColorDraft) ?? (el.element_config as Record<string, unknown> | null)?.outline_color,
+            fill_mode: stickyFillModeDraft,
+            outline_width: (() => {
+              const parsed = Number(stickyOutlineWidthDraft.trim());
+              return Number.isFinite(parsed) ? Math.max(1, Math.min(12, Math.round(parsed))) : 1;
+            })(),
           },
         };
       }
@@ -1210,6 +1385,9 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         const rows = Number.isFinite(parsedRows) ? Math.max(tableMinRows, Math.floor(parsedRows)) : tableMinRows;
         const columns = Number.isFinite(parsedColumns) ? Math.max(tableMinColumns, Math.floor(parsedColumns)) : tableMinColumns;
         const nextHeaderColor = normalizePreviewHex(tableHeaderBgDraft);
+        const nextGridLineColor = normalizePreviewHex(tableGridLineColorDraft);
+        const parsedGridLineWeight = Number(tableGridLineWeightDraft.trim());
+        const previewGridLineWeight = Number.isFinite(parsedGridLineWeight) ? Math.max(0.5, Math.min(6, Math.round(parsedGridLineWeight * 2) / 2)) : 0.5;
         const parsedTableSize = Number(tableFontSizeDraft.trim());
         const previewTableSize = Number.isFinite(parsedTableSize) ? Math.max(10, Math.min(72, Math.round(parsedTableSize))) : 10;
         return {
@@ -1221,7 +1399,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             rows,
             columns,
             header_bg_color: nextHeaderColor,
-            header_fill_mode: tableHeaderFillModeDraft,
+            grid_line_color: nextGridLineColor,
+            grid_line_weight: previewGridLineWeight,
             bold: tableBoldDraft,
             italic: tableItalicDraft,
             underline: tableUnderlineDraft,
@@ -1272,6 +1451,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             align: flowShapeAlignDraft,
             font_size: previewTextSize,
             fill_mode: flowShapeFillModeDraft,
+            outline_color: normalizePreviewHex(flowShapeOutlineColorDraft) ?? previewColor,
+            outline_width: (() => {
+              const parsed = Number(flowShapeOutlineWidthDraft.trim());
+              return Number.isFinite(parsed) ? Math.max(1, Math.min(12, Math.round(parsed))) : 3;
+            })(),
             ...(canFlipDirection ? { direction: flowShapeDirectionDraft } : {}),
             ...(isArrow ? { rotation_deg: flowShapeRotationDraft } : {}),
           },
@@ -1283,21 +1467,46 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }, [
     elements,
     selectedProcessId,
+    selectedAnchorId,
+    selectedAnchorGroupIds,
+    selectedAnchorGroupColor,
+    selectedGroupingId,
+    selectedStickyId,
     selectedTextBoxId,
     selectedTableId,
     selectedFlowShapeId,
     processHeadingDraft,
     processColorDraft,
+    processFillModeDraft,
+    processOutlineColorDraft,
+    processOutlineWidthDraft,
+    processFontSizeDraft,
+    anchorTitleDraft,
+    anchorColorDraft,
+    groupingLabelDraft,
+    groupingHeaderColorDraft,
+    groupingHeaderFontSizeDraft,
+    groupingOutlineWidthDraft,
+    stickyTextDraft,
+    stickyBackgroundColorDraft,
+    stickyOutlineColorDraft,
+    stickyFillModeDraft,
+    stickyOutlineWidthDraft,
     textBoxContentDraft,
     textBoxBoldDraft,
     textBoxItalicDraft,
     textBoxUnderlineDraft,
     textBoxAlignDraft,
     textBoxFontSizeDraft,
+    textBoxBackgroundColorDraft,
+    textBoxOutlineDraft,
+    textBoxOutlineColorDraft,
+    textBoxOutlineWidthDraft,
     tableRowsDraft,
     tableColumnsDraft,
     tableHeaderBgDraft,
-    tableHeaderFillModeDraft,
+    tableGridLineColorDraft,
+    tableGridLineWeightDraft,
     tableBoldDraft,
     tableItalicDraft,
     tableUnderlineDraft,
@@ -1311,25 +1520,40 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     flowShapeFontSizeDraft,
     flowShapeColorDraft,
     flowShapeFillModeDraft,
+    flowShapeOutlineColorDraft,
+    flowShapeOutlineWidthDraft,
     flowShapeDirectionDraft,
     flowShapeRotationDraft,
-    shapeArrowDefaultWidth,
-    shapeArrowDefaultHeight,
-    shapeArrowMinWidth,
-    shapeArrowMinHeight,
-    tableMinRows,
-    tableMinColumns,
-    tableMinWidth,
-    tableMinHeight,
-    tableDefaultWidth,
-    tableDefaultHeight,
-    shapeMinWidth,
-    shapeMinHeight,
     normalizePreviewHex,
   ]);
+  const anchorGroupColorById = useMemo(() => {
+    const colors = new Map<string, string>();
+    const previewAnchorById = new Map(
+      canvasPreviewElements
+        .filter((element) => element.element_type === "anchor")
+        .map((anchor) => [anchor.id, anchor] as const)
+    );
+    const seen = new Set<string>();
+    anchorGroupIdsById.forEach((groupIds, anchorId) => {
+      if (seen.has(anchorId)) return;
+      const groupColor =
+        groupIds
+          .map((id) => normalizePreviewHex(previewAnchorById.get(id)?.color_hex ?? null))
+          .find((value): value is string => Boolean(value)) ?? "#0F766E";
+      groupIds.forEach((id) => {
+        seen.add(id);
+        colors.set(id, groupColor);
+      });
+    });
+    previewAnchorById.forEach((anchor, id) => {
+      if (!colors.has(id)) colors.set(id, normalizePreviewHex(anchor.color_hex ?? null) ?? "#0F766E");
+    });
+    return colors;
+  }, [anchorGroupIdsById, canvasPreviewElements, normalizePreviewHex]);
 
   const typesById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
   const elementsById = useMemo(() => new Map(elements.map((el) => [el.id, el])), [elements]);
+  const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const addDocumentTypes = useMemo(() => {
     const grouped = new Map<string, DocumentTypeRow[]>();
     types.forEach((t) => {
@@ -1354,32 +1578,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       .sort((a, b) => a.level_rank - b.level_rank || getDisplayTypeName(a.name).localeCompare(getDisplayTypeName(b.name)));
   }, [types, mapId]);
 
-  const ranks = useMemo(() => {
-    const values = new Set<number>();
-    nodes.forEach((n) => {
-      const t = typesById.get(n.type_id);
-      if (t) values.add(t.level_rank);
-    });
-    if (!values.size) types.forEach((t) => values.add(t.level_rank));
-    return [...values].sort((a, b) => a - b);
-  }, [nodes, types, typesById]);
-
-  const rankLane = useMemo(() => {
-    const m = new Map<number, { min: number; max: number }>();
-    ranks.forEach((rank, i) => {
-      m.set(rank, { min: i * laneHeight + 20, max: i * laneHeight + laneHeight - 20 });
-    });
-    return m;
-  }, [ranks]);
-
-  const getClampRange = useCallback((typeId: string) => {
-    const t = typesById.get(typeId);
-    if (!t) return { min: 0, max: 3000 };
-    if (t.band_y_min !== null || t.band_y_max !== null) {
-      return { min: t.band_y_min ?? 0, max: t.band_y_max ?? 3000 };
-    }
-    return rankLane.get(t.level_rank) ?? { min: 0, max: 3000 };
-  }, [typesById, rankLane]);
   const getNodeSize = useCallback((node: DocumentNodeRow) => {
     const rawTypeName = typesById.get(node.type_id)?.name ?? "Document";
     const isLandscape = isLandscapeTypeName(rawTypeName);
@@ -1421,132 +1619,200 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     }
     return null;
   }, [nodes, getNodeSize, snapToMinorGrid]);
-  const getFlowNodeBounds = useCallback((flowId: string) => {
-    if (flowId.startsWith("process:")) {
-      const elementId = parseProcessFlowId(flowId);
-      const el = canvasPreviewElements.find((item) => item.id === elementId);
-      if (!el) return null;
+  const flowElementBoundsById = useMemo(() => {
+    const bounds = new Map<string, { x: number; y: number; width: number; height: number }>();
+    canvasPreviewElements.forEach((el) => {
       if (el.element_type === "grouping_container") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(groupingMinWidth, el.width || groupingDefaultWidth),
           height: Math.max(groupingMinHeight, el.height || groupingDefaultHeight),
-        };
+        });
+        return;
       }
       if (el.element_type === "system_circle") {
-        return { x: el.pos_x, y: el.pos_y, width: systemCircleDiameter, height: systemCircleElementHeight };
+        bounds.set(el.id, { x: el.pos_x, y: el.pos_y, width: systemCircleDiameter, height: systemCircleElementHeight });
+        return;
       }
       if (el.element_type === "process_component") {
-        return { x: el.pos_x, y: el.pos_y, width: processComponentWidth, height: processComponentElementHeight };
+        bounds.set(el.id, { x: el.pos_x, y: el.pos_y, width: processComponentWidth, height: processComponentElementHeight });
+        return;
       }
-      if (isPersonElementType(el.element_type)) {
-        const width = isOrgChartPersonElement(el) ? orgChartPersonWidth : personElementWidth;
-        const height = isOrgChartPersonElement(el) ? orgChartPersonHeight : personElementHeight;
-        return { x: el.pos_x, y: el.pos_y, width, height };
+      if (el.element_type === "person") {
+        bounds.set(el.id, {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: mapCategoryId === "org_chart" ? orgChartPersonWidth : personElementWidth,
+          height: mapCategoryId === "org_chart" ? orgChartPersonHeight : personElementHeight,
+        });
+        return;
+      }
+      if (el.element_type === "equipment" || el.element_type === "environment") {
+        bounds.set(el.id, {
+          x: el.pos_x,
+          y: el.pos_y,
+          width: personElementWidth,
+          height: personElementHeight,
+        });
+        return;
       }
       if (el.element_type === "sticky_note") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(stickyMinSize, el.width || stickyDefaultSize),
           height: Math.max(stickyMinSize, el.height || stickyDefaultSize),
-        };
+        });
+        return;
       }
       if (el.element_type === "image_asset") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(imageMinWidth, el.width || imageDefaultWidth),
           height: Math.max(imageMinHeight, el.height || imageDefaultWidth),
-        };
+        });
+        return;
       }
       if (el.element_type === "text_box") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(textBoxMinWidth, el.width || textBoxDefaultWidth),
           height: Math.max(textBoxMinHeight, el.height || textBoxDefaultHeight),
-        };
+        });
+        return;
       }
       if (el.element_type === "table") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(tableMinWidth, el.width || tableDefaultWidth),
           height: Math.max(tableMinHeight, el.height || tableDefaultHeight),
-        };
+        });
+        return;
       }
       if (el.element_type === "shape_rectangle") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(shapeMinWidth, el.width || shapeRectangleDefaultWidth),
           height: Math.max(shapeMinHeight, el.height || shapeRectangleDefaultHeight),
-        };
+        });
+        return;
       }
       if (el.element_type === "shape_circle") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(shapeMinWidth, el.width || shapeCircleDefaultSize),
           height: Math.max(shapeMinHeight, el.height || shapeCircleDefaultSize),
-        };
+        });
+        return;
       }
       if (el.element_type === "shape_pill") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(shapeMinWidth, el.width || shapePillDefaultWidth),
           height: Math.max(shapeMinHeight, el.height || shapePillDefaultHeight),
-        };
+        });
+        return;
       }
-      if (el.element_type === "shape_pentagon") {
-        return {
+      if (el.element_type === "shape_pentagon" || el.element_type === "shape_chevron_left") {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(shapeMinWidth, el.width || shapePentagonDefaultWidth),
           height: Math.max(shapeMinHeight, el.height || shapePentagonDefaultHeight),
-        };
-      }
-      if (el.element_type === "shape_chevron_left") {
-        return {
-          x: el.pos_x,
-          y: el.pos_y,
-          width: Math.max(shapeMinWidth, el.width || shapePentagonDefaultWidth),
-          height: Math.max(shapeMinHeight, el.height || shapePentagonDefaultHeight),
-        };
+        });
+        return;
       }
       if (el.element_type === "shape_arrow") {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(shapeArrowMinWidth, el.width || shapeArrowDefaultWidth),
           height: Math.max(shapeArrowMinHeight, el.height || shapeArrowDefaultHeight),
-        };
+        });
+        return;
       }
       if (isMethodologyElementType(el.element_type)) {
-        return {
+        bounds.set(el.id, {
           x: el.pos_x,
           y: el.pos_y,
           width: Math.max(minorGridSize * 2, el.width || incidentDefaultWidth),
           height: Math.max(minorGridSize, el.height || incidentSquareSize),
-        };
+        });
+        return;
       }
-      return {
+      bounds.set(el.id, {
         x: el.pos_x,
         y: el.pos_y,
         width: Math.max(processMinWidth, el.width || processHeadingWidth),
         height: Math.max(processMinHeight, el.height || processHeadingHeight),
-      };
+      });
+    });
+    return bounds;
+  }, [canvasPreviewElements, mapCategoryId]);
+
+  const getFlowNodeBounds = useCallback((flowId: string) => {
+    if (flowId.startsWith("process:")) {
+      return flowElementBoundsById.get(parseProcessFlowId(flowId)) ?? null;
     }
-    const node = nodes.find((n) => n.id === flowId);
+    const node = nodesById.get(flowId);
     if (!node) return null;
     const size = getNodeSize(node);
     return { x: node.pos_x, y: node.pos_y, width: size.width, height: size.height };
-  }, [canvasPreviewElements, nodes, getNodeSize, mapCategoryId, minorGridSize, orgChartPersonHeight, orgChartPersonWidth, personElementHeight, personElementWidth, shapeArrowDefaultHeight, shapeArrowDefaultWidth, shapeArrowMinHeight, shapeArrowMinWidth, shapeCircleDefaultSize, shapeMinHeight, shapeMinWidth, shapePentagonDefaultHeight, shapePentagonDefaultWidth, shapePillDefaultHeight, shapePillDefaultWidth, shapeRectangleDefaultHeight, shapeRectangleDefaultWidth, tableDefaultWidth, tableDefaultHeight, tableMinWidth, tableMinHeight]);
+  }, [flowElementBoundsById, nodesById, getNodeSize]);
 
-  const [flowNodes, setFlowNodes, onFlowNodesChange] = useNodesState<Node<FlowData>>([]);
+  const [flowNodes, setFlowNodesState] = useState<Node<FlowData>[]>([]);
+  const setFlowNodes = useCallback<React.Dispatch<React.SetStateAction<Node<FlowData>[]>>>((value) => {
+    const next =
+      typeof value === "function"
+        ? (value as (previous: Node<FlowData>[]) => Node<FlowData>[])(flowNodesRef.current)
+        : value;
+    flowNodesRef.current = next;
+    setFlowNodesState(next);
+  }, []);
+  useEffect(() => {
+    flowNodesRef.current = flowNodes;
+  }, [flowNodes]);
+  const applyFlowNodeChanges = useCallback(
+    (changes: NodeChange<Node<FlowData>>[]) => {
+      if (!changes.length) return;
+      setFlowNodes((previous) => applyNodeChanges(changes, previous));
+    },
+    [setFlowNodes]
+  );
+  const flushPendingFlowNodePositionChanges = useCallback(() => {
+    if (flowNodeChangeFrameRef.current !== null) {
+      cancelAnimationFrame(flowNodeChangeFrameRef.current);
+      flowNodeChangeFrameRef.current = null;
+    }
+    const pending = pendingFlowNodePositionChangesRef.current;
+    if (!pending.length) return;
+    pendingFlowNodePositionChangesRef.current = [];
+    const latestByNodeId = new Map<string, NodeChange<Node<FlowData>>>();
+    pending.forEach((change) => {
+      const id = (change as { id?: string }).id;
+      if (!id) return;
+      latestByNodeId.set(id, change);
+    });
+    applyFlowNodeChanges(Array.from(latestByNodeId.values()));
+  }, [applyFlowNodeChanges]);
+  const scheduleFlowNodePositionChanges = useCallback(
+    (changes: NodeChange<Node<FlowData>>[]) => {
+      pendingFlowNodePositionChangesRef.current.push(...changes);
+      if (flowNodeChangeFrameRef.current !== null) return;
+      flowNodeChangeFrameRef.current = requestAnimationFrame(() => {
+        flowNodeChangeFrameRef.current = null;
+        flushPendingFlowNodePositionChanges();
+      });
+    },
+    [flushPendingFlowNodePositionChanges]
+  );
   const scheduleHoveredNodeId = useCallback((value: string | null) => {
     if (isNodeDragActiveRef.current) return;
     queuedHoveredNodeRef.current = value;
@@ -1569,12 +1835,20 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }, []);
   useEffect(() => {
     return () => {
+      if (flowNodeChangeFrameRef.current !== null) cancelAnimationFrame(flowNodeChangeFrameRef.current);
       if (hoveredNodeFrameRef.current !== null) cancelAnimationFrame(hoveredNodeFrameRef.current);
       if (hoveredEdgeFrameRef.current !== null) cancelAnimationFrame(hoveredEdgeFrameRef.current);
+      pendingFlowNodePositionChangesRef.current = [];
     };
   }, []);
   const handleFlowNodesChange = useCallback((changes: NodeChange<Node<FlowData>>[]) => {
-    onFlowNodesChange(changes);
+    const positionOnly = changes.length > 0 && changes.every((change) => (change as { type?: string }).type === "position");
+    if (positionOnly) {
+      scheduleFlowNodePositionChanges(changes);
+      return;
+    }
+    flushPendingFlowNodePositionChanges();
+    applyFlowNodeChanges(changes);
     const dimensionChanges = changes.filter((c) => {
       const change = c as { type?: string; id?: string; dimensions?: { width: number; height: number } };
       return (
@@ -1599,6 +1873,17 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         const height = Math.max(processMinHeight, snapToMinorGrid(change.dimensions.height));
         const currentWidth = Math.max(processMinWidth, snapToMinorGrid(current.width || processHeadingWidth));
         const currentHeight = Math.max(processMinHeight, snapToMinorGrid(current.height || processHeadingHeight));
+        if (width !== currentWidth || height !== currentHeight) {
+          nextSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedResizeIds.add(elementId);
+        }
+        return;
+      }
+      if (current.element_type === "anchor") {
+        const width = Math.max(anchorNodeMinWidth, snapToMinorGrid(change.dimensions.width));
+        const height = Math.max(anchorNodeMinHeight, Math.round((width / anchorNodeWidth) * anchorNodeHeight));
+        const currentWidth = Math.max(anchorNodeMinWidth, snapToMinorGrid(current.width || anchorNodeWidth));
+        const currentHeight = Math.max(anchorNodeMinHeight, Math.round((currentWidth / anchorNodeWidth) * anchorNodeHeight));
         if (width !== currentWidth || height !== currentHeight) {
           nextSizes.set(elementId, { width, height });
           if (change.resizing === false) completedResizeIds.add(elementId);
@@ -1807,6 +2092,9 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         } else if (current.element_type === "incident_finding") {
           minWidth = incidentDefaultWidth;
           minHeight = incidentThreeOneHeight;
+        } else if (current.element_type.startsWith("incident_")) {
+          minWidth = incidentCardWidth;
+          minHeight = incidentCardHeight;
         }
         const width = Math.max(minWidth, snapToMinorGrid(change.dimensions.width));
         const height = Math.max(minHeight, snapToMinorGrid(change.dimensions.height));
@@ -1854,13 +2142,29 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       }, completedResizeIds.has(elementId) ? 0 : 220);
       resizePersistTimersRef.current.set(elementId, timer);
     });
-  }, [onFlowNodesChange, elementsById, elements, mapId, snapToMinorGrid, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, tableDefaultWidth, tableDefaultHeight, tableMinWidth, tableMinHeight]);
+  }, [
+    applyFlowNodeChanges,
+    flushPendingFlowNodePositionChanges,
+    scheduleFlowNodePositionChanges,
+    elementsById,
+    elements,
+    nodes,
+    getNodeSize,
+    getFlowNodeBounds,
+    mapId,
+    snapToMinorGrid,
+    canEditElement,
+    selectedFlowShapeId,
+    hasUnsavedFlowShapeDraftChanges,
+  ]);
 
   useEffect(() => {
+    const resizeTimers = resizePersistTimersRef.current;
+    const resizeValues = resizePersistValuesRef.current;
     return () => {
-      resizePersistTimersRef.current.forEach((timer) => clearTimeout(timer));
-      resizePersistTimersRef.current.clear();
-      resizePersistValuesRef.current.clear();
+      resizeTimers.forEach((timer) => clearTimeout(timer));
+      resizeTimers.clear();
+      resizeValues.clear();
     };
   }, []);
 
@@ -1868,27 +2172,37 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     async (elementId: string, rowIndex: number, columnIndex: number, value: string) => {
       const current = elements.find((el) => el.id === elementId && el.element_type === "table");
       if (!current || !canEditElement(current)) return;
-      const cfg = (current.element_config as Record<string, unknown> | null) ?? {};
-      const existingRows = Array.isArray(cfg.cell_texts)
-        ? (cfg.cell_texts as unknown[]).map((row) => (Array.isArray(row) ? row.map((cell) => (cell == null ? "" : String(cell))) : []))
-        : [];
-      while (existingRows.length <= rowIndex) existingRows.push([]);
-      while (existingRows[rowIndex].length <= columnIndex) existingRows[rowIndex].push("");
-      existingRows[rowIndex][columnIndex] = value;
-      const nextConfig = {
-        ...cfg,
-        cell_texts: existingRows,
-      };
+      let nextConfig: Record<string, unknown> | null = null;
       setElements((prev) =>
-        prev.map((el) => (el.id === elementId ? { ...el, element_config: nextConfig } : el))
+        prev.map((el) => {
+          if (el.id !== elementId || el.element_type !== "table") return el;
+          const cfg = (el.element_config as Record<string, unknown> | null) ?? {};
+          const existingRows = Array.isArray(cfg.cell_texts)
+            ? (cfg.cell_texts as unknown[]).map((row) => (Array.isArray(row) ? row.map((cell) => (cell == null ? "" : String(cell))) : []))
+            : [];
+          while (existingRows.length <= rowIndex) existingRows.push([]);
+          while (existingRows[rowIndex].length <= columnIndex) existingRows[rowIndex].push("");
+          existingRows[rowIndex][columnIndex] = value;
+          nextConfig = {
+            ...cfg,
+            cell_texts: existingRows,
+          };
+          return { ...el, element_config: nextConfig };
+        })
       );
-      if (!canWriteMap) return;
-      const { error: e } = await supabaseBrowser
+      if (!canWriteMap || !nextConfig) return;
+      const { data, error: e } = await supabaseBrowser
         .schema("ms")
         .from("canvas_elements")
         .update({ element_config: nextConfig })
         .eq("id", elementId)
-        .eq("map_id", mapId);
+        .eq("map_id", mapId)
+        .select(canvasElementSelectColumns)
+        .single();
+      if (data) {
+        const updated = data as unknown as CanvasElementRow;
+        setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
+      }
       if (e) setError(e.message || "Unable to save table cell.");
     },
     [elements, canEditElement, canWriteMap, mapId, setElements, setError]
@@ -1906,6 +2220,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         align?: "left" | "center" | "right";
         vAlign?: "top" | "middle" | "bottom";
         fontSize?: number;
+        backgroundColor?: string | null;
       }
     ) => {
       let nextConfig: Record<string, unknown> | null = null;
@@ -1928,6 +2243,12 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         const vAlign = style.vAlign === "top" || style.vAlign === "bottom" ? style.vAlign : "middle";
         const fontSizeRaw = Number(style.fontSize ?? 10);
         const fontSize = Number.isFinite(fontSizeRaw) ? Math.max(10, Math.min(72, Math.round(fontSizeRaw))) : 10;
+        const backgroundColor =
+          typeof style.backgroundColor === "string" && /^#[0-9a-fA-F]{6}$/.test(style.backgroundColor)
+            ? style.backgroundColor.toUpperCase()
+            : style.backgroundColor === null
+            ? null
+            : undefined;
         existingRows[rowIndex][columnIndex] = {
           ...existingRows[rowIndex][columnIndex],
           bold: Boolean(style.bold),
@@ -1936,6 +2257,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           align,
           v_align: vAlign,
           font_size: fontSize,
+          ...(backgroundColor !== undefined ? { background_color: backgroundColor } : {}),
         };
         nextConfig = {
           ...cfg,
@@ -1953,46 +2275,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       if (e) setError(e.message || "Unable to save table cell style.");
     },
     [canEditElement, canWriteMap, mapId, setElements, setError]
-  );
-  const handleTableResize = useCallback(
-    async (elementId: string, width: number, height: number, options?: { commit?: boolean }) => {
-      const current = elementsById.get(elementId);
-      if (!current || !canEditElement(current)) return;
-      const nextWidth = Math.max(tableMinWidth, snapToMinorGrid(width));
-      const nextHeight = Math.max(tableMinHeight, snapToMinorGrid(height));
-
-      setFlowNodes((prev) =>
-        prev.map((node) =>
-          node.id === processFlowId(elementId)
-            ? {
-                ...node,
-                style: {
-                  ...(node.style ?? {}),
-                  width: nextWidth,
-                  height: nextHeight,
-                },
-              }
-            : node
-        )
-      );
-
-      if (!options?.commit) return;
-
-      setElements((prev) =>
-        prev.map((el) => (el.id === elementId ? { ...el, width: nextWidth, height: nextHeight } : el))
-      );
-
-      if (!canWriteMap) return;
-
-      const { error: e } = await supabaseBrowser
-        .schema("ms")
-        .from("canvas_elements")
-        .update({ width: nextWidth, height: nextHeight })
-        .eq("id", elementId)
-        .eq("map_id", mapId);
-      if (e && !isAbortLikeError(e)) setError(e.message || "Unable to save table size.");
-    },
-    [elementsById, canEditElement, canWriteMap, mapId, setElements, setError, setFlowNodes, snapToMinorGrid, tableMinWidth, tableMinHeight]
   );
   const handleOpenEvidenceMediaOverlay = useCallback(
     (elementId: string) => {
@@ -2042,8 +2324,49 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     [canEditElement, canWriteMap, mapId, setElements, setError]
   );
 
+  const orgDirectReportCountByPersonId = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (mapCategoryId !== "org_chart") return counts;
+    const normalizeRef = (value: string | null | undefined) => {
+      if (!value) return "";
+      const trimmed = String(value).replace(/^process:/i, "").trim().toLowerCase();
+      const uuidMatch = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+      return uuidMatch ? uuidMatch[0].toLowerCase() : trimmed;
+    };
+    const peopleByNormalizedId = new Map(
+      elements
+        .filter((el) => el.element_type === "person")
+        .map((el) => [normalizeRef(el.id), el] as const)
+    );
+    const resolvePersonByAnyRef = (refs: Array<string | null | undefined>) => {
+      for (const ref of refs) {
+        const normalized = normalizeRef(ref ?? "");
+        if (!normalized) continue;
+        const person = peopleByNormalizedId.get(normalized);
+        if (person) return person;
+      }
+      return null;
+    };
+    peopleByNormalizedId.forEach((person) => counts.set(person.id, 0));
+    relations.forEach((r) => {
+      const relationType = String(r.relation_type ?? "").trim().toLowerCase();
+      if (relationType !== "reports_to") return;
+      const source = resolvePersonByAnyRef([r.source_system_element_id, r.from_node_id]);
+      const target = resolvePersonByAnyRef([r.target_system_element_id, r.to_node_id]);
+      if (!source || !target) return;
+      if (source.id === target.id) return;
+      const leaderId = source.pos_y <= target.pos_y ? source.id : target.id;
+      counts.set(leaderId, (counts.get(leaderId) ?? 0) + 1);
+    });
+    return counts;
+  }, [elements, mapCategoryId, relations]);
+  const handleAnchorNodeNavigate = useCallback((anchorId: string, direction: "previous" | "next") => {
+    anchorNavigateRef.current?.(anchorId, direction);
+  }, []);
+
   useEffect(() => {
     if (isNodeDragActiveRef.current) return;
+    const currentSelectedFlowIds = selectedFlowIdsRef.current;
     const directReportCountByPersonNormalizedId = buildOrgDirectReportCountByPersonNormalizedId({
       elements: canvasPreviewElements,
       relations,
@@ -2056,28 +2379,28 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       defaultWidth: groupingDefaultWidth,
       defaultHeight: groupingDefaultHeight,
     });
-    const nextNodes: Node<FlowData>[] = [
+    const builtNodes: Node<FlowData>[] = [
         ...buildGroupingFlowNodes({
           groupingElements,
-          selectedFlowIds,
-          canWriteMap,
+          selectedFlowIds: currentSelectedFlowIds,
+          canWriteMap: canManipulateCanvasElements,
           canEditElement,
         }),
         ...buildDocumentFlowNodes({
           nodes,
           typesById,
-          selectedFlowIds,
-          canWriteMap,
+          selectedFlowIds: currentSelectedFlowIds,
+          canWriteMap: canManipulateCanvasElements,
           getNodeSize,
           unconfiguredDocumentTitle,
         }),
         ...canvasPreviewElements.map((el) => {
           const primaryElementNode = buildPrimaryElementFlowNode({
             element: el,
-            selectedFlowIds,
+            selectedFlowIds: currentSelectedFlowIds,
             selectedTableId,
             canEditElement,
-            canWriteMap,
+            canWriteMap: canManipulateCanvasElements,
             selectedFlowShapeId,
             hasUnsavedFlowShapeDraftChanges,
             mapCategoryId,
@@ -2088,28 +2411,64 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             imageUrlsByElementId,
             directReportCountByPersonNormalizedId,
             orgDirectReportCountByPersonId,
+            anchorSequenceNumberById,
+            anchorGroupColorById,
+            onNavigateAnchor: handleAnchorNodeNavigate,
             onTableCellCommit: handleTableCellCommit,
             onTableCellStyleCommit: handleTableCellStyleCommit,
-            onTableResize: handleTableResize,
             onToggleIncidentDetail: handleToggleIncidentDetail,
           });
           if (primaryElementNode !== undefined) return primaryElementNode;
           return buildSecondaryElementFlowNode({
             element: el,
-            selectedFlowIds,
+            selectedFlowIds: currentSelectedFlowIds,
             canEditElement,
-            canWriteMap,
+            canWriteMap: canManipulateCanvasElements,
             imageUrlsByElementId,
             onOpenEvidenceMedia: handleOpenEvidenceMediaOverlay,
             onToggleIncidentDetail: handleToggleIncidentDetail,
           });
         }).filter(Boolean) as Node<FlowData>[],
       ];
+    const nextNodes = builtNodes.map((node) => ({
+      ...node,
+      draggable: canvasInteractionLocked ? false : node.draggable,
+      selectable: canvasInteractionLocked ? false : node.selectable,
+      data: {
+        ...node.data,
+        canResize: canManipulateCanvasElements && node.data.canResize !== false,
+      },
+    }));
     setFlowNodes(nextNodes);
-  }, [nodes, canvasPreviewElements, relations, typesById, setFlowNodes, getNodeSize, selectedFlowIds, selectedTableId, canWriteMap, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, mapCategoryId, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, isNodeDragActive, handleTableCellCommit, handleTableCellStyleCommit, handleTableResize, handleOpenEvidenceMediaOverlay, handleToggleIncidentDetail]);
+  }, [nodes, canvasPreviewElements, typesById, setFlowNodes, getNodeSize, selectedTableId, canManipulateCanvasElements, canEditElement, selectedFlowShapeId, hasUnsavedFlowShapeDraftChanges, mapCategoryId, memberDisplayNameByUserId, userEmail, userId, formatStickyDate, imageUrlsByElementId, handleAnchorNodeNavigate, handleTableCellCommit, handleTableCellStyleCommit, handleOpenEvidenceMediaOverlay, handleToggleIncidentDetail, canvasInteractionLocked, orgDirectReportCountByPersonId, anchorSequenceNumberById, anchorGroupColorById, relations]);
 
   useEffect(() => {
-    if (isNodeDragActiveRef.current) return;
+    const previousSelectedFlowIds = selectedFlowIdsRef.current;
+    selectedFlowIdsRef.current = selectedFlowIds;
+    if (areStringSetsEqual(previousSelectedFlowIds, selectedFlowIds)) return;
+    const changedIds = new Set<string>();
+    previousSelectedFlowIds.forEach((id) => changedIds.add(id));
+    selectedFlowIds.forEach((id) => changedIds.add(id));
+    setFlowNodes((prev) =>
+      prev.map((node) => {
+        if (!changedIds.has(node.id)) return node;
+        const selected = selectedFlowIds.has(node.id);
+        const boxShadow = selected ? "0 0 0 2px rgba(15,23,42,0.9)" : "none";
+        if (node.selected === selected && node.style?.boxShadow === boxShadow) return node;
+        return {
+          ...node,
+          selected,
+          style: {
+            ...node.style,
+            boxShadow,
+          },
+        };
+      })
+    );
+  }, [selectedFlowIds, setFlowNodes]);
+
+  const highlightedRelatedDocumentIds = useMemo(() => {
+    if (isNodeDragActive) return new Set<string>();
     const hoveredGroupingId = hoveredNodeId?.startsWith("process:") ? parseProcessFlowId(hoveredNodeId) : null;
     const hoveredElementId = hoveredNodeId?.startsWith("process:") ? parseProcessFlowId(hoveredNodeId) : null;
     const isRelationConnectedToHovered = (rel: NodeRelationRow) =>
@@ -2124,33 +2483,39 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         (hoveredGroupingId !== null &&
           (rel.source_grouping_element_id === hoveredGroupingId || rel.target_grouping_element_id === hoveredGroupingId)));
 
-    const highlightedFlowNodeIds = new Set<string>();
+    const nextIds = new Set<string>();
     relations.forEach((rel) => {
       const isConnected = hoveredEdgeId ? rel.id === hoveredEdgeId : isRelationConnectedToHovered(rel);
       if (!isConnected) return;
-      if (rel.from_node_id) highlightedFlowNodeIds.add(rel.from_node_id);
-      if (rel.to_node_id) highlightedFlowNodeIds.add(rel.to_node_id);
-      if (rel.source_system_element_id) highlightedFlowNodeIds.add(processFlowId(rel.source_system_element_id));
-      if (rel.target_system_element_id) highlightedFlowNodeIds.add(processFlowId(rel.target_system_element_id));
-      if (rel.source_grouping_element_id) highlightedFlowNodeIds.add(processFlowId(rel.source_grouping_element_id));
-      if (rel.target_grouping_element_id) highlightedFlowNodeIds.add(processFlowId(rel.target_grouping_element_id));
+      if (rel.from_node_id) nextIds.add(rel.from_node_id);
+      if (rel.to_node_id) nextIds.add(rel.to_node_id);
     });
+    return nextIds;
+  }, [hoveredNodeId, hoveredEdgeId, relations, isNodeDragActive]);
+
+  useEffect(() => {
+    const previousIds = highlightedDocumentIdsRef.current;
+    if (areStringSetsEqual(previousIds, highlightedRelatedDocumentIds)) return;
+    const changedIds = new Set<string>();
+    previousIds.forEach((id) => changedIds.add(id));
+    highlightedRelatedDocumentIds.forEach((id) => changedIds.add(id));
+    highlightedDocumentIdsRef.current = highlightedRelatedDocumentIds;
 
     setFlowNodes((prev) =>
       prev.map((node) => {
+        if (node.data?.entityKind !== "document" || !changedIds.has(node.id)) return node;
         const classTokens = (node.className || "")
           .split(/\s+/)
           .filter(Boolean)
           .filter((token) => token !== "rf-hover-related-document");
-        const isDocumentNode = node.data?.entityKind === "document";
-        const shouldHighlight = highlightedFlowNodeIds.has(node.id) && !node.selected && isDocumentNode;
+        const shouldHighlight = highlightedRelatedDocumentIds.has(node.id) && !node.selected;
         if (shouldHighlight) classTokens.push("rf-hover-related-document");
         const nextClassName = classTokens.join(" ");
         if ((node.className || "") === nextClassName) return node;
         return { ...node, className: nextClassName };
       })
     );
-  }, [hoveredNodeId, hoveredEdgeId, relations, setFlowNodes, isNodeDragActive]);
+  }, [highlightedRelatedDocumentIds, setFlowNodes]);
 
   const flowEdgesBase = useMemo<Edge[]>(
     () =>
@@ -2166,6 +2531,16 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
 
   const relationById = useMemo(() => new Map(relations.map((rel) => [rel.id, rel])), [relations]);
   const flowEdges = useMemo(() => {
+    if (isNodeDragActive) {
+      return flowEdgesBase.map((edge) => ({
+        ...edge,
+        data: {
+          ...(edge.data ?? {}),
+          displayLabel: "",
+          skipObstacleLabelPlacement: true,
+        },
+      }));
+    }
     const hoveredNodeElementId = hoveredNodeId?.startsWith("process:") ? parseProcessFlowId(hoveredNodeId) : null;
     const hoveredGroupingId = hoveredNodeElementId;
     const isConnectedToHoveredNode = (rel: NodeRelationRow) =>
@@ -2194,20 +2569,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         labelStyle: { ...(edge.labelStyle ?? {}), fill: labelFill },
       };
     });
-  }, [flowEdgesBase, relationById, hoveredNodeId, hoveredEdgeId, relations]);
-  const interactionFlowNodes = useMemo(
-    () =>
-      canvasLocked
-        ? flowNodes.map((node) => ({
-            ...node,
-            draggable: false,
-            selectable: false,
-            selected: false,
-            className: `${node.className ?? ""} pointer-events-none`.trim(),
-          }))
-        : flowNodes,
-    [canvasLocked, flowNodes]
-  );
+  }, [flowEdgesBase, isNodeDragActive, relationById, hoveredNodeId, hoveredEdgeId, relations]);
 
   const selectedNode = useMemo(
     () => (selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null),
@@ -2226,8 +2588,15 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     [selectedProcessComponentId, elements]
   );
   const selectedPerson = useMemo(
-    () => (selectedPersonId ? elements.find((el) => el.id === selectedPersonId && isPersonElementType(el.element_type)) ?? null : null),
+    () =>
+      selectedPersonId
+        ? elements.find((el) => el.id === selectedPersonId && (el.element_type === "person" || el.element_type === "equipment" || el.element_type === "environment")) ?? null
+        : null,
     [selectedPersonId, elements]
+  );
+  const selectedAnchor = useMemo(
+    () => (selectedAnchorId ? elements.find((el) => el.id === selectedAnchorId && el.element_type === "anchor") ?? null : null),
+    [selectedAnchorId, elements]
   );
   const selectedGrouping = useMemo(
     () => (selectedGroupingId ? elements.find((el) => el.id === selectedGroupingId && el.element_type === "grouping_container") ?? null : null),
@@ -2272,6 +2641,180 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         : null,
     [selectedBowtieElementId, elements]
   );
+  const selectedAnchorOrderIds = useMemo(
+    () => {
+      if (!selectedAnchorId) return [];
+      const knownGroupIds = selectedAnchorGroupIds.length ? selectedAnchorGroupIds : [selectedAnchorId];
+      const groupIdSet = new Set(knownGroupIds.filter((id) => anchorById.has(id)));
+      groupIdSet.add(selectedAnchorId);
+      const orderedDraftIds = anchorLinkedOrderDraft.filter((id) => groupIdSet.has(id));
+      const missingIds = [...groupIdSet]
+        .filter((id) => !orderedDraftIds.includes(id))
+        .sort(
+          (a, b) =>
+            (anchorSequenceNumberById.get(a) ?? 1) - (anchorSequenceNumberById.get(b) ?? 1) ||
+            (anchorById.get(a)?.heading ?? "").localeCompare(anchorById.get(b)?.heading ?? "")
+        );
+      return [...orderedDraftIds, ...missingIds];
+    },
+    [anchorById, anchorLinkedOrderDraft, anchorSequenceNumberById, selectedAnchorGroupIds, selectedAnchorId]
+  );
+  const selectedAnchorSequenceNumber = selectedAnchorId
+    ? Math.max(1, selectedAnchorOrderIds.indexOf(selectedAnchorId) + 1 || anchorSequenceNumberById.get(selectedAnchorId) || 1)
+    : 1;
+  const selectedAnchorOrderIdSet = useMemo(
+    () => new Set(selectedAnchorOrderIds),
+    [selectedAnchorOrderIds]
+  );
+  const selectedAnchorDirectLinkedIdSet = useMemo(
+    () =>
+      new Set(
+        selectedAnchorId
+          ? anchorLinks
+              .filter((link) => link.anchor_id === selectedAnchorId && anchorById.has(link.linked_anchor_id))
+              .map((link) => link.linked_anchor_id)
+          : []
+      ),
+    [anchorById, anchorLinks, selectedAnchorId]
+  );
+  const selectedAnchorOrderItems = useMemo(
+    () =>
+      selectedAnchorOrderIds
+        .map((id, index) => {
+          const anchor = anchorById.get(id);
+          if (!anchor) return null;
+          return {
+            id: anchor.id,
+            title: anchor.heading || "Anchor",
+            creatorName: getAnchorCreatorName(anchor),
+            sequenceNumber: index + 1,
+            isCurrent: anchor.id === selectedAnchorId,
+            isDirectLink: anchor.id !== selectedAnchorId && selectedAnchorDirectLinkedIdSet.has(anchor.id),
+          };
+        })
+        .filter(Boolean) as Array<{ id: string; title: string; creatorName: string; sequenceNumber: number; isCurrent?: boolean; isDirectLink?: boolean }>,
+    [anchorById, getAnchorCreatorName, selectedAnchorDirectLinkedIdSet, selectedAnchorId, selectedAnchorOrderIds]
+  );
+  const anchorSearchResults = useMemo(() => {
+    if (!selectedAnchorId) return [];
+    const query = anchorSearchDraft.trim().toLowerCase();
+    if (!query) return [];
+    return anchorElements
+      .filter((anchor) => !selectedAnchorOrderIdSet.has(anchor.id))
+      .filter((anchor) => {
+        const creatorName = getAnchorCreatorName(anchor).toLowerCase();
+        const title = (anchor.heading || "Anchor").toLowerCase();
+        return title.includes(query) || creatorName.includes(query);
+      })
+      .sort((a, b) => (anchorSequenceNumberById.get(a.id) ?? 1) - (anchorSequenceNumberById.get(b.id) ?? 1) || a.heading.localeCompare(b.heading))
+      .slice(0, 12)
+      .map((anchor) => ({
+        id: anchor.id,
+        title: anchor.heading || "Anchor",
+        creatorName: getAnchorCreatorName(anchor),
+        sequenceNumber: anchorSequenceNumberById.get(anchor.id) ?? 1,
+      }));
+  }, [anchorElements, anchorSearchDraft, anchorSequenceNumberById, getAnchorCreatorName, selectedAnchorId, selectedAnchorOrderIdSet]);
+  const selectedSingleFlowId = useMemo(() => {
+    if (selectedFlowIds.size !== 1) return null;
+    const [flowId] = Array.from(selectedFlowIds);
+    return flowId ?? null;
+  }, [selectedFlowIds]);
+  const currentSpecificSelectedFlowId = useMemo(() => {
+    if (selectedNodeId) return selectedNodeId;
+    if (selectedProcessId) return processFlowId(selectedProcessId);
+    if (selectedSystemId) return processFlowId(selectedSystemId);
+    if (selectedProcessComponentId) return processFlowId(selectedProcessComponentId);
+    if (selectedPersonId) return processFlowId(selectedPersonId);
+    if (selectedAnchorId) return processFlowId(selectedAnchorId);
+    if (selectedGroupingId) return processFlowId(selectedGroupingId);
+    if (selectedStickyId) return processFlowId(selectedStickyId);
+    if (selectedImageId) return processFlowId(selectedImageId);
+    if (selectedTextBoxId) return processFlowId(selectedTextBoxId);
+    if (selectedTableId) return processFlowId(selectedTableId);
+    if (selectedFlowShapeId) return processFlowId(selectedFlowShapeId);
+    if (selectedBowtieElementId) return processFlowId(selectedBowtieElementId);
+    return null;
+  }, [
+    selectedBowtieElementId,
+    selectedFlowShapeId,
+    selectedAnchorId,
+    selectedGroupingId,
+    selectedImageId,
+    selectedNodeId,
+    selectedPersonId,
+    selectedProcessComponentId,
+    selectedProcessId,
+    selectedStickyId,
+    selectedSystemId,
+    selectedTableId,
+    selectedTextBoxId,
+  ]);
+  const desktopToolbarSelection = useMemo(() => {
+    if (!selectedSingleFlowId) return null;
+    if (!selectedSingleFlowId.startsWith("process:")) {
+      if (!nodesById.has(selectedSingleFlowId)) return null;
+      return { kind: "document" as const, id: selectedSingleFlowId, supportsRelationships: true };
+    }
+    const elementId = parseProcessFlowId(selectedSingleFlowId);
+    const element = elementsById.get(elementId);
+    if (!element) return null;
+    switch (element.element_type) {
+      case "system_circle":
+        return { kind: "system" as const, id: elementId, supportsRelationships: true };
+      case "process_component":
+        return { kind: "process_component" as const, id: elementId, supportsRelationships: true };
+      case "person":
+      case "equipment":
+      case "environment":
+        return { kind: "person" as const, id: elementId, supportsRelationships: true };
+      case "anchor":
+        return { kind: "anchor" as const, id: elementId, supportsRelationships: false };
+      case "grouping_container":
+        return { kind: "grouping" as const, id: elementId, supportsRelationships: true };
+      case "image_asset":
+        return { kind: "image" as const, id: elementId, supportsRelationships: true };
+      case "category":
+        return { kind: "category" as const, id: elementId, supportsRelationships: false };
+      case "sticky_note":
+        return { kind: "sticky" as const, id: elementId, supportsRelationships: false };
+      case "text_box":
+        return { kind: "text_box" as const, id: elementId, supportsRelationships: false };
+      case "table":
+        return { kind: "table" as const, id: elementId, supportsRelationships: false };
+      case "shape_rectangle":
+      case "shape_circle":
+      case "shape_pill":
+      case "shape_pentagon":
+      case "shape_chevron_left":
+      case "shape_arrow":
+        return { kind: "shape" as const, id: elementId, supportsRelationships: false };
+      default:
+        return {
+          kind: "bowtie" as const,
+          id: elementId,
+          supportsRelationships: true,
+        };
+    }
+  }, [elementsById, nodesById, selectedSingleFlowId]);
+  const availableFactorPeople = useMemo(
+    () =>
+      elements
+        .filter((element) => element.element_type === "person")
+        .map((element) => {
+          const labels = parsePersonLabels(element.heading);
+          const role = labels.role.trim();
+          const department = labels.department.trim();
+          const roleLabel = role && role !== "Role Name" ? role : "Person";
+          const departmentLabel = department && department !== "Department" ? department : "";
+          return {
+            id: element.id,
+            label: departmentLabel ? `${roleLabel} • ${departmentLabel}` : roleLabel,
+          };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [elements]
+  );
 
   const headingItems = useMemo(
     () => outlineItems.filter((i) => i.kind === "heading"),
@@ -2312,100 +2855,39 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       return !hasCollapsedAncestor(item.heading_id);
     });
   }, [outlineItems, hasCollapsedAncestor]);
-  const activePrimaryLeftAsideKey = useMemo(() => {
-    if (isMobile) return null;
-    if (selectedSticky) return `sticky:${selectedSticky.id}`;
-    if (selectedImage) return `image:${selectedImage.id}`;
-    if (selectedTextBox) return `textbox:${selectedTextBox.id}`;
-    if (selectedTable) return `table:${selectedTable.id}`;
-    if (selectedFlowShape) return `shape:${selectedFlowShape.id}`;
-    if (selectedProcess) return `category:${selectedProcess.id}`;
-    if (selectedSystem) return `system:${selectedSystem.id}`;
-    if (selectedProcessComponent) return `process:${selectedProcessComponent.id}`;
-    if (selectedPerson) return `person:${selectedPerson.id}`;
-    if (selectedBowtieElement) return `bowtie:${selectedBowtieElement.id}`;
-    if (selectedGrouping) return `grouping:${selectedGrouping.id}`;
-    if (selectedNode) return `document:${selectedNode.id}`;
-    return null;
-  }, [isMobile, selectedSticky, selectedImage, selectedTextBox, selectedTable, selectedFlowShape, selectedProcess, selectedSystem, selectedProcessComponent, selectedPerson, selectedBowtieElement, selectedGrouping, selectedNode]);
-  const shouldShowDesktopStructurePanel =
-    !isMobile && !!selectedNodeId && desktopNodeAction === "structure" && !!outlineNodeId && outlineNodeId === selectedNodeId;
-  const searchCatalog = useMemo(() => {
-    const nodeEntries = nodes.map((node) => {
-      const t = typesById.get(node.type_id);
-      const isLandscape = isLandscapeTypeName(t?.name || "");
-      const size = getNormalizedDocumentSize(isLandscape, node.width, node.height);
-      return {
-        id: node.id,
-        label: node.title,
-        documentNumber: node.document_number ?? null,
-        kind: "Document",
-        x: node.pos_x,
-        y: node.pos_y,
-        width: size.width,
-        height: size.height,
-      };
-    });
-    const elementEntries = elements.map((el) => ({
-      id: `process:${el.id}`,
-      label: el.heading || getElementRelationshipTypeLabel(el.element_type),
-      documentNumber: null,
-      kind: getElementRelationshipTypeLabel(el.element_type),
-      x: el.pos_x,
-      y: el.pos_y,
-      width: el.width,
-      height: el.height,
-    }));
-    return [...nodeEntries, ...elementEntries];
-  }, [nodes, elements, typesById]);
-  const searchResults = useMemo(() => {
-    const term = searchQuery.trim().toLowerCase();
-    if (!term) return [];
-    return searchCatalog
-      .filter((item) =>
-        item.label.toLowerCase().includes(term) ||
-        (item.documentNumber ?? "").toLowerCase().includes(term) ||
-        item.kind.toLowerCase().includes(term)
-      )
-      .slice(0, 100)
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        documentNumber: item.documentNumber,
-        kind: item.kind,
-      }));
-  }, [searchCatalog, searchQuery]);
-  const handleSelectSearchResult = useCallback((id: string) => {
-    if (!rf) return;
-    const match = searchCatalog.find((entry) => entry.id === id);
-    if (!match) return;
-    const centerX = match.x + match.width / 2;
-    const centerY = match.y + match.height / 2;
-    const viewportWidth = canvasRef.current?.clientWidth ?? window.innerWidth;
-    const viewportHeight = canvasRef.current?.clientHeight ?? window.innerHeight;
-    const zoom = 1.6;
-    rf.setViewport(
-      {
-        x: viewportWidth / 2 - centerX * zoom,
-        y: viewportHeight / 2 - centerY * zoom,
-        zoom,
-      },
-      { duration: 320 }
-    );
-    setShowSearchMenu(false);
-    setSearchQuery("");
-  }, [rf, searchCatalog]);
-
-  useEffect(() => {
-    if (!activePrimaryLeftAsideKey) {
-      setLeftAsideSlideIn(false);
-      return;
-    }
-    setLeftAsideSlideIn(false);
-    const raf = requestAnimationFrame(() => setLeftAsideSlideIn(true));
-    return () => cancelAnimationFrame(raf);
-  }, [activePrimaryLeftAsideKey]);
-
+  const {
+    desktopNodeAction,
+    setDesktopNodeAction,
+    leftAsideSlideIn,
+    activePrimaryLeftAsideKey,
+    shouldShowDesktopStructurePanel,
+    isPrimaryLeftAsideOpen,
+    autosavePointerLockRef,
+    armPaneClearSuppression,
+    consumePaneClearSuppression,
+    beginNodeDrag,
+    beginNodeDragStop,
+    finishNodeDragStop,
+  } = useCanvasAsideController({
+    isMobile,
+    selectedNodeId,
+    selectedProcessId,
+    selectedSystemId,
+    selectedProcessComponentId,
+    selectedPersonId,
+    selectedAnchorId,
+    selectedGroupingId,
+    selectedStickyId,
+    selectedImageId,
+    selectedTextBoxId,
+    selectedTableId,
+    selectedFlowShapeId,
+    selectedBowtieElementId,
+    selectedSingleFlowId,
+    currentSpecificSelectedFlowId,
+    outlineNodeId,
+    isNodeDragActiveRef,
+  });
   const loadOutline = useCallback(async (nodeId: string) => {
     const { data, error: e } = await supabaseBrowser
       .schema("ms")
@@ -2422,211 +2904,65 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-
-    if (loadingMapIdRef.current !== mapId) {
-      loadingMapIdRef.current = mapId;
-      loadingProgressRef.current = 25;
-      loadingStageStartedAtRef.current = Date.now();
-      setLoadingProgress(25);
-      setLoadingMessage("Checking workspace access...");
-    }
-
-    const run = async (attempt: number) => {
-      const waitForStageFloor = async () => {
-        const elapsed = Date.now() - loadingStageStartedAtRef.current;
-        const remaining = 500 - elapsed;
-        if (remaining > 0) {
-          await new Promise<void>((resolve) => {
-            retryTimer = setTimeout(() => resolve(), remaining);
-          });
-        }
-      };
-      const setLoadingStage = async (progress: number, message: string) => {
-        if (cancelled) return;
-        const nextProgress = Math.max(loadingProgressRef.current, progress) as 25 | 50 | 75 | 100;
-        if (nextProgress <= loadingProgressRef.current) return;
-        await waitForStageFloor();
-        if (cancelled) return;
-        loadingProgressRef.current = nextProgress;
-        loadingStageStartedAtRef.current = Date.now();
-        setLoadingProgress(nextProgress);
-        setLoadingMessage(message);
-      };
-      let shouldRetry = false;
-      let loadCompleted = false;
-
-      if (cancelled) return;
-      if (attempt === 0) {
-        setLoading(true);
-        setError(null);
-        loadingProgressRef.current = Math.max(25, loadingProgressRef.current) as 25 | 50 | 75 | 100;
-        setLoadingProgress(loadingProgressRef.current);
-        setLoadingMessage(
-          loadingProgressRef.current >= 100
-            ? "Straightening lines and sharpening pencils..."
-            : loadingProgressRef.current >= 75
-            ? "Gathering collaborators and lining up the map pieces..."
-            : loadingProgressRef.current >= 50
-            ? "Loading map shell, nodes, and canvas data..."
-            : "Checking workspace access..."
-        );
-      }
-      try {
-        const user = await ensurePortalSupabaseUser();
-        if (cancelled) return;
-        if (!user) {
-          window.location.assign(`/login?returnTo=${encodeURIComponent(`/system-maps/${mapId}`)}`);
-          return;
-        }
-        setUserId(user.id);
-        await setLoadingStage(50, "Loading map shell, nodes, and canvas data...");
-        const [memberRes, mapRes, typeRes, nodeRes, elementRes, relRes, viewRes] = await Promise.all([
-          supabaseBrowser.schema("ms").from("map_members").select("role").eq("map_id", mapId).eq("user_id", user.id).maybeSingle(),
-          supabaseBrowser.schema("ms").from("system_maps").select("id,title,description,owner_id,map_code,map_category,updated_at,created_at").eq("id", mapId).maybeSingle(),
-          supabaseBrowser.schema("ms").from("document_types").select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active").eq("is_active", true).or(`map_id.eq.${mapId},map_id.is.null`).order("level_rank", { ascending: true }),
-          supabaseBrowser.schema("ms").from("document_nodes").select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived").eq("map_id", mapId).eq("is_archived", false),
-          supabaseBrowser.schema("ms").from("canvas_elements").select(canvasElementSelectColumns).eq("map_id", mapId).order("created_at", { ascending: true }),
-          supabaseBrowser
-            .schema("ms")
-            .from("node_relations")
-            .select("*")
-            .eq("map_id", mapId),
-          supabaseBrowser.schema("ms").from("map_view_state").select("pan_x,pan_y,zoom").eq("map_id", mapId).eq("user_id", user.id).maybeSingle(),
-        ]);
-        if (cancelled) return;
-
-        if (memberRes.error || !memberRes.data?.role) {
-          setError("Unable to load this map. You may not have access.");
-          return;
-        }
-        if (mapRes.error || !mapRes.data) {
-          setError("Unable to load this map. You may not have access.");
-          return;
-        }
-        if (nodeRes.error) {
-          setError("Unable to load map documents.");
-          return;
-        }
-
-        setMapRole(memberRes.data.role as "read" | "partial_write" | "full_write");
-        const loadedMap = mapRes.data as SystemMap;
-        const nextCategory = (loadedMap.map_category || defaultMapCategoryId) as MapCategoryId;
-        if (!hasMapCategoryAccess(user.email ?? localStorage.getItem("hses_user_email"), nextCategory)) {
-          window.location.replace("/dashboard");
-          return;
-        }
-        setMap(loadedMap);
-        setMapCategoryId(nextCategory);
-        await setLoadingStage(75, "Gathering collaborators and lining up the map pieces...");
-        await loadMapMembers(loadedMap.owner_id);
-        let loadedTypes = (typeRes.data ?? []) as DocumentTypeRow[];
-        if (!loadedTypes.length) {
-          const { data: createdTypes, error: createTypesError } = await supabaseBrowser
-            .schema("ms")
-            .from("document_types")
-            .upsert(
-              fallbackHierarchy.map((item) => ({
-                map_id: mapId,
-                name: item.name,
-                level_rank: item.level_rank,
-                band_y_min: null,
-                band_y_max: null,
-                is_active: true,
-              })),
-              {
-                onConflict: "map_id,name",
-                ignoreDuplicates: true,
-              }
-            )
-            .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active")
-            .order("level_rank", { ascending: true });
-          if (createTypesError) {
-            setError(createTypesError.message || "No document types were found for this map.");
-          } else {
-            loadedTypes = (createdTypes ?? []) as DocumentTypeRow[];
-          }
-        }
-        const existingCanonicalTypeNames = new Set(loadedTypes.map((t) => getCanonicalTypeName(t.name)));
-        const missingFallback = fallbackHierarchy.filter((item) => !existingCanonicalTypeNames.has(getCanonicalTypeName(item.name)));
-        if (missingFallback.length) {
-          const { data: insertedMissing, error: insertMissingError } = await supabaseBrowser
-            .schema("ms")
-            .from("document_types")
-            .upsert(
-              missingFallback.map((item) => ({
-                map_id: mapId,
-                name: item.name,
-                level_rank: item.level_rank,
-                band_y_min: null,
-                band_y_max: null,
-                is_active: true,
-              })),
-              {
-                onConflict: "map_id,name",
-                ignoreDuplicates: true,
-              }
-            )
-            .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active");
-          if (insertMissingError) {
-            setError(insertMissingError.message || "Unable to add missing document types.");
-          } else if (insertedMissing?.length) {
-            loadedTypes = [...loadedTypes, ...(insertedMissing as DocumentTypeRow[])].sort((a, b) => a.level_rank - b.level_rank);
-          }
-        }
-        loadedTypes = normalizeTypeRanks(loadedTypes);
-        setTypes(loadedTypes);
-        const loadedNodes = (nodeRes.data ?? []) as DocumentNodeRow[];
-        setNodes(loadedNodes);
-        setElements((elementRes.data ?? []) as CanvasElementRow[]);
-        setRelations((relRes.data ?? []) as NodeRelationRow[]);
-        const nextSaved: Record<string, { x: number; y: number }> = {};
-        loadedNodes.forEach((n) => (nextSaved[n.id] = { x: n.pos_x, y: n.pos_y }));
-        savedPos.current = nextSaved;
-
-        if (viewRes.data) {
-          const viewData = viewRes.data;
-          setPendingViewport({ x: viewData.pan_x, y: viewData.pan_y, zoom: viewData.zoom });
-        }
-        await setLoadingStage(100, "Straightening lines and sharpening pencils...");
-        loadCompleted = true;
-      } catch (err) {
-        if (cancelled) return;
-        if (isAbortLikeError(err) && attempt < 3) {
-          shouldRetry = true;
-          retryTimer = setTimeout(() => {
-            void run(attempt + 1);
-          }, 250);
-          return;
-        }
-        const message = err instanceof Error ? err.message : String(err);
-        setError(message || "Unable to load map.");
-      } finally {
-        if (!cancelled && !shouldRetry) {
-          if (loadCompleted) {
-            retryTimer = setTimeout(() => {
-              if (!cancelled) setLoading(false);
-            }, 500);
-          } else {
-            setLoading(false);
-          }
-        }
-      }
-    };
-
-    void run(0);
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, [mapId, loadMapMembers]);
-
-  useEffect(() => {
     if (!rf || !pendingViewport) return;
     rf.setViewport(pendingViewport, { duration: 250 });
+    mobileViewportInitializedRef.current = mapId;
     setPendingViewport(null);
-  }, [rf, pendingViewport]);
+  }, [rf, pendingViewport, mapId]);
+
+  useEffect(() => {
+    if (!isMobile || !rf || loading || hasStoredViewport || mobileViewportInitializedRef.current === mapId) return;
+
+    const viewportWidth = canvasRef.current?.clientWidth ?? window.innerWidth;
+    const viewportHeight = canvasRef.current?.clientHeight ?? window.innerHeight;
+    if (viewportWidth <= 0 || viewportHeight <= 0) return;
+
+    if (!searchCatalog.length) {
+      rf.setViewport({ x: 24, y: 24, zoom: 0.9 }, { duration: 280 });
+      mobileViewportInitializedRef.current = mapId;
+      return;
+    }
+
+    const paddingX = 44;
+    const paddingY = 56;
+    const bounds = searchCatalog.reduce(
+      (acc, item) => ({
+        minX: Math.min(acc.minX, item.x),
+        minY: Math.min(acc.minY, item.y),
+        maxX: Math.max(acc.maxX, item.x + item.width),
+        maxY: Math.max(acc.maxY, item.y + item.height),
+      }),
+      {
+        minX: Number.POSITIVE_INFINITY,
+        minY: Number.POSITIVE_INFINITY,
+        maxX: Number.NEGATIVE_INFINITY,
+        maxY: Number.NEGATIVE_INFINITY,
+      }
+    );
+
+    const contentWidth = Math.max(bounds.maxX - bounds.minX, 240);
+    const contentHeight = Math.max(bounds.maxY - bounds.minY, 240);
+    const zoom = clamp(
+      Math.min(
+        (viewportWidth - paddingX * 2) / contentWidth,
+        (viewportHeight - paddingY * 2) / contentHeight
+      ),
+      0.68,
+      1
+    );
+    const centerX = bounds.minX + contentWidth / 2;
+    const centerY = bounds.minY + contentHeight / 2;
+
+    rf.setViewport(
+      {
+        x: viewportWidth / 2 - centerX * zoom,
+        y: viewportHeight / 2 - centerY * zoom,
+        zoom,
+      },
+      { duration: 320 }
+    );
+    mobileViewportInitializedRef.current = mapId;
+  }, [isMobile, rf, loading, hasStoredViewport, mapId, searchCatalog]);
 
   useEffect(() => {
     if (!selectedNode) return;
@@ -2639,12 +2975,20 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }, [selectedNode]);
   useEffect(() => {
     if (!selectedNodeId) setShowDisciplineMenu(false);
-    if (!selectedNodeId) setDesktopNodeAction(null);
   }, [selectedNodeId]);
   useEffect(() => {
+    if (isGuestViewer) {
+      setUserEmail(guestSessionEmail || "");
+      return;
+    }
     if (typeof window === "undefined") return;
-    setUserEmail(localStorage.getItem("hses_user_email") || "");
-  }, []);
+    setUserEmail(localStorage.getItem("investigation_tool_user_email") || "");
+  }, [guestSessionEmail, isGuestViewer]);
+
+  useEffect(() => {
+    mobileViewportInitializedRef.current = null;
+    setHasStoredViewport(false);
+  }, [mapId]);
 
   useEffect(() => {
     if (!selectedProcess) return;
@@ -2652,6 +2996,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setProcessWidthDraft(String(Math.max(processMinWidthSquares, Math.round((selectedProcess.width || processHeadingWidth) / minorGridSize))));
     setProcessHeightDraft(String(Math.max(processMinHeightSquares, Math.round((selectedProcess.height || processHeadingHeight) / minorGridSize))));
     setProcessColorDraft(selectedProcess.color_hex ?? null);
+    const cfg = (selectedProcess.element_config as Record<string, unknown> | null) ?? {};
+    setProcessFillModeDraft(String(cfg.fill_mode ?? "fill") === "outline" ? "outline" : "fill");
+    setProcessOutlineColorDraft(typeof cfg.outline_color === "string" ? cfg.outline_color : selectedProcess.color_hex ?? null);
+    const outlineWidthRaw = Number(cfg.outline_width ?? 1);
+    setProcessOutlineWidthDraft(String(Number.isFinite(outlineWidthRaw) ? Math.max(1, Math.min(12, Math.round(outlineWidthRaw))) : 1));
   }, [selectedProcess]);
   useEffect(() => {
     if (!selectedSystem) return;
@@ -2663,7 +3012,19 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }, [selectedProcessComponent]);
   useEffect(() => {
     if (!selectedPerson) return;
-    if (isOrgChartPersonElement(selectedPerson)) {
+    if (selectedPerson.element_type === "equipment") {
+      const labels = parseEquipmentLabels(selectedPerson.heading);
+      setEquipmentTypeDraft(labels.equipmentType);
+      setEquipmentIdentifierDraft(labels.identifier);
+      return;
+    }
+    if (selectedPerson.element_type === "environment") {
+      const labels = parseEnvironmentLabels(selectedPerson.heading);
+      setEnvironmentDetailDraft(labels.detail);
+      setEnvironmentFactorTypeDraft(labels.factorType);
+      return;
+    }
+    if (mapCategoryId === "org_chart") {
       const cfg = parseOrgChartPersonConfig(selectedPerson.element_config);
       setPersonRoleDraft(cfg.position_title);
       setPersonRoleIdDraft(cfg.role_id);
@@ -2678,6 +3039,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       return;
     }
     const labels = parsePersonLabels(selectedPerson.heading);
+    const cfg = (selectedPerson.element_config as Record<string, unknown> | null) ?? {};
+    setPersonTypeDraft(typeof cfg.person_type === "string" ? String(cfg.person_type).trim() : "");
     setPersonRoleDraft(labels.role);
     setPersonRoleIdDraft("");
     setPersonDepartmentDraft(labels.department);
@@ -2688,16 +3051,55 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setPersonActingStartDateDraft("");
     setPersonRecruitingDraft(false);
     setPersonProposedRoleDraft(false);
-  }, [selectedPerson]);
+  }, [selectedPerson, mapCategoryId]);
+  useEffect(() => {
+    if (!selectedProcess) return;
+    const cfg = (selectedProcess.element_config as Record<string, unknown> | null) ?? {};
+    const processSizeRaw = Number(cfg.font_size ?? 12);
+    setProcessFontSizeDraft(String(Number.isFinite(processSizeRaw) ? Math.max(10, Math.min(72, Math.round(processSizeRaw))) : 12));
+  }, [selectedProcess]);
   useEffect(() => {
     if (!selectedGrouping) return;
     setGroupingLabelDraft(selectedGrouping.heading ?? "");
+    const cfg = (selectedGrouping.element_config as Record<string, unknown> | null) ?? {};
+    setGroupingHeaderColorDraft(typeof cfg.header_bg_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.header_bg_color) ? cfg.header_bg_color.toUpperCase() : "#FFFFFF");
+    const headerFontSizeRaw = Number(cfg.header_font_size ?? 11);
+    setGroupingHeaderFontSizeDraft(String(Number.isFinite(headerFontSizeRaw) ? Math.max(10, Math.min(48, Math.round(headerFontSizeRaw))) : 11));
+    const outlineWidthRaw = Number(cfg.outline_width ?? 1);
+    setGroupingOutlineWidthDraft(String(Number.isFinite(outlineWidthRaw) ? Math.max(1, Math.min(12, Math.round(outlineWidthRaw))) : 1));
     setGroupingWidthDraft(String(Math.max(groupingMinWidthSquares, Math.round((selectedGrouping.width || groupingDefaultWidth) / minorGridSize))));
     setGroupingHeightDraft(String(Math.max(groupingMinHeightSquares, Math.round((selectedGrouping.height || groupingDefaultHeight) / minorGridSize))));
   }, [selectedGrouping]);
   useEffect(() => {
+    if (!selectedAnchor) {
+      setAnchorTitleDraft("");
+      setAnchorColorDraft("#0F766E");
+      setAnchorSearchDraft("");
+      setAnchorLinkedOrderDraft([]);
+      return;
+    }
+    setAnchorTitleDraft(selectedAnchor.heading ?? "Anchor");
+    setAnchorColorDraft(selectedAnchorGroupColor);
+    setAnchorSearchDraft("");
+    const groupIds = anchorGroupIdsById.get(selectedAnchor.id) ?? [selectedAnchor.id];
+    const orderedGroupIds = groupIds
+      .filter((id) => anchorById.has(id))
+      .sort(
+        (a, b) =>
+          (anchorSequenceNumberById.get(a) ?? 1) - (anchorSequenceNumberById.get(b) ?? 1) ||
+          (anchorById.get(a)?.heading ?? "").localeCompare(anchorById.get(b)?.heading ?? "")
+      );
+    setAnchorLinkedOrderDraft(orderedGroupIds.includes(selectedAnchor.id) ? orderedGroupIds : [selectedAnchor.id, ...orderedGroupIds]);
+  }, [anchorById, anchorGroupIdsById, anchorSequenceNumberById, selectedAnchor, selectedAnchorGroupColor]);
+  useEffect(() => {
     if (!selectedSticky) return;
     setStickyTextDraft(selectedSticky.heading ?? "");
+    const cfg = (selectedSticky.element_config as Record<string, unknown> | null) ?? {};
+    setStickyBackgroundColorDraft(typeof cfg.background_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.background_color) ? cfg.background_color.toUpperCase() : "#FEF08A");
+    setStickyOutlineColorDraft(typeof cfg.outline_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.outline_color) ? cfg.outline_color.toUpperCase() : "#F59E0B");
+    setStickyFillModeDraft(String(cfg.fill_mode ?? "fill") === "outline" ? "outline" : "fill");
+    const outlineWidthRaw = Number(cfg.outline_width ?? 1);
+    setStickyOutlineWidthDraft(String(Number.isFinite(outlineWidthRaw) ? Math.max(1, Math.min(12, Math.round(outlineWidthRaw))) : 1));
   }, [selectedSticky]);
   useEffect(() => {
     if (!selectedImage) return;
@@ -2715,6 +3117,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setTextBoxAlignDraft(align === "center" || align === "right" ? align : "left");
     const size = Number(cfg.font_size ?? 16);
     setTextBoxFontSizeDraft(String(Number.isFinite(size) ? Math.max(16, Math.min(168, Math.round(size))) : 16));
+    const backgroundColor = typeof cfg.background_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.background_color) ? cfg.background_color.toUpperCase() : "#FFFFFF";
+    setTextBoxBackgroundColorDraft(backgroundColor);
+    setTextBoxOutlineDraft(Boolean(cfg.outline));
+    const outlineColor = typeof cfg.outline_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.outline_color) ? cfg.outline_color.toUpperCase() : "#111827";
+    setTextBoxOutlineColorDraft(outlineColor);
+    const outlineWidthRaw = Number(cfg.outline_width ?? 2);
+    setTextBoxOutlineWidthDraft(String(Number.isFinite(outlineWidthRaw) ? Math.max(1, Math.min(12, Math.round(outlineWidthRaw))) : 2));
   }, [selectedTextBox]);
   useEffect(() => {
     if (!selectedTable) return;
@@ -2724,11 +3133,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     const rows = Number.isFinite(parsedRows) ? Math.max(tableMinRows, Math.floor(parsedRows)) : tableMinRows;
     const columns = Number.isFinite(parsedColumns) ? Math.max(tableMinColumns, Math.floor(parsedColumns)) : tableMinColumns;
     const headerBg = typeof cfg.header_bg_color === "string" ? cfg.header_bg_color : "";
-    const headerFillMode = String(cfg.header_fill_mode ?? "fill") === "outline" ? "outline" : "fill";
+    const gridLineColor = typeof cfg.grid_line_color === "string" ? cfg.grid_line_color : "";
+    const gridLineWeightRaw = Number(cfg.grid_line_weight ?? 0.5);
     setTableRowsDraft(String(rows));
     setTableColumnsDraft(String(columns));
     setTableHeaderBgDraft(headerBg.toUpperCase());
-    setTableHeaderFillModeDraft(headerFillMode);
+    setTableGridLineColorDraft(gridLineColor.toUpperCase());
+    setTableGridLineWeightDraft(String(Number.isFinite(gridLineWeightRaw) ? Math.max(0.5, Math.min(6, Math.round(gridLineWeightRaw * 2) / 2)) : 0.5));
     setTableBoldDraft(Boolean(cfg.bold));
     setTableItalicDraft(Boolean(cfg.italic));
     setTableUnderlineDraft(Boolean(cfg.underline));
@@ -2736,7 +3147,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setTableAlignDraft(align === "left" || align === "right" ? align : "center");
     const size = Number(cfg.font_size ?? 10);
     setTableFontSizeDraft(String(Number.isFinite(size) ? Math.max(10, Math.min(72, Math.round(size))) : 10));
-  }, [selectedTable, tableMinRows, tableMinColumns]);
+  }, [selectedTable]);
   useEffect(() => {
     if (!selectedFlowShape) {
       hydratedFlowShapeDraftIdRef.current = null;
@@ -2755,6 +3166,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setFlowShapeColorDraft(selectedFlowShape.color_hex ?? shapeDefaultFillColor);
     const fillModeRaw = String(cfg.fill_mode ?? "fill");
     setFlowShapeFillModeDraft(fillModeRaw === "outline" ? "outline" : "fill");
+    const outlineColor =
+      typeof cfg.outline_color === "string" && /^#[0-9a-fA-F]{6}$/.test(cfg.outline_color)
+        ? cfg.outline_color.toUpperCase()
+        : (selectedFlowShape.color_hex ?? shapeDefaultFillColor);
+    setFlowShapeOutlineColorDraft(outlineColor);
+    const outlineWidthRaw = Number(cfg.outline_width ?? 3);
+    setFlowShapeOutlineWidthDraft(String(Number.isFinite(outlineWidthRaw) ? Math.max(1, Math.min(12, Math.round(outlineWidthRaw))) : 3));
     const directionRaw = String(cfg.direction ?? "right");
     setFlowShapeDirectionDraft(directionRaw === "left" ? "left" : "right");
     const rotationRaw = Number(cfg.rotation_deg ?? 0);
@@ -2788,6 +3206,12 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }, [imagePathPairs]);
   useEffect(() => {
     let cancelled = false;
+    if (isGuestViewer) {
+      convertedMediaObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      convertedMediaObjectUrlsRef.current.clear();
+      setImageUrlsByElementId(initialSnapshot?.imageUrlsByElementId ?? {});
+      return;
+    }
     const pairs = imagePathPairsRef.current;
     if (!pairs.length) {
       convertedMediaObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -2849,7 +3273,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     return () => {
       cancelled = true;
     };
-  }, [imagePathSignature, elements, isHeicLike, blobLooksLikeHeif, convertHeicBlobToJpegBlob]);
+  }, [imagePathSignature, elements, initialSnapshot, isGuestViewer, isHeicLike, blobLooksLikeHeif, convertHeicBlobToJpegBlob]);
   const handleRotateEvidenceMediaOverlay = useCallback(() => {
     setEvidenceMediaOverlay((prev) => {
       if (!prev) return prev;
@@ -2892,61 +3316,36 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       } else {
         const updated = data as unknown as CanvasElementRow;
         setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-        setBowtieDraft((prev) => (selectedBowtieElementId === updated.id ? (updated.element_config as Record<string, string | boolean> | null) ?? prev : prev));
+        setBowtieDraft((prev) => (selectedBowtieElementId === updated.id ? (updated.element_config as BowtieDraftState | null) ?? prev : prev));
       }
     }
     setEvidenceMediaOverlay(null);
-  }, [evidenceMediaOverlay, elements, mapId, canvasElementSelectColumns, setError, setElements, selectedBowtieElementId]);
+  }, [evidenceMediaOverlay, elements, mapId, setError, setElements, selectedBowtieElementId]);
   useEffect(() => {
     if (!selectedBowtieElement) return;
-    setBowtieHeadingDraft(methodologyDefaultLabelByType[selectedBowtieElement.element_type] ?? selectedBowtieElement.heading ?? "");
-    setBowtieDraft(buildMethodologyDraft(selectedBowtieElement));
+    const currentConfig = (selectedBowtieElement.element_config as BowtieDraftState | null) ?? {};
+    const label = getMethodologyEditableLabel(selectedBowtieElement.element_type, selectedBowtieElement.heading);
+    const description = String(currentConfig.description ?? "").trim();
+    setBowtieDraft({
+      ...currentConfig,
+      ...(selectedBowtieElement.element_type !== "bowtie_risk_rating"
+        ? {
+            label,
+            description,
+            body_display_mode: getMethodologyBodyDisplayMode(
+              label,
+              description,
+              currentConfig.body_display_mode
+            ),
+          }
+        : {}),
+    });
   }, [selectedBowtieElement]);
   useEffect(() => {
-    if (!canWriteMap || methodologyMigrationInFlightRef.current) return;
-    const elementsToMigrate = elements.filter((el) => {
-      if (!isDescriptionDrivenMethodologyType(el.element_type)) return false;
-      const defaultLabel = methodologyDefaultLabelByType[el.element_type] ?? "Node";
-      const currentHeading = String(el.heading ?? "").trim();
-      return !!currentHeading && currentHeading !== defaultLabel;
+    setEvidenceUploadPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
     });
-    if (!elementsToMigrate.length) return;
-    methodologyMigrationInFlightRef.current = true;
-    void (async () => {
-      try {
-        const results = await Promise.all(
-          elementsToMigrate.map(async (el) => {
-            const currentConfig = ((el.element_config as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
-            const defaultLabel = methodologyDefaultLabelByType[el.element_type] ?? "Node";
-            const migratedDescription = String(el.heading ?? "").trim();
-            const { data, error: updateError } = await supabaseBrowser
-              .schema("ms")
-              .from("canvas_elements")
-              .update({
-                heading: defaultLabel,
-                element_config: {
-                  ...currentConfig,
-                  description: migratedDescription,
-                },
-              })
-              .eq("id", el.id)
-              .eq("map_id", mapId)
-              .select(canvasElementSelectColumns)
-              .single();
-            return updateError || !data ? null : (data as unknown as CanvasElementRow);
-          })
-        );
-        const updatedById = new Map(results.filter((row): row is CanvasElementRow => !!row).map((row) => [row.id, row]));
-        if (!updatedById.size) return;
-        setElements((prev) => prev.map((el) => updatedById.get(el.id) ?? el));
-      } finally {
-        methodologyMigrationInFlightRef.current = false;
-      }
-    })();
-  }, [canWriteMap, elements, mapId, setElements]);
-  useEffect(() => {
-    if (evidenceUploadPreviewUrl) URL.revokeObjectURL(evidenceUploadPreviewUrl);
-    setEvidenceUploadPreviewUrl(null);
     setEvidenceUploadFile(null);
   }, [selectedBowtieElementId]);
   const handleClearEvidenceUploadFile = useCallback(() => {
@@ -3005,7 +3404,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     }
     const updated = data as unknown as CanvasElementRow;
     setElements((prev) => prev.map((el) => (el.id === updated.id ? updated : el)));
-    setBowtieDraft((updated.element_config as Record<string, string | boolean> | null) ?? {});
+    setBowtieDraft((updated.element_config as BowtieDraftState | null) ?? {});
     setImageUrlsByElementId((prev) => {
       const next = { ...prev };
       delete next[selectedBowtieElement.id];
@@ -3017,7 +3416,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }, [
     selectedBowtieElement,
     mapId,
-    canvasElementSelectColumns,
     setElements,
     setError,
     evidenceUploadPreviewUrl,
@@ -3030,22 +3428,18 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setMapCodeDraft(map.map_code ?? "");
   }, [map]);
 
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as globalThis.Node | null;
-      if (target instanceof HTMLElement && target.closest("[data-add-menu-filter='true']")) return;
-      if (addMenuRef.current && target && addMenuRef.current.contains(target)) return;
-      setShowAddMenu(false);
-      if (searchMenuRef.current && target && searchMenuRef.current.contains(target)) return;
-      setShowSearchMenu(false);
-      if (printMenuRef.current && target && printMenuRef.current.contains(target)) return;
-      setShowPrintMenu(false);
-      if (disciplineMenuRef.current && target && disciplineMenuRef.current.contains(target)) return;
-      setShowDisciplineMenu(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+  const stackedDismissMenus = useMemo(
+    () => [
+      { ref: addMenuRef, onDismiss: () => setShowAddMenu(false) },
+      { ref: suggestionMenuRef, onDismiss: () => setShowSuggestionsMenu(false) },
+      { ref: templateMenuRef, onDismiss: () => setShowTemplateMenu(false) },
+      { ref: searchMenuRef, onDismiss: () => setShowSearchMenu(false) },
+      { ref: printMenuRef, onDismiss: () => setShowPrintMenu(false) },
+      { ref: disciplineMenuRef, onDismiss: () => setShowDisciplineMenu(false) },
+    ],
+    [setShowPrintMenu, setShowSearchMenu, setShowTemplateMenu]
+  );
+  useStackedOutsidePointerDismiss(stackedDismissMenus);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -3088,33 +3482,41 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     }
   }, [outlineCreateMode, newContentHeadingId, headingItems]);
 
+  const relationshipPopupDismissRefs = useMemo(() => [relationshipPopupRef], []);
+  const dismissRelationshipPopup = useCallback(() => setRelationshipPopup(null), []);
+  useOutsidePointerDismiss({
+    enabled: !!relationshipPopup,
+    refs: relationshipPopupDismissRefs,
+    onDismiss: dismissRelationshipPopup,
+  });
+
+  const mapInfoDismissRefs = useMemo(() => [mapInfoAsideRef, mapInfoButtonRef], []);
+  const dismissMapInfoAside = useCallback(() => {
+    setShowMapInfoAside(false);
+    setShowOrgAccessModal(false);
+    setIsEditingMapInfo(false);
+    if (map) {
+      setMapInfoNameDraft(map.title);
+      setMapInfoDescriptionDraft(map.description ?? "");
+      setMapCodeDraft(map.map_code ?? "");
+    }
+  }, [map]);
+  useOutsidePointerDismiss({
+    enabled: showMapInfoAside && !showOrgAccessModal,
+    refs: mapInfoDismissRefs,
+    onDismiss: dismissMapInfoAside,
+  });
   useEffect(() => {
-    if (!relationshipPopup) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as globalThis.Node | null;
-      if (relationshipPopupRef.current && target && relationshipPopupRef.current.contains(target)) return;
-      setRelationshipPopup(null);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [relationshipPopup]);
-  useEffect(() => {
-    if (!showMapInfoAside) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as globalThis.Node | null;
-      if (mapInfoAsideRef.current && target && mapInfoAsideRef.current.contains(target)) return;
-      if (mapInfoButtonRef.current && target && mapInfoButtonRef.current.contains(target)) return;
-      setShowMapInfoAside(false);
-      setIsEditingMapInfo(false);
-      if (map) {
-        setMapInfoNameDraft(map.title);
-        setMapInfoDescriptionDraft(map.description ?? "");
-        setMapCodeDraft(map.map_code ?? "");
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [showMapInfoAside, map]);
+    if (!showMapInfoAside) {
+      setShowOrgAccessModal(false);
+      return;
+    }
+    if (!canManageMapMetadata) {
+      setOwnerHasActiveOrganisation(false);
+      return;
+    }
+    void loadOrgAccessStatus();
+  }, [canManageMapMetadata, loadOrgAccessStatus, showMapInfoAside]);
   useEffect(() => {
     if (!showMapInfoAside) return;
     const hasAnyLeftAsideOpen =
@@ -3123,6 +3525,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       !!selectedSystemId ||
       !!selectedProcessComponentId ||
       !!selectedPersonId ||
+      !!selectedAnchorId ||
       !!selectedStickyId ||
       !!selectedImageId ||
       !!selectedTextBoxId ||
@@ -3150,6 +3553,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     selectedSystemId,
     selectedProcessComponentId,
     selectedPersonId,
+    selectedAnchorId,
     selectedStickyId,
     selectedImageId,
     selectedTextBoxId,
@@ -3161,8 +3565,9 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     desktopNodeAction,
     showAddRelationship,
     mobileNodeMenuId,
-      map,
+    map,
   ]);
+
   useEffect(() => {
     const onKeyDown = async (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -3278,9 +3683,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         return;
       }
 
-      if (event.key !== "Delete") return;
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
       if (!selectedFlowIds.size) return;
       event.preventDefault();
+      if (!canWriteMap) return;
       setShowDeleteSelectionConfirm(true);
     };
     window.addEventListener("keydown", onKeyDown);
@@ -3307,13 +3713,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       if (e && !isAbortLikeError(e)) setError(e.message || "Unable to save viewport state.");
     }, 500);
   }, [mapId, userId]);
-  const handleToggleMapInfoAside = useCallback(() => {
-    setShowMapInfoAside((prev) => {
-      const next = !prev;
-      if (next) setIsEditingMapInfo(false);
-      return next;
-    });
-  }, []);
 
   const { handleSaveMapTitle, handleCloseMapInfoAside, handleSaveMapInfo, handleUpdateMapMemberRole } =
     useCanvasMapInfoActions({
@@ -3339,6 +3738,78 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       setMapCodeDraft,
     });
 
+  const handleGrantOrgUserFullWrite = useCallback(
+    async (targetUserId: string) => {
+      setGrantingOrgAccessUserId(targetUserId);
+      setOrgAccessError(null);
+
+      try {
+        const {
+          data: { session },
+        } = await supabaseBrowser.auth.getSession();
+
+        if (!session?.access_token) {
+          throw new Error("You are no longer signed in.");
+        }
+
+        const response = await fetch(`/api/system-maps/${mapId}/org-access`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ userId: targetUserId }),
+        });
+
+        const payload = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          throw new Error(payload.error || "Unable to grant full write access.");
+        }
+
+        await loadMapMembers(map?.owner_id);
+        await loadOrgAccessCandidates(orgAccessSearch);
+      } catch (grantError) {
+        setOrgAccessError(grantError instanceof Error ? grantError.message : "Unable to grant full write access.");
+      } finally {
+        setGrantingOrgAccessUserId(null);
+      }
+    },
+    [loadMapMembers, loadOrgAccessCandidates, map?.owner_id, mapId, orgAccessSearch]
+  );
+
+  const handleUpdateMapMemberRoleAndRefresh = useCallback(
+    async (targetUserId: string, nextRole: "read" | "partial_write" | "full_write") => {
+      await handleUpdateMapMemberRole(targetUserId, nextRole);
+      await loadOrgAccessCandidates(orgAccessSearch);
+    },
+    [handleUpdateMapMemberRole, loadOrgAccessCandidates, orgAccessSearch]
+  );
+
+  const filteredOrgAccessCandidates = useMemo(() => {
+    const search = orgAccessSearch.trim().toLowerCase();
+    if (!search) return orgAccessCandidates;
+
+    return orgAccessCandidates.filter((candidate) =>
+      [candidate.fullName, candidate.email, candidate.organisations.join(", ")]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(search))
+    );
+  }, [orgAccessCandidates, orgAccessSearch]);
+
+  useEffect(() => {
+    if (!showOrgAccessModal || !canManageMapMetadata) return;
+    const search = orgAccessSearch.trim();
+    if (search.length < 2) {
+      setOrgAccessCandidates([]);
+      setOrgAccessLoading(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void loadOrgAccessCandidates(search);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [canManageMapMetadata, loadOrgAccessCandidates, orgAccessSearch, showOrgAccessModal]);
+
   const { onNodeDragStop } = useCanvasNodeDragStop({
     canWriteMap,
     canEditElement,
@@ -3348,7 +3819,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     snapToMinorGrid,
     findNearestFreePosition,
     selectedFlowIds,
-    flowNodes,
+    flowNodesRef,
     setError,
     setElements,
     setNodes,
@@ -3361,7 +3832,9 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     handleAddSystemCircle,
     handleAddProcessComponent,
     handleAddPerson,
-    handleAddOrgChartPerson,
+    handleAddEquipment,
+    handleAddEnvironment,
+    handleAddAnchor,
     handleAddGroupingContainer,
     handleAddStickyNote,
     handleAddTextBox,
@@ -3389,6 +3862,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     handleAddIncidentSystemFactor,
     handleAddIncidentControlBarrier,
     handleAddIncidentEvidence,
+    handleAddIncidentResponseRecovery,
     handleAddIncidentFinding,
     handleAddIncidentRecommendation,
     handleSaveProcessHeading,
@@ -3435,6 +3909,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     personElementHeight,
     orgChartPersonWidth,
     orgChartPersonHeight,
+    anchorNodeWidth,
+    anchorNodeHeight,
     groupingDefaultWidth,
     groupingDefaultHeight,
     stickyDefaultSize,
@@ -3468,6 +3944,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     bowtieSquareHeight,
     bowtieControlHeight,
     bowtieRiskRatingHeight,
+    incidentCardWidth,
+    incidentCardHeight,
     incidentDefaultWidth,
     incidentThreeTwoHeight,
     incidentSquareSize,
@@ -3475,8 +3953,12 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     incidentThreeOneHeight,
     selectedProcessId,
     processHeadingDraft,
+    processFontSizeDraft,
     processWidthDraft,
     processHeightDraft,
+    processFillModeDraft,
+    processOutlineColorDraft,
+    processOutlineWidthDraft,
     processMinWidthSquares,
     processMinHeightSquares,
     processMinWidth,
@@ -3491,6 +3973,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     processComponentLabelDraft,
     setSelectedProcessComponentId,
     selectedPersonId,
+    personTypeDraft,
     personRoleDraft,
     personRoleIdDraft,
     personDepartmentDraft,
@@ -3501,9 +3984,16 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     personActingStartDateDraft,
     personRecruitingDraft,
     personProposedRoleDraft,
+    equipmentTypeDraft,
+    equipmentIdentifierDraft,
+    environmentDetailDraft,
+    environmentFactorTypeDraft,
     setSelectedPersonId,
     selectedGroupingId,
     groupingLabelDraft,
+    groupingHeaderColorDraft,
+    groupingHeaderFontSizeDraft,
+    groupingOutlineWidthDraft,
     groupingWidthDraft,
     groupingHeightDraft,
     groupingMinWidthSquares,
@@ -3513,6 +4003,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setSelectedGroupingId,
     selectedStickyId,
     stickyTextDraft,
+    stickyBackgroundColorDraft,
+    stickyOutlineColorDraft,
+    stickyFillModeDraft,
+    stickyOutlineWidthDraft,
     selectedImageId,
     imageDescriptionDraft,
     selectedTextBoxId,
@@ -3522,11 +4016,16 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     textBoxUnderlineDraft,
     textBoxAlignDraft,
     textBoxFontSizeDraft,
+    textBoxBackgroundColorDraft,
+    textBoxOutlineDraft,
+    textBoxOutlineColorDraft,
+    textBoxOutlineWidthDraft,
     selectedTableId,
     tableRowsDraft,
     tableColumnsDraft,
     tableHeaderBgDraft,
-    tableHeaderFillModeDraft,
+    tableGridLineColorDraft,
+    tableGridLineWeightDraft,
     tableBoldDraft,
     tableItalicDraft,
     tableUnderlineDraft,
@@ -3541,6 +4040,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     flowShapeFontSizeDraft,
     flowShapeColorDraft,
     flowShapeFillModeDraft,
+    flowShapeOutlineColorDraft,
+    flowShapeOutlineWidthDraft,
     flowShapeDirectionDraft,
     flowShapeRotationDraft,
     elements,
@@ -3586,53 +4087,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       return insertedRows;
     },
     [setElements]
-  );
-  const insertDocumentNodes = useCallback(
-    async (payloads: DocumentNodeInsertPayload[]) => {
-      if (!payloads.length) return [];
-      const { data, error: insertError } = await supabaseBrowser
-        .schema("ms")
-        .from("document_nodes")
-        .insert(payloads)
-        .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived");
-      if (insertError) throw insertError;
-      const insertedRows = (data as DocumentNodeRow[] | null) ?? [];
-      if (insertedRows.length) {
-        insertedRows.forEach((row) => {
-          savedPos.current[row.id] = { x: row.pos_x, y: row.pos_y };
-        });
-        setNodes((current) => [...current, ...insertedRows]);
-      }
-      return insertedRows;
-    },
-    [setNodes]
-  );
-  const updateDocumentNodes = useCallback(
-    async (
-      updates: Array<{
-        id: string;
-        fields: Partial<Pick<DocumentNodeRow, "pos_x" | "pos_y" | "width" | "height">>;
-      }>
-    ) => {
-      if (!updates.length) return;
-      await Promise.all(
-        updates.map(async ({ id, fields }) => {
-          const { error: updateError } = await supabaseBrowser.schema("ms").from("document_nodes").update(fields).eq("id", id).eq("map_id", mapId);
-          if (updateError) throw updateError;
-        })
-      );
-      setNodes((current) =>
-        current.map((node) => {
-          const match = updates.find((update) => update.id === node.id);
-          const next = match ? { ...node, ...match.fields } : node;
-          if (match) {
-            savedPos.current[node.id] = { x: next.pos_x, y: next.pos_y };
-          }
-          return next;
-        })
-      );
-    },
-    [mapId, setNodes]
   );
   const updateCanvasElements = useCallback(
     async (updates: CanvasElementUpdatePayload[]) => {
@@ -3681,11 +4135,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         ),
       };
     },
-    [groupingMinHeight, groupingMinWidth]
+    []
   );
   const findWizardGroupElements = useCallback(
-    (groupElement: CanvasElementRow, stepId: string) => {
-      const allowedTypes = new Set(wizardElementTypesByStep[stepId] ?? []);
+    (groupElement: CanvasElementRow, step: SystemMapWizardCommitPayload["step"]) => {
+      const allowedTypes = new Set(stepElementTypesByWizardStep[step]);
       const rightEdge = groupElement.pos_x + (groupElement.width || groupingDefaultWidth);
       const bottomEdge = groupElement.pos_y + (groupElement.height || groupingDefaultHeight);
       return elements
@@ -3702,7 +4156,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         })
         .sort((a, b) => (a.pos_y === b.pos_y ? a.pos_x - b.pos_x : a.pos_y - b.pos_y));
     },
-    [elements, groupingDefaultHeight, groupingDefaultWidth]
+    [elements]
   );
   const findExistingWizardGroup = useCallback(
     (heading: string) =>
@@ -3752,8 +4206,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         itemWidth: number,
         itemHeight: number,
         nodeBuilder: (origin: { x: number; y: number }, index: number) => CanvasElementInsertPayload | null,
-        meaningfulCount: number,
-        newGroupPosition?: { x: number; y: number }
+        meaningfulCount: number
       ) => {
         if (!meaningfulCount) return;
         const existingGroup = findExistingWizardGroup(heading);
@@ -3761,8 +4214,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         const totalCount = existingNodes.length + meaningfulCount;
         const layout = buildWizardGroupLayout(totalCount, itemWidth, itemHeight);
         const groupPosition = existingGroup
-          ? { x: snapToMinorGrid(existingGroup.pos_x), y: snapToMinorGrid(existingGroup.pos_y) }
-          : (newGroupPosition ?? getNextWizardGroupPosition(layout.width, layout.height));
+          ? {
+              x: snapToMinorGrid(existingGroup.pos_x),
+              y: snapToMinorGrid(existingGroup.pos_y),
+            }
+          : getNextWizardGroupPosition(layout.width, layout.height);
         const relayoutUpdates: CanvasElementUpdatePayload[] = [];
         existingNodes.forEach((node, index) => {
           const column = index % layout.columns;
@@ -3773,7 +4229,12 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           };
           relayoutUpdates.push({
             id: node.id,
-            fields: { pos_x: origin.x, pos_y: origin.y, width: layout.itemWidth, height: layout.itemHeight },
+            fields: {
+              pos_x: origin.x,
+              pos_y: origin.y,
+              width: layout.itemWidth,
+              height: layout.itemHeight,
+            },
           });
         });
         const nodePayloads: CanvasElementInsertPayload[] = [];
@@ -3792,7 +4253,12 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           await updateCanvasElements([
             {
               id: existingGroup.id,
-              fields: { pos_x: groupPosition.x, pos_y: groupPosition.y, width: layout.width, height: layout.height },
+              fields: {
+                pos_x: groupPosition.x,
+                pos_y: groupPosition.y,
+                width: layout.width,
+                height: layout.height,
+              },
             },
             ...relayoutUpdates,
           ]);
@@ -3814,1006 +4280,82 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       };
 
       const isFilled = (value: string) => value.trim().length > 0;
-      const buildLooseOrigins = (count: number, itemWidth: number, itemHeight: number) => {
-        if (!count) return [] as Array<{ x: number; y: number }>;
-        const layout = buildWizardGroupLayout(count, itemWidth, itemHeight);
-        const base = getNextWizardGroupPosition(layout.width, layout.height);
-        return Array.from({ length: count }, (_, index) => {
-          const column = index % layout.columns;
-          const row = Math.floor(index / layout.columns);
-          return {
-            x: snapToMinorGrid(base.x + layout.horizontalPadding + column * (layout.itemWidth + layout.gap)),
-            y: snapToMinorGrid(base.y + layout.topPadding + row * (layout.itemHeight + layout.gap)),
-          };
-        });
-      };
-      const resolveDocumentType = (value: string) => {
-        const normalized = value.trim().toLowerCase();
-        return (
-          addDocumentTypes.find((option) => option.id === value) ??
-          addDocumentTypes.find((option) => option.name.trim().toLowerCase() === normalized) ??
-          null
-        );
-      };
-      const buildDocumentPayload = (
-        origin: { x: number; y: number },
-        typeValue: string,
-        title: string,
-        documentNumber: string
-      ): DocumentNodeInsertPayload | null => {
-        const type = resolveDocumentType(typeValue);
-        if (!type) return null;
-        const isLandscape = isLandscapeTypeName(type.name);
-        return {
-          map_id: mapId,
-          type_id: type.id,
-          title: title.trim() || "Document",
-          document_number: documentNumber.trim(),
-          discipline: "",
-          owner_user_id: userId,
-          owner_name: userEmail,
-          user_group: "",
-          pos_x: origin.x,
-          pos_y: origin.y,
-          width: isLandscape ? landscapeDefaultWidth : defaultWidth,
-          height: isLandscape ? landscapeDefaultHeight : defaultHeight,
-          is_archived: false,
-        };
-      };
-      const getDocumentDimensionsByTypeValue = (typeValue: string) => {
-        const type = resolveDocumentType(typeValue);
-        const isLandscape = type ? isLandscapeTypeName(type.name) : false;
-        return {
-          width: isLandscape ? landscapeDefaultWidth : defaultWidth,
-          height: isLandscape ? landscapeDefaultHeight : defaultHeight,
-        };
-      };
-      const createCompactPeople = async (
-        heading: string,
-        stepId: "people" | "roles",
-        items: Array<{ roleName: string; occupantName: string }>,
-        newGroupPosition?: { x: number; y: number }
-      ) => {
-        const filtered = items.filter((item) => isFilled(item.roleName) || isFilled(item.occupantName));
-        await createGroupAndInsert(stepId, heading, personElementWidth, personElementHeight, (origin, index) => {
-          const item = filtered[index];
-          return {
-            map_id: mapId,
-            element_type: "person",
-            heading: buildPersonHeading(item.roleName.trim() || "Role Name", item.occupantName.trim() || "Occupant Name"),
-            color_hex: null,
-            created_by_user_id: userId,
-            element_config: {
-              position_title: item.roleName.trim(),
-              role_id: "",
-              department: "",
-              occupant_name: item.occupantName.trim(),
-              start_date: "",
-              employment_type: "fte",
-              acting_name: "",
-              acting_start_date: "",
-              recruiting: false,
-              contractor_role: false,
-              proposed_role: false,
-            },
-            pos_x: origin.x,
-            pos_y: origin.y,
-            width: personElementWidth,
-            height: personElementHeight,
-          };
-        }, filtered.length, newGroupPosition);
-      };
-      const bowtieSectionHeadings = [
-        wizardGroupHeadingByStep.overview,
-        wizardGroupHeadingByStep.threats,
-        wizardGroupHeadingByStep.consequences,
-        "Preventive Controls",
-        "Recovery Controls",
-        wizardGroupHeadingByStep.assurance,
-      ];
-      const bowtiePreventiveControlsHeading = "Preventive Controls";
-      const bowtieRecoveryControlsHeading = "Recovery Controls";
-      const getBowtieWizardSectionPosition = (heading: string, sectionWidth: number, sectionHeight: number) => {
-        const sectionGap = minorGridSize * 5;
-        const existingSections = elements
-          .filter((element) => element.element_type === "grouping_container" && bowtieSectionHeadings.includes(element.heading))
-          .sort((a, b) => a.pos_y - b.pos_y || a.pos_x - b.pos_x);
-        if (!existingSections.length) {
-          return getNextWizardGroupPosition(sectionWidth, sectionHeight);
-        }
-        const leftEdge = Math.min(...existingSections.map((section) => section.pos_x));
-        const orderIndex = bowtieSectionHeadings.indexOf(heading);
-        const row = Math.floor(Math.max(0, orderIndex) / 3);
-        const col = Math.max(0, orderIndex) % 3;
-        if (row === 0) {
-          if (col === 0) {
-            return {
-              x: leftEdge,
-              y: Math.min(...existingSections.map((section) => section.pos_y)),
-            };
-          }
-          const priorRowSections = existingSections.filter(
-            (section) => Math.floor(Math.max(0, bowtieSectionHeadings.indexOf(section.heading)) / 3) === 0
-          );
-          const rightEdge = Math.max(...priorRowSections.map((section) => section.pos_x + (section.width || sectionWidth)));
-          return {
-            x: snapToMinorGrid(rightEdge + sectionGap),
-            y: Math.min(...priorRowSections.map((section) => section.pos_y)),
-          };
-        }
-        const upperSections = existingSections.filter(
-          (section) => Math.floor(Math.max(0, bowtieSectionHeadings.indexOf(section.heading)) / 3) < row
-        );
-        const rowTop = snapToMinorGrid(
-          Math.max(...upperSections.map((section) => section.pos_y + (section.height || sectionHeight))) + sectionGap
-        );
-        const sameRowSections = existingSections.filter(
-          (section) => Math.floor(Math.max(0, bowtieSectionHeadings.indexOf(section.heading)) / 3) === row
-        );
-        if (!sameRowSections.length || col === 0) {
-          return { x: leftEdge, y: rowTop };
-        }
-        const rightEdge = Math.max(...sameRowSections.map((section) => section.pos_x + (section.width || sectionWidth)));
-        return {
-          x: snapToMinorGrid(rightEdge + sectionGap),
-          y: rowTop,
-        };
-      };
-      const relayoutBowtieWizardSections = async () => {
-        const relevantTypes = [
-          "grouping_container",
-          "bowtie_hazard",
-          "bowtie_top_event",
-          "bowtie_risk_rating",
-          "bowtie_threat",
-          "bowtie_consequence",
-          "bowtie_control",
-          "bowtie_escalation_factor",
-          "bowtie_recovery_measure",
-          "bowtie_degradation_indicator",
-        ];
-        const { data, error: fetchError } = await supabaseBrowser
-          .schema("ms")
-          .from("canvas_elements")
-          .select(canvasElementSelectColumns)
-          .eq("map_id", mapId)
-          .in("element_type", relevantTypes);
-        if (fetchError) throw fetchError;
-        const allRows = ((data as CanvasElementRow[] | null) ?? []).filter((row) => {
-          if (row.element_type !== "grouping_container") return true;
-          return bowtieSectionHeadings.includes(row.heading);
-        });
-        const groupsByHeading = new Map(
-          allRows
-            .filter((row) => row.element_type === "grouping_container")
-            .map((row) => [row.heading, row] as const)
-        );
-        const sortByVisualOrder = (rows: CanvasElementRow[]) =>
-          [...rows].sort((a, b) => a.pos_y - b.pos_y || a.pos_x - b.pos_x || a.created_at.localeCompare(b.created_at));
-        const overviewNodes = sortByVisualOrder(
-          allRows.filter((row) =>
-            row.element_type === "bowtie_hazard" ||
-            row.element_type === "bowtie_top_event" ||
-            row.element_type === "bowtie_risk_rating"
-          )
-        );
-        const threats = sortByVisualOrder(allRows.filter((row) => row.element_type === "bowtie_threat"));
-        const consequences = sortByVisualOrder(allRows.filter((row) => row.element_type === "bowtie_consequence"));
-        const controls = sortByVisualOrder(allRows.filter((row) => row.element_type === "bowtie_control"));
-        const preventiveControls = controls.filter((row) => {
-          const cfg = (row.element_config as Record<string, unknown> | null) ?? {};
-          return String(cfg.control_category ?? "").trim().toLowerCase() === "preventive";
-        });
-        const recoveryControls = controls.filter((row) => {
-          const cfg = (row.element_config as Record<string, unknown> | null) ?? {};
-          return String(cfg.control_category ?? "").trim().toLowerCase() !== "preventive";
-        });
-        const assuranceNodes = sortByVisualOrder(
-          allRows.filter((row) =>
-            row.element_type === "bowtie_escalation_factor" ||
-            row.element_type === "bowtie_recovery_measure" ||
-            row.element_type === "bowtie_degradation_indicator"
-          )
-        );
-        const gap = minorGridSize;
-        const sectionGap = minorGridSize * 5;
-        const edgePadding = minorGridSize * 2;
-        const anchor = getNextWizardGroupPosition(majorGridSize * 4, majorGridSize * 4);
-        const startX = groupsByHeading.size
-          ? Math.min(...[...groupsByHeading.values()].map((row) => row.pos_x))
-          : anchor.x;
-        const startY = groupsByHeading.size
-          ? Math.min(...[...groupsByHeading.values()].map((row) => row.pos_y))
-          : anchor.y;
 
-        const leftRows = threats.map((threat) => {
-          const linkedControls = preventiveControls.filter((control) => {
-            const cfg = (control.element_config as Record<string, unknown> | null) ?? {};
-            const linked = String(cfg.linked_target_heading ?? "").trim();
-            return linked ? linked === threat.heading : threat === threats[0];
-          });
-          return { anchor: threat, controls: linkedControls };
-        });
-        const rightRows = consequences.map((consequence) => {
-          const linkedControls = recoveryControls.filter((control) => {
-            const cfg = (control.element_config as Record<string, unknown> | null) ?? {};
-            const linked = String(cfg.linked_target_heading ?? "").trim();
-            return linked ? linked === consequence.heading : consequence === consequences[0];
-          });
-          return { anchor: consequence, controls: linkedControls };
-        });
-        const leftRowHeights = leftRows.map((row) =>
-          Math.max(
-            row.anchor.height || bowtieSquareHeight,
-            ...row.controls.map((control) => control.height || bowtieControlHeight),
-            bowtieSquareHeight
-          )
-        );
-        const rightRowHeights = rightRows.map((row) =>
-          Math.max(
-            row.anchor.height || bowtieSquareHeight,
-            ...row.controls.map((control) => control.height || bowtieControlHeight),
-            bowtieSquareHeight
-          )
-        );
-        const totalRows = Math.max(leftRows.length, rightRows.length, 1);
-        const rowHeights = Array.from({ length: totalRows }, (_, index) =>
-          Math.max(leftRowHeights[index] ?? 0, rightRowHeights[index] ?? 0, bowtieSquareHeight)
-        );
-        const bodyHeight = edgePadding * 2 + rowHeights.reduce((sum, value) => sum + value, 0) + Math.max(0, totalRows - 1) * gap;
-        const leftThreatWidth = edgePadding * 2 + bowtieDefaultWidth;
-        const leftControlContentWidth = Math.max(
-          bowtieDefaultWidth,
-          ...leftRows.map((row) => row.controls.reduce((sum, control) => sum + (control.width || bowtieDefaultWidth), 0) + Math.max(0, row.controls.length - 1) * gap)
-        );
-        const leftControlWidth = edgePadding * 2 + leftControlContentWidth;
-        const overviewContentWidth = overviewNodes.reduce((sum, row) => sum + (row.width || bowtieDefaultWidth), 0) + Math.max(0, overviewNodes.length - 1) * gap;
-        const overviewWidth = edgePadding * 2 + Math.max(overviewContentWidth, bowtieDefaultWidth * 2);
-        const overviewHeight = edgePadding * 2 + Math.max(...overviewNodes.map((row) => row.height || bowtieSquareHeight), bowtieSquareHeight);
-        const rightControlContentWidth = Math.max(
-          bowtieDefaultWidth,
-          ...rightRows.map((row) => row.controls.reduce((sum, control) => sum + (control.width || bowtieDefaultWidth), 0) + Math.max(0, row.controls.length - 1) * gap)
-        );
-        const rightControlWidth = edgePadding * 2 + rightControlContentWidth;
-        const rightConsequenceWidth = edgePadding * 2 + bowtieDefaultWidth;
-        const overviewY = snapToMinorGrid(startY + Math.max(0, (bodyHeight - overviewHeight) / 2));
-        const leftThreatX = startX;
-        const leftControlX = snapToMinorGrid(leftThreatX + leftThreatWidth + sectionGap);
-        const overviewX = snapToMinorGrid(leftControlX + leftControlWidth + sectionGap);
-        const rightControlX = snapToMinorGrid(overviewX + overviewWidth + sectionGap);
-        const rightConsequenceX = snapToMinorGrid(rightControlX + rightControlWidth + sectionGap);
-        const assuranceWidth = edgePadding * 2 + Math.max(bowtieDefaultWidth, Math.min(3, Math.max(1, assuranceNodes.length)) * bowtieDefaultWidth + Math.max(0, Math.min(3, Math.max(1, assuranceNodes.length)) - 1) * gap);
-        const assuranceRows = Math.max(1, Math.ceil(Math.max(assuranceNodes.length, 1) / 3));
-        const assuranceHeight = edgePadding * 2 + assuranceRows * bowtieSquareHeight + Math.max(0, assuranceRows - 1) * gap;
-        const assuranceX = startX;
-        const assuranceY = snapToMinorGrid(startY + bodyHeight + sectionGap);
-
-        const updates: CanvasElementUpdatePayload[] = [];
-        const pushGroupUpdate = (heading: string, x: number, y: number, width: number, height: number) => {
-          const group = groupsByHeading.get(heading);
-          if (!group) return;
-          updates.push({ id: group.id, fields: { pos_x: x, pos_y: y, width, height } });
-        };
-        pushGroupUpdate(wizardGroupHeadingByStep.threats, leftThreatX, startY, leftThreatWidth, bodyHeight);
-        pushGroupUpdate(bowtiePreventiveControlsHeading, leftControlX, startY, leftControlWidth, bodyHeight);
-        pushGroupUpdate(wizardGroupHeadingByStep.overview, overviewX, overviewY, overviewWidth, overviewHeight);
-        pushGroupUpdate(bowtieRecoveryControlsHeading, rightControlX, startY, rightControlWidth, bodyHeight);
-        pushGroupUpdate(wizardGroupHeadingByStep.consequences, rightConsequenceX, startY, rightConsequenceWidth, bodyHeight);
-        pushGroupUpdate(wizardGroupHeadingByStep.assurance, assuranceX, assuranceY, assuranceWidth, assuranceHeight);
-
-        let runningY = snapToMinorGrid(startY + edgePadding);
-        leftRows.forEach((row, rowIndex) => {
-          updates.push({
-            id: row.anchor.id,
-            fields: {
-              pos_x: snapToMinorGrid(leftThreatX + edgePadding),
-              pos_y: runningY,
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            },
-          });
-          let controlX = snapToMinorGrid(leftControlX + edgePadding);
-          row.controls.forEach((control) => {
-            updates.push({
-              id: control.id,
-              fields: {
-                pos_x: controlX,
-                pos_y: runningY,
-                width: bowtieDefaultWidth,
-                height: bowtieControlHeight,
-              },
-            });
-            controlX = snapToMinorGrid(controlX + bowtieDefaultWidth + gap);
-          });
-          runningY = snapToMinorGrid(runningY + rowHeights[rowIndex] + gap);
-        });
-
-        runningY = snapToMinorGrid(startY + edgePadding);
-        rightRows.forEach((row, rowIndex) => {
-          let controlX = snapToMinorGrid(rightControlX + edgePadding);
-          row.controls.forEach((control) => {
-            updates.push({
-              id: control.id,
-              fields: {
-                pos_x: controlX,
-                pos_y: runningY,
-                width: bowtieDefaultWidth,
-                height: bowtieControlHeight,
-              },
-            });
-            controlX = snapToMinorGrid(controlX + bowtieDefaultWidth + gap);
-          });
-          updates.push({
-            id: row.anchor.id,
-            fields: {
-              pos_x: snapToMinorGrid(rightConsequenceX + edgePadding),
-              pos_y: runningY,
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            },
-          });
-          runningY = snapToMinorGrid(runningY + rowHeights[rowIndex] + gap);
-        });
-
-        let overviewXCursor = snapToMinorGrid(overviewX + edgePadding);
-        overviewNodes.forEach((node) => {
-          const width = node.element_type === "bowtie_risk_rating" ? bowtieDefaultWidth : bowtieDefaultWidth;
-          const height =
-            node.element_type === "bowtie_hazard"
-              ? bowtieHazardHeight
-              : node.element_type === "bowtie_risk_rating"
-                ? bowtieRiskRatingHeight
-                : bowtieSquareHeight;
-          updates.push({
-            id: node.id,
-            fields: {
-              pos_x: overviewXCursor,
-              pos_y: snapToMinorGrid(overviewY + edgePadding),
-              width,
-              height,
-            },
-          });
-          overviewXCursor = snapToMinorGrid(overviewXCursor + width + gap);
-        });
-
-        assuranceNodes.forEach((node, index) => {
-          const column = index % 3;
-          const row = Math.floor(index / 3);
-          updates.push({
-            id: node.id,
-            fields: {
-              pos_x: snapToMinorGrid(assuranceX + edgePadding + column * (bowtieDefaultWidth + gap)),
-              pos_y: snapToMinorGrid(assuranceY + edgePadding + row * (bowtieSquareHeight + gap)),
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            },
-          });
-        });
-
-        if (updates.length) {
-          await updateCanvasElements(updates);
-        }
-      };
-      const getDocumentWizardTopRowGroups = () =>
-        elements.filter(
-          (element) =>
-            element.element_type === "grouping_container" &&
-            (element.heading === wizardGroupHeadingByStep.systems ||
-              element.heading === wizardGroupHeadingByStep.processes ||
-              element.heading === wizardGroupHeadingByStep.people)
-        );
-      const getDocumentWizardTopRowWidth = () => {
-        const topGroups = getDocumentWizardTopRowGroups();
-        if (!topGroups.length) {
-          return processHeadingWidth;
-        }
-        const leftEdge = Math.min(...topGroups.map((group) => group.pos_x));
-        const rightEdge = Math.max(...topGroups.map((group) => group.pos_x + (group.width || groupingDefaultWidth)));
-        return Math.max(processHeadingWidth, snapToMinorGrid(rightEdge - leftEdge));
-      };
-      const getDocumentWizardTopRowPosition = (groupWidth: number, groupHeight: number) => {
-        const topGroups = getDocumentWizardTopRowGroups();
-        if (!topGroups.length) {
-          return {
-            x: snapToMinorGrid(majorGridSize),
-            y: snapToMinorGrid(majorGridSize),
-          };
-        }
-        const topY = topGroups.reduce((best, current) => Math.min(best, current.pos_y), topGroups[0].pos_y);
-        const rightmost = topGroups.reduce((best, current) => {
-          const bestEdge = best.pos_x + (best.width || groupWidth);
-          const currentEdge = current.pos_x + (current.width || groupWidth);
-          return currentEdge > bestEdge ? current : best;
-        });
-        return {
-          x: snapToMinorGrid(rightmost.pos_x + (rightmost.width || groupWidth) + majorGridSize),
-          y: snapToMinorGrid(topY),
-        };
-      };
-      const getDocumentWizardSecondRowBounds = () => {
-        const topGroups = getDocumentWizardTopRowGroups();
-        const leftEdge = topGroups.length ? Math.min(...topGroups.map((group) => group.pos_x)) : snapToMinorGrid(majorGridSize);
-        const defaultTop = snapToMinorGrid(majorGridSize + groupingDefaultHeight + minorGridSize * 5);
-        if (!topGroups.length) {
-          return {
-            x: leftEdge,
-            y: defaultTop,
-          };
-        }
-        const secondRowTop = snapToMinorGrid(
-          Math.max(...topGroups.map((group) => group.pos_y + (group.height || groupingDefaultHeight))) + minorGridSize * 5
-        );
-        const secondRowElementRightEdges = elements
-          .filter((element) => element.pos_y >= secondRowTop - minorGridSize)
-          .map((element) => element.pos_x + (element.width || defaultWidth));
-        const secondRowNodeRightEdges = nodes
-          .filter((node) => node.pos_y >= secondRowTop - minorGridSize)
-          .map((node) => node.pos_x + (node.width || defaultWidth));
-        const rightmost = Math.max(0, ...secondRowElementRightEdges, ...secondRowNodeRightEdges);
-        return {
-          x: leftEdge,
-          y: secondRowTop,
-        };
-      };
-
-      if (payload.category === "document_map") {
-        if (payload.step === "systems") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
-          const groupPosition = getDocumentWizardTopRowPosition(
-            buildWizardGroupLayout(items.length, systemCircleDiameter, systemCircleElementHeight).width,
-            buildWizardGroupLayout(items.length, systemCircleDiameter, systemCircleElementHeight).height
-          );
-          await createGroupAndInsert("systems", wizardGroupHeadingByStep.systems, systemCircleDiameter, systemCircleElementHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: "system_circle",
-              heading: item.heading.trim() || `System ${index + 1}`,
-              color_hex: null,
-              created_by_user_id: userId,
-              element_config: null,
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: systemCircleDiameter,
-              height: systemCircleElementHeight,
-            };
-          }, items.length, groupPosition);
-          return;
-        }
-        if (payload.step === "processes") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
-          const groupPosition = getDocumentWizardTopRowPosition(
-            buildWizardGroupLayout(items.length, processComponentWidth, processComponentElementHeight).width,
-            buildWizardGroupLayout(items.length, processComponentWidth, processComponentElementHeight).height
-          );
-          await createGroupAndInsert("processes", wizardGroupHeadingByStep.processes, processComponentWidth, processComponentElementHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: "process_component",
-              heading: item.heading.trim() || `Process ${index + 1}`,
-              color_hex: null,
-              created_by_user_id: userId,
-              element_config: { body: item.description.trim() },
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: processComponentWidth,
-              height: processComponentElementHeight,
-            };
-          }, items.length, groupPosition);
-          return;
-        }
-        if (payload.step === "people") {
-          const filteredCount = payload.items.filter((item) => isFilled(item.roleName) || isFilled(item.occupantName)).length;
-          const groupPosition = getDocumentWizardTopRowPosition(
-            buildWizardGroupLayout(filteredCount, personElementWidth, personElementHeight).width,
-            buildWizardGroupLayout(filteredCount, personElementWidth, personElementHeight).height
-          );
-          await createCompactPeople(wizardGroupHeadingByStep.people, "people", payload.items, groupPosition);
-          return;
-        }
-        if (payload.step === "documents") {
-          const items = payload.items.filter((item) => isFilled(item.title) || isFilled(item.documentNumber) || isFilled(item.documentType));
-          const secondRowBase = getDocumentWizardSecondRowBounds();
-          let nextX = secondRowBase.x;
-          const documentPayloads = items
-            .map((item, index) => {
-              const dimensions = getDocumentDimensionsByTypeValue(item.documentType);
-              const payload = buildDocumentPayload(
-                { x: nextX, y: secondRowBase.y },
-                item.documentType,
-                item.title || `Document ${index + 1}`,
-                item.documentNumber
-              );
-              nextX = snapToMinorGrid(nextX + dimensions.width + minorGridSize);
-              return payload;
-            })
-            .filter((item): item is DocumentNodeInsertPayload => Boolean(item));
-          await insertDocumentNodes(documentPayloads);
-          return;
-        }
-        if (payload.step === "hierarchy") {
-          const items = payload.items.filter((item) => isFilled(item.layerName) || item.documentIds.length > 0);
-          if (!items.length) return;
-          const gap = minorGridSize;
-          const base = getDocumentWizardSecondRowBounds();
-          const maxLayerWidth = getDocumentWizardTopRowWidth();
-          const categoryPayloads: CanvasElementInsertPayload[] = [];
-          const documentUpdates: Array<{ id: string; fields: Partial<Pick<DocumentNodeRow, "pos_x" | "pos_y" | "width" | "height">> }> = [];
-          let nextColumnX = base.x;
-          items.forEach((item, index) => {
-            const selectedNodes = item.documentIds
-              .map((documentId) => nodes.find((node) => node.id === documentId))
-              .filter((node): node is DocumentNodeRow => Boolean(node));
-            const totalDocWidth =
-              selectedNodes.reduce((sum, node) => sum + (node.width || defaultWidth), 0) +
-              Math.max(0, selectedNodes.length - 1) * gap;
-            const categoryWidth = Math.max(
-              processHeadingWidth,
-              Math.min(maxLayerWidth, totalDocWidth || processHeadingWidth)
-            );
-            const categoryX = snapToMinorGrid(nextColumnX);
-            categoryPayloads.push({
-              map_id: mapId,
-              element_type: "category",
-              heading: item.layerName.trim() || `Layer ${index + 1}`,
-              color_hex: defaultCategoryColor,
-              created_by_user_id: userId,
-              element_config: null,
-              pos_x: categoryX,
-              pos_y: base.y,
-              width: categoryWidth,
-              height: processHeadingHeight,
-            });
-            let currentX = categoryX;
-            let currentY = snapToMinorGrid(base.y + processHeadingHeight + gap);
-            let currentRowHeight = 0;
-            selectedNodes.forEach((existingNode) => {
-              const documentWidth = existingNode.width || defaultWidth;
-              const documentHeight = existingNode.height || defaultHeight;
-              if (currentX > categoryX && currentX + documentWidth > categoryX + categoryWidth) {
-                currentX = categoryX;
-                currentY = snapToMinorGrid(currentY + currentRowHeight + gap);
-                currentRowHeight = 0;
-              }
-              documentUpdates.push({
-                id: existingNode.id,
-                fields: {
-                  pos_x: currentX,
-                  pos_y: currentY,
-                  width: existingNode.width,
-                  height: existingNode.height,
-                },
-              });
-              currentX = snapToMinorGrid(currentX + documentWidth + gap);
-              currentRowHeight = Math.max(currentRowHeight, documentHeight);
-            });
-            nextColumnX = snapToMinorGrid(nextColumnX + categoryWidth + gap);
-          });
-          await insertCanvasElements(categoryPayloads);
-          await updateDocumentNodes(documentUpdates);
-          return;
-        }
-      }
-
-      if (payload.category === "bow_tie") {
-        if (payload.step === "overview") {
-          const item = payload.items[0];
-          const edgePadding = minorGridSize * 2;
-          const gap = minorGridSize;
-          const overviewNodes = [
-            {
-              element_type: "bowtie_hazard" as const,
-              heading: item.hazard.trim() || "Hazard",
-              color_hex: "#111827",
-              element_config: { description: "", hazard_category: "" },
-              width: bowtieDefaultWidth,
-              height: bowtieHazardHeight,
-            },
-            {
-              element_type: "bowtie_top_event" as const,
-              heading: item.topEvent.trim() || "Top Event",
-              color_hex: "#dc2626",
-              element_config: { description: "", loss_of_control_type: item.lossOfControlType.trim() },
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            },
-            {
-              element_type: "bowtie_risk_rating" as const,
-              heading: `Risk Level: ${item.riskLevel.charAt(0).toUpperCase() + item.riskLevel.slice(1)}`,
-              color_hex: "#111827",
-              element_config: { likelihood: item.likelihood, consequence: item.consequence, risk_level: item.riskLevel },
-              width: bowtieDefaultWidth,
-              height: bowtieRiskRatingHeight,
-            },
-          ];
-          const sectionWidth =
-            edgePadding * 2 + overviewNodes.reduce((sum, node) => sum + node.width, 0) + gap * (overviewNodes.length - 1);
-          const sectionHeight = edgePadding * 2 + Math.max(...overviewNodes.map((node) => node.height));
-          const existingGroup = findExistingWizardGroup(wizardGroupHeadingByStep.overview);
-          const sectionPosition = existingGroup
-            ? { x: snapToMinorGrid(existingGroup.pos_x), y: snapToMinorGrid(existingGroup.pos_y) }
-            : getBowtieWizardSectionPosition(wizardGroupHeadingByStep.overview, sectionWidth, sectionHeight);
-          const childOrigins = overviewNodes.map((node, index) => ({
-            x: snapToMinorGrid(
-              sectionPosition.x +
-                edgePadding +
-                overviewNodes.slice(0, index).reduce((sum, current) => sum + current.width, 0) +
-                gap * index
-            ),
-            y: snapToMinorGrid(sectionPosition.y + edgePadding),
-          }));
-          const riskLabel = item.riskLevel.charAt(0).toUpperCase() + item.riskLevel.slice(1);
-          if (existingGroup) {
-            const existingChildren = findWizardGroupElements(existingGroup, "overview");
-            const updates: CanvasElementUpdatePayload[] = [
-              {
-                id: existingGroup.id,
-                fields: { pos_x: sectionPosition.x, pos_y: sectionPosition.y, width: sectionWidth, height: sectionHeight },
-              },
-            ];
-            const inserts: CanvasElementInsertPayload[] = [];
-            overviewNodes.forEach((node, index) => {
-              const match = existingChildren.find((child) => child.element_type === node.element_type);
-              if (match) {
-                updates.push({
-                  id: match.id,
-                  fields: {
-                    heading: node.heading,
-                    element_config: node.element_config,
-                    pos_x: childOrigins[index].x,
-                    pos_y: childOrigins[index].y,
-                    width: node.width,
-                    height: node.height,
-                  },
-                });
-                return;
-              }
-              inserts.push({
-                map_id: mapId,
-                element_type: node.element_type,
-                heading: node.heading,
-                color_hex: node.color_hex,
-                created_by_user_id: userId,
-                element_config: node.element_config,
-                pos_x: childOrigins[index].x,
-                pos_y: childOrigins[index].y,
-                width: node.width,
-                height: node.height,
-              });
-            });
-            await updateCanvasElements(updates);
-            await insertCanvasElements(inserts);
-            return;
-          }
-          await insertCanvasElements([
-            {
-              map_id: mapId,
-              element_type: "grouping_container",
-              heading: wizardGroupHeadingByStep.overview,
-              color_hex: null,
-              created_by_user_id: userId,
-              pos_x: sectionPosition.x,
-              pos_y: sectionPosition.y,
-              width: sectionWidth,
-              height: sectionHeight,
-            },
-            {
-              map_id: mapId,
-              element_type: "bowtie_hazard",
-              heading: item.hazard.trim() || "Hazard",
-              color_hex: "#111827",
-              created_by_user_id: userId,
-              element_config: { description: "", hazard_category: "" },
-              pos_x: childOrigins[0].x,
-              pos_y: childOrigins[0].y,
-              width: bowtieDefaultWidth,
-              height: bowtieHazardHeight,
-            },
-            {
-              map_id: mapId,
-              element_type: "bowtie_top_event",
-              heading: item.topEvent.trim() || "Top Event",
-              color_hex: "#dc2626",
-              created_by_user_id: userId,
-              element_config: { description: "", loss_of_control_type: item.lossOfControlType.trim() },
-              pos_x: childOrigins[1].x,
-              pos_y: childOrigins[1].y,
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            },
-            {
-              map_id: mapId,
-              element_type: "bowtie_risk_rating",
-              heading: `Risk Level: ${riskLabel}`,
-              color_hex: "#111827",
-              created_by_user_id: userId,
-              element_config: { likelihood: item.likelihood, consequence: item.consequence, risk_level: item.riskLevel },
-              pos_x: childOrigins[2].x,
-              pos_y: childOrigins[2].y,
-              width: bowtieDefaultWidth,
-              height: bowtieRiskRatingHeight,
-            },
-          ]);
-          await relayoutBowtieWizardSections();
-          return;
-        }
-        if (payload.step === "threats") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.threatCategory));
-          const layout = buildWizardGroupLayout(items.length, bowtieDefaultWidth, bowtieSquareHeight);
-          const sectionPosition = getBowtieWizardSectionPosition(wizardGroupHeadingByStep.threats, layout.width, layout.height);
-          await createGroupAndInsert("threats", wizardGroupHeadingByStep.threats, bowtieDefaultWidth, bowtieSquareHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: "bowtie_threat",
-              heading: item.heading.trim() || `Threat ${index + 1}`,
-              color_hex: "#f97316",
-              created_by_user_id: userId,
-              element_config: { description: "", threat_category: item.threatCategory.trim() },
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            };
-          }, items.length, sectionPosition);
-          await relayoutBowtieWizardSections();
-          return;
-        }
-        if (payload.step === "consequences") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.impactCategory));
-          const layout = buildWizardGroupLayout(items.length, bowtieDefaultWidth, bowtieSquareHeight);
-          const sectionPosition = getBowtieWizardSectionPosition(wizardGroupHeadingByStep.consequences, layout.width, layout.height);
-          await createGroupAndInsert("consequences", wizardGroupHeadingByStep.consequences, bowtieDefaultWidth, bowtieSquareHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: "bowtie_consequence",
-              heading: item.heading.trim() || `Consequence ${index + 1}`,
-              color_hex: "#9333ea",
-              created_by_user_id: userId,
-              element_config: { description: "", impact_category: item.impactCategory.trim() },
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            };
-          }, items.length, sectionPosition);
-          await relayoutBowtieWizardSections();
-          return;
-        }
-        if (payload.step === "controls") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.controlType));
-          const preventiveItems = items.filter((item) => item.controlCategory === "preventive");
-          const recoveryItems = items.filter((item) => item.controlCategory !== "preventive");
-          if (preventiveItems.length) {
-            const layout = buildWizardGroupLayout(preventiveItems.length, bowtieDefaultWidth, bowtieControlHeight);
-            const sectionPosition = getBowtieWizardSectionPosition(bowtiePreventiveControlsHeading, layout.width, layout.height);
-            await createGroupAndInsert("controls", bowtiePreventiveControlsHeading, bowtieDefaultWidth, bowtieControlHeight, (origin, index) => {
-              const item = preventiveItems[index];
-              return {
-                map_id: mapId,
-                element_type: "bowtie_control",
-                heading: item.heading.trim() || `Control ${index + 1}`,
-                color_hex: "#ffffff",
-                created_by_user_id: userId,
-                element_config: {
-                  description: item.description.trim(),
-                  control_category: item.controlCategory,
-                  linked_target_heading: item.linkedTargetHeading.trim(),
-                  control_type: item.controlType.trim(),
-                  owner_text: "",
-                  verification_method: item.verificationMethod.trim(),
-                  verification_frequency: item.verificationFrequency.trim(),
-                  is_critical_control: item.critical,
-                  performance_standard: "",
-                },
-                pos_x: origin.x,
-                pos_y: origin.y,
-                width: bowtieDefaultWidth,
-                height: bowtieControlHeight,
-              };
-            }, preventiveItems.length, sectionPosition);
-          }
-          if (recoveryItems.length) {
-            const layout = buildWizardGroupLayout(recoveryItems.length, bowtieDefaultWidth, bowtieControlHeight);
-            const sectionPosition = getBowtieWizardSectionPosition(bowtieRecoveryControlsHeading, layout.width, layout.height);
-            await createGroupAndInsert("controls", bowtieRecoveryControlsHeading, bowtieDefaultWidth, bowtieControlHeight, (origin, index) => {
-              const item = recoveryItems[index];
-              return {
-                map_id: mapId,
-                element_type: "bowtie_control",
-                heading: item.heading.trim() || `Control ${index + 1}`,
-                color_hex: "#ffffff",
-                created_by_user_id: userId,
-                element_config: {
-                  description: item.description.trim(),
-                  control_category: item.controlCategory,
-                  linked_target_heading: item.linkedTargetHeading.trim(),
-                  control_type: item.controlType.trim(),
-                  owner_text: "",
-                  verification_method: item.verificationMethod.trim(),
-                  verification_frequency: item.verificationFrequency.trim(),
-                  is_critical_control: item.critical,
-                  performance_standard: "",
-                },
-                pos_x: origin.x,
-                pos_y: origin.y,
-                width: bowtieDefaultWidth,
-                height: bowtieControlHeight,
-              };
-            }, recoveryItems.length, sectionPosition);
-          }
-          await relayoutBowtieWizardSections();
-          return;
-        }
-        if (payload.step === "assurance") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
-          const layout = buildWizardGroupLayout(items.length, bowtieDefaultWidth, bowtieSquareHeight);
-          const sectionPosition = getBowtieWizardSectionPosition(wizardGroupHeadingByStep.assurance, layout.width, layout.height);
-          await createGroupAndInsert("assurance", wizardGroupHeadingByStep.assurance, bowtieDefaultWidth, bowtieSquareHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: item.kind,
-              heading: item.heading.trim() || `Assurance ${index + 1}`,
-              color_hex:
-                item.kind === "bowtie_escalation_factor" ? "#facc15" : item.kind === "bowtie_recovery_measure" ? "#22c55e" : "#8b5cf6",
-              created_by_user_id: userId,
-              element_config:
-                item.kind === "bowtie_escalation_factor"
-                  ? { description: item.description.trim(), factor_type: item.factorType.trim() }
-                  : item.kind === "bowtie_recovery_measure"
-                    ? { description: item.description.trim(), trigger: "", owner_text: "", time_requirement: item.timeRequirement.trim() }
-                    : { description: item.description.trim(), linked_factor: "", indicator_type: item.monitoringMethod.trim(), monitoring_method: item.monitoringMethod.trim() },
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: bowtieDefaultWidth,
-              height: bowtieSquareHeight,
-            };
-          }, items.length, sectionPosition);
-          await relayoutBowtieWizardSections();
-          return;
-        }
-      }
-
-      if (payload.category === "org_chart") {
-        if (payload.step === "departments") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
-          await createGroupAndInsert("departments", wizardGroupHeadingByStep.departments, processHeadingWidth, processHeadingHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: "category",
-              heading: item.heading.trim() || `Department ${index + 1}`,
-              color_hex: defaultCategoryColor,
-              created_by_user_id: userId,
-              element_config: item.description.trim() ? { description: item.description.trim() } : null,
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: processHeadingWidth,
-              height: processHeadingHeight,
-            };
-          }, items.length);
-          return;
-        }
-        const stepId = payload.step;
-        const items = payload.items.filter((item) => isFilled(item.positionTitle) || isFilled(item.occupantName) || isFilled(item.roleId));
-        await createGroupAndInsert(stepId, wizardGroupHeadingByStep[stepId], orgChartPersonWidth, orgChartPersonHeight, (origin, index) => {
+      if (payload.step === "sequence") {
+        const items = payload.items.filter((item) => isFilled(item.description) || isFilled(item.timestamp) || isFilled(item.location));
+        await createGroupAndInsert("sequence", stepGroupHeadingByWizardStep.sequence, incidentCardWidth, incidentCardHeight, (origin, index) => {
           const item = items[index];
           return {
             map_id: mapId,
-            element_type: "person",
-            heading: item.positionTitle.trim() || "Position Title",
-            color_hex: null,
+            element_type: "incident_sequence_step",
+            heading: "Sequence Step",
+            color_hex: "#bfdbfe",
             created_by_user_id: userId,
             element_config: {
-              display_variant: "org_chart",
-              position_title: item.positionTitle.trim() || "Position Title",
-              role_id: item.roleId.trim(),
-              department: "",
-              occupant_name: item.occupantName.trim(),
-              start_date: "",
-              employment_type: item.employmentType,
-              acting_name: "",
-              acting_start_date: "",
-              recruiting: false,
-              contractor_role: item.employmentType === "contractor",
-              proposed_role: item.proposedRole,
+              description: item.description.trim(),
+              timestamp: item.timestamp.trim(),
+              location: item.location.trim(),
             },
             pos_x: origin.x,
             pos_y: origin.y,
-            width: orgChartPersonWidth,
-            height: orgChartPersonHeight,
+            width: incidentCardWidth,
+            height: incidentCardHeight,
           };
         }, items.length);
         return;
       }
 
-      if (payload.category === "process_flow") {
-        if (payload.step === "lanes") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
-          await createGroupAndInsert("lanes", wizardGroupHeadingByStep.lanes, processHeadingWidth, processHeadingHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: "category",
-              heading: item.heading.trim() || `Lane ${index + 1}`,
-              color_hex: defaultCategoryColor,
-              created_by_user_id: userId,
-              element_config: item.description.trim() ? { description: item.description.trim() } : null,
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: processHeadingWidth,
-              height: processHeadingHeight,
-            };
-          }, items.length);
-          return;
-        }
-        if (payload.step === "steps") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
-          await createGroupAndInsert("steps", wizardGroupHeadingByStep.steps, processComponentWidth, processComponentElementHeight, (origin, index) => {
-            const item = items[index];
-            const dimensions =
-              item.kind === "shape_rectangle"
-                ? { width: shapeRectangleDefaultWidth, height: shapeRectangleDefaultHeight }
-                : item.kind === "shape_pill"
-                  ? { width: shapePillDefaultWidth, height: shapePillDefaultHeight }
-                  : { width: processComponentWidth, height: processComponentElementHeight };
-            return {
-              map_id: mapId,
-              element_type: item.kind,
-              heading: item.heading.trim() || `Step ${index + 1}`,
-              color_hex: item.kind === "process_component" ? null : shapeDefaultFillColor,
-              created_by_user_id: userId,
-              element_config:
-                item.kind === "process_component"
-                  ? { body: item.description.trim() }
-                  : { bold: false, italic: false, underline: false, align: "center", font_size: 24, fill_mode: "fill" },
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: dimensions.width,
-              height: dimensions.height,
-            };
-          }, items.length);
-          return;
-        }
-        if (payload.step === "inputs-outputs") {
-          const items = payload.items.filter((item) => isFilled(item.heading) || isFilled(item.description));
-          await createGroupAndInsert("inputs-outputs", wizardGroupHeadingByStep["inputs-outputs"], shapeRectangleDefaultWidth, shapeRectangleDefaultHeight, (origin, index) => {
-            const item = items[index];
-            return {
-              map_id: mapId,
-              element_type: "shape_rectangle",
-              heading: item.heading.trim() || `Input / Output ${index + 1}`,
-              color_hex: shapeDefaultFillColor,
-              created_by_user_id: userId,
-              element_config: { bold: false, italic: false, underline: false, align: "center", font_size: 24, fill_mode: "fill", description: item.description.trim() },
-              pos_x: origin.x,
-              pos_y: origin.y,
-              width: shapeRectangleDefaultWidth,
-              height: shapeRectangleDefaultHeight,
-            };
-          }, items.length);
-          return;
-        }
-        if (payload.step === "roles") {
-          await createCompactPeople(wizardGroupHeadingByStep.roles, "roles", payload.items);
-          return;
-        }
-      }
-
-      if (payload.step === "sequence") {
-        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.timestamp) || isFilled(item.location));
-        await createGroupAndInsert("sequence", wizardGroupHeadingByStep.sequence, incidentCardWidth, incidentCardHeight, (origin, index) => {
+      if (payload.step === "outcome") {
+        const items = payload.items.filter(
+          (item) =>
+            isFilled(item.description) ||
+            (item.outcomeCategory === "reporting"
+              ? isFilled(item.reportingOutcome)
+              : item.outcomeCategory !== "actual" || item.likelihood !== "possible" || item.consequence !== "moderate")
+        );
+        await createGroupAndInsert("outcome", stepGroupHeadingByWizardStep.outcome, incidentCardWidth, incidentCardHeight, (origin, index) => {
           const item = items[index];
+          const elementConfig =
+            item.outcomeCategory === "reporting"
+              ? {
+                  description: item.description.trim(),
+                  consequence_category: item.outcomeCategory,
+                  reporting_consequence: item.reportingOutcome,
+                }
+              : {
+                  description: item.description.trim(),
+                  consequence_category: item.outcomeCategory,
+                  likelihood: item.likelihood,
+                  consequence: item.consequence,
+                  risk_level: (() => {
+                    const likelihoodScoreByKey: Record<string, number> = {
+                      rare: 1,
+                      unlikely: 2,
+                      possible: 3,
+                      likely: 4,
+                      almost_certain: 5,
+                    };
+                    const consequenceScoreByKey: Record<string, number> = {
+                      insignificant: 1,
+                      minor: 2,
+                      moderate: 3,
+                      major: 4,
+                      severe: 5,
+                    };
+                    const score = (likelihoodScoreByKey[item.likelihood] ?? 3) * (consequenceScoreByKey[item.consequence] ?? 3);
+                    if (score <= 4) return "low";
+                    if (score <= 9) return "medium";
+                    if (score <= 16) return "high";
+                    return "extreme";
+                  })(),
+                };
           return {
             map_id: mapId,
-            element_type: "incident_sequence_step",
-            heading: item.heading.trim() || `Sequence Step ${index + 1}`,
-            color_hex: "#bfdbfe",
+            element_type: "incident_outcome",
+            heading: "Outcome",
+            color_hex: "#fca5a5",
             created_by_user_id: userId,
-            element_config: { description: item.description.trim(), timestamp: item.timestamp.trim(), location: item.location.trim() },
+            element_config: elementConfig,
             pos_x: origin.x,
             pos_y: origin.y,
             width: incidentCardWidth,
@@ -4824,8 +4366,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       }
 
       if (payload.step === "people") {
-        const items = (payload.items as any[]).filter((item) => isFilled(item.roleName) || isFilled(item.occupantName));
-        await createGroupAndInsert("people", wizardGroupHeadingByStep.people, personElementWidth, personElementHeight, (origin, index) => {
+        const items = payload.items.filter((item) => isFilled(item.roleName) || isFilled(item.occupantName));
+        await createGroupAndInsert("people", stepGroupHeadingByWizardStep.people, personElementWidth, personElementHeight, (origin, index) => {
           const item = items[index];
           return {
             map_id: mapId,
@@ -4856,13 +4398,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       }
 
       if (payload.step === "task-condition") {
-        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.environmentalContext));
-        await createGroupAndInsert("task-condition", wizardGroupHeadingByStep["task-condition"], incidentCardWidth, incidentCardHeight, (origin, index) => {
+        const items = payload.items.filter((item) => isFilled(item.description) || isFilled(item.environmentalContext));
+        await createGroupAndInsert("task-condition", stepGroupHeadingByWizardStep["task-condition"], incidentCardWidth, incidentCardHeight, (origin, index) => {
           const item = items[index];
           return {
             map_id: mapId,
             element_type: "incident_task_condition",
-            heading: item.heading.trim() || `Task / Condition ${index + 1}`,
+            heading: "Task / Condition",
             color_hex: "#fb923c",
             created_by_user_id: userId,
             element_config: {
@@ -4880,17 +4422,21 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       }
 
       if (payload.step === "factors") {
-        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.category));
-        await createGroupAndInsert("factors", wizardGroupHeadingByStep.factors, incidentCardWidth, incidentCardHeight, (origin, index) => {
+        const items = payload.items.filter((item) => isFilled(item.description) || isFilled(item.category));
+        await createGroupAndInsert("factors", stepGroupHeadingByWizardStep.factors, incidentCardWidth, incidentCardHeight, (origin, index) => {
           const item = items[index];
           if (item.kind === "incident_system_factor") {
             return {
               map_id: mapId,
               element_type: "incident_system_factor",
-              heading: item.heading.trim() || `System Factor ${index + 1}`,
+              heading: "System Factor",
               color_hex: "#a78bfa",
               created_by_user_id: userId,
-              element_config: { description: item.description.trim(), category: item.category.trim(), cause_level: item.classification },
+              element_config: {
+                description: item.description.trim(),
+                category: item.category.trim(),
+                cause_level: item.classification,
+              },
               pos_x: origin.x,
               pos_y: origin.y,
               width: incidentCardWidth,
@@ -4900,7 +4446,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           return {
             map_id: mapId,
             element_type: "incident_factor",
-            heading: item.heading.trim() || `Factor ${index + 1}`,
+            heading: "Factor",
             color_hex: "#fde047",
             created_by_user_id: userId,
             element_config: {
@@ -4919,13 +4465,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       }
 
       if (payload.step === "control-barrier") {
-        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.controlType) || isFilled(item.ownerText));
-        await createGroupAndInsert("control-barrier", wizardGroupHeadingByStep["control-barrier"], incidentCardWidth, incidentCardHeight, (origin, index) => {
+        const items = payload.items.filter((item) => isFilled(item.description) || isFilled(item.controlType) || isFilled(item.ownerText));
+        await createGroupAndInsert("control-barrier", stepGroupHeadingByWizardStep["control-barrier"], incidentCardWidth, incidentCardHeight, (origin, index) => {
           const item = items[index];
           return {
             map_id: mapId,
             element_type: "incident_control_barrier",
-            heading: item.heading.trim() || `Control / Barrier ${index + 1}`,
+            heading: "Control / Barrier",
             color_hex: "#4ade80",
             created_by_user_id: userId,
             element_config: {
@@ -4947,13 +4493,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       }
 
       if (payload.step === "evidence") {
-        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.evidenceType) || isFilled(item.source));
-        await createGroupAndInsert("evidence", wizardGroupHeadingByStep.evidence, incidentCardWidth, incidentCardHeight, (origin, index) => {
+        const items = payload.items.filter((item) => isFilled(item.description) || isFilled(item.evidenceType) || isFilled(item.source));
+        await createGroupAndInsert("evidence", stepGroupHeadingByWizardStep.evidence, incidentCardWidth, incidentCardHeight, (origin, index) => {
           const item = items[index];
           return {
             map_id: mapId,
             element_type: "incident_evidence",
-            heading: item.heading.trim() || `Evidence ${index + 1}`,
+            heading: "Evidence",
             color_hex: "#cbd5e1",
             created_by_user_id: userId,
             element_config: {
@@ -4975,33 +4521,59 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         return;
       }
 
-      if (payload.step === "finding") {
-        const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description));
-        await createGroupAndInsert("finding", wizardGroupHeadingByStep.finding, bowtieDefaultWidth, bowtieControlHeight, (origin, index) => {
+      if (payload.step === "response-recovery") {
+        const items = payload.items.filter((item) => isFilled(item.description) || isFilled(item.category));
+        await createGroupAndInsert("response-recovery", stepGroupHeadingByWizardStep["response-recovery"], incidentCardWidth, incidentCardHeight, (origin, index) => {
           const item = items[index];
           return {
             map_id: mapId,
-            element_type: "incident_finding",
-            heading: item.heading.trim() || `Finding ${index + 1}`,
-            color_hex: "#1d4ed8",
+            element_type: "incident_response_recovery",
+            heading: "Response / Recovery",
+            color_hex: "#67e8f9",
             created_by_user_id: userId,
-            element_config: { description: item.description.trim(), confidence_level: item.confidenceLevel },
+            element_config: {
+              category: item.category,
+              description: item.description.trim(),
+            },
             pos_x: origin.x,
             pos_y: origin.y,
-            width: bowtieDefaultWidth,
-            height: bowtieControlHeight,
+            width: incidentCardWidth,
+            height: incidentCardHeight,
           };
         }, items.length);
         return;
       }
 
-      const items = (payload.items as any[]).filter((item) => isFilled(item.heading) || isFilled(item.description) || isFilled(item.ownerText) || isFilled(item.dueDate));
-      await createGroupAndInsert("recommendation", wizardGroupHeadingByStep.recommendation, incidentCardWidth, incidentCardHeight, (origin, index) => {
+      if (payload.step === "finding") {
+        const items = payload.items.filter((item) => isFilled(item.description));
+        await createGroupAndInsert("finding", stepGroupHeadingByWizardStep.finding, bowtieDefaultWidth, bowtieControlHeight, (origin, index) => {
+          const item = items[index];
+          return {
+            map_id: mapId,
+            element_type: "incident_finding",
+            heading: "Finding",
+            color_hex: "#1d4ed8",
+            created_by_user_id: userId,
+            element_config: {
+              description: item.description.trim(),
+              confidence_level: item.confidenceLevel,
+            },
+            pos_x: origin.x,
+            pos_y: origin.y,
+            width: incidentCardWidth,
+            height: minorGridSize * 6,
+          };
+        }, items.length);
+        return;
+      }
+
+      const items = payload.items.filter((item) => isFilled(item.description) || isFilled(item.ownerText) || isFilled(item.dueDate));
+      await createGroupAndInsert("recommendation", stepGroupHeadingByWizardStep.recommendation, incidentCardWidth, incidentCardHeight, (origin, index) => {
         const item = items[index];
         return {
           map_id: mapId,
           element_type: "incident_recommendation",
-          heading: item.heading.trim() || `Recommendation ${index + 1}`,
+          heading: "Recommendation",
           color_hex: "#14b8a6",
           created_by_user_id: userId,
           element_config: {
@@ -5018,46 +4590,15 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       }, items.length);
     },
     [
-      addDocumentTypes,
-      bowtieControlHeight,
-      bowtieDefaultWidth,
-      bowtieHazardHeight,
-      bowtieRiskRatingHeight,
-      bowtieSquareHeight,
-      buildPersonHeading,
       buildWizardGroupLayout,
       canUseWizard,
-      defaultCategoryColor,
-      defaultHeight,
-      defaultWidth,
       findExistingWizardGroup,
       findWizardGroupElements,
       getNextWizardGroupPosition,
-      insertDocumentNodes,
       insertCanvasElements,
-      isLandscapeTypeName,
-      landscapeDefaultHeight,
-      landscapeDefaultWidth,
       mapId,
-      minorGridSize,
-      orgChartPersonHeight,
-      orgChartPersonWidth,
-      personElementHeight,
-      personElementWidth,
-      processComponentElementHeight,
-      processComponentWidth,
-      processHeadingHeight,
-      processHeadingWidth,
-      shapeDefaultFillColor,
-      shapePillDefaultHeight,
-      shapePillDefaultWidth,
-      shapeRectangleDefaultHeight,
-      shapeRectangleDefaultWidth,
       snapToMinorGrid,
-      systemCircleDiameter,
-      systemCircleElementHeight,
       updateCanvasElements,
-      userEmail,
       userId,
     ]
   );
@@ -5077,7 +4618,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     relationshipModeGrouping,
     allowDocumentTargets,
     allowSystemTargets,
-    allowGroupingTargets,
     documentRelationCandidates,
     documentRelationCandidateLabelById,
     documentRelationCandidateIdByLabel,
@@ -5107,51 +4647,9 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     elements,
     mapCategoryId,
   });
-  const orgDirectReportCountByPersonId = useMemo(() => {
-    const counts = new Map<string, number>();
-    if (mapCategoryId !== "org_chart") return counts;
-    const normalizeRef = (value: string | null | undefined) => {
-      if (!value) return "";
-      const trimmed = String(value).replace(/^process:/i, "").trim().toLowerCase();
-      const uuidMatch = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
-      return uuidMatch ? uuidMatch[0].toLowerCase() : trimmed;
-    };
-    const peopleByNormalizedId = new Map(
-      elements
-        .filter((el) => isOrgChartPersonElement(el))
-        .map((el) => [normalizeRef(el.id), el] as const)
-    );
-    const resolvePersonByAnyRef = (refs: Array<string | null | undefined>) => {
-      for (const ref of refs) {
-        const normalized = normalizeRef(ref ?? "");
-        if (!normalized) continue;
-        const person = peopleByNormalizedId.get(normalized);
-        if (person) return person;
-      }
-      return null;
-    };
-    peopleByNormalizedId.forEach((person) => counts.set(person.id, 0));
-    relations.forEach((r) => {
-      const relationType = String(r.relation_type ?? "").trim().toLowerCase();
-      if (relationType !== "reports_to") return;
-      const source = resolvePersonByAnyRef([
-        r.source_system_element_id,
-        r.from_node_id,
-      ]);
-      const target = resolvePersonByAnyRef([
-        r.target_system_element_id,
-        r.to_node_id,
-      ]);
-      if (!source || !target) return;
-      if (source.id === target.id) return;
-      const leaderId = source.pos_y <= target.pos_y ? source.id : target.id;
-      counts.set(leaderId, (counts.get(leaderId) ?? 0) + 1);
-    });
-    return counts;
-  }, [elements, mapCategoryId, relations]);
   useEffect(() => {
     if (mapCategoryId !== "org_chart") return;
-    const personElements = elements.filter((el) => isOrgChartPersonElement(el));
+    const personElements = elements.filter((el) => el.element_type === "person");
     if (!personElements.length) return;
     const changed = personElements
       .map((person) => {
@@ -5205,7 +4703,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     const sourceId = parseProcessFlowId(relationshipSourceSystemId);
     const term = relationshipSystemQuery.trim().toLowerCase();
     return elements
-      .filter((el) => isOrgChartPersonElement(el))
+      .filter((el) => el.element_type === "person")
       .filter((el) => el.id !== sourceId)
       .map((el) => {
         const cfg = parseOrgChartPersonConfig(el.element_config);
@@ -5225,12 +4723,17 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         };
       })
       .filter((candidate) => !term || candidate.haystack.includes(term))
-      .map(({ haystack: _ignore, ...candidate }) => candidate)
+      .map((candidate) => ({
+        id: candidate.id,
+        nameLine: candidate.nameLine,
+        detailLine: candidate.detailLine,
+        disabled: candidate.disabled,
+      }))
       .sort((a, b) => a.nameLine.localeCompare(b.nameLine));
   }, [alreadyRelatedSystemTargetIds, elements, mapCategoryId, relationshipSourceSystemId, relationshipSystemQuery]);
   const orgDirectReportSourceLabel = useMemo(() => {
     if (!relationshipSourceSystemId || mapCategoryId !== "org_chart") return "";
-    const source = elements.find((el) => el.id === parseProcessFlowId(relationshipSourceSystemId) && isOrgChartPersonElement(el));
+    const source = elements.find((el) => el.id === parseProcessFlowId(relationshipSourceSystemId) && el.element_type === "person");
     if (!source) return "";
     const cfg = parseOrgChartPersonConfig(source.element_config);
     const actingName = cfg.acting_name.trim();
@@ -5247,22 +4750,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     if (!selectedImageId) return [];
     return relations.filter((r) => r.target_system_element_id === selectedImageId || r.source_system_element_id === selectedImageId);
   }, [relations, selectedImageId]);
-  const relatedStickyRows = useMemo(() => {
-    if (!selectedStickyId) return [];
-    return relations.filter((r) => r.target_system_element_id === selectedStickyId || r.source_system_element_id === selectedStickyId);
-  }, [relations, selectedStickyId]);
-  const relatedTextBoxRows = useMemo(() => {
-    if (!selectedTextBoxId) return [];
-    return relations.filter((r) => r.target_system_element_id === selectedTextBoxId || r.source_system_element_id === selectedTextBoxId);
-  }, [relations, selectedTextBoxId]);
-  const relatedTableRows = useMemo(() => {
-    if (!selectedTableId) return [];
-    return relations.filter((r) => r.target_system_element_id === selectedTableId || r.source_system_element_id === selectedTableId);
-  }, [relations, selectedTableId]);
-  const relatedFlowShapeRows = useMemo(() => {
-    if (!selectedFlowShapeId) return [];
-    return relations.filter((r) => r.target_system_element_id === selectedFlowShapeId || r.source_system_element_id === selectedFlowShapeId);
-  }, [relations, selectedFlowShapeId]);
   const startEditRelation = useCallback((r: NodeRelationRow) => {
     setEditingRelationId(r.id);
     setEditingRelationDescription(r.relationship_description ?? "");
@@ -5306,7 +4793,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     if (score <= 16) return "high";
     return "extreme";
   }, []);
-  const handleSaveBowtieElement = useCallback(async (options?: { closeAfterSave?: boolean }) => {
+  const handleSaveBowtieElement = useCallback(async (closeAfterSave = true) => {
     if (!canWriteMap) {
       setError("You have view access only for this map.");
       return;
@@ -5314,18 +4801,51 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     if (!selectedBowtieElement) return;
     const elementType = selectedBowtieElement.element_type;
     const nextConfig: Record<string, unknown> = { ...bowtieDraft };
-    const defaultLabel = methodologyDefaultLabelByType[elementType] ?? "Node";
-    let nextHeading = defaultLabel;
-    if (isDescriptionDrivenMethodologyType(elementType)) {
-      const persistedHeading = String(selectedBowtieElement.heading ?? "").trim();
-      nextConfig.description = String(nextConfig.description ?? "").trim() || persistedHeading || defaultLabel;
+    if (elementType === "incident_factor") {
+      nextConfig.people_involved = Array.isArray(bowtieDraft.people_involved)
+        ? Array.from(
+            new Set(
+              bowtieDraft.people_involved.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+            )
+          )
+        : [];
     }
+    if (elementType === "incident_outcome") {
+      const category = String(nextConfig.consequence_category ?? "actual").trim().toLowerCase();
+      nextConfig.consequence_category = category || "actual";
+      if (category === "reporting") {
+        nextConfig.reporting_consequence = String(nextConfig.reporting_consequence ?? "").trim().toLowerCase();
+        delete nextConfig.likelihood;
+        delete nextConfig.consequence;
+        delete nextConfig.risk_level;
+      } else {
+        const likelihood = String(nextConfig.likelihood ?? "possible").trim().toLowerCase();
+        const consequence = String(nextConfig.consequence ?? "moderate").trim().toLowerCase();
+        nextConfig.likelihood = likelihood;
+        nextConfig.consequence = consequence;
+        nextConfig.risk_level = calculateRiskLevel(likelihood, consequence);
+        delete nextConfig.reporting_consequence;
+      }
+    }
+    const defaultLabel = methodologyDefaultLabelByType[elementType] || "Node";
+    let nextHeading = defaultLabel;
     if (elementType === "bowtie_risk_rating") {
       const likelihood = String(nextConfig.likelihood || "possible");
       const consequence = String(nextConfig.consequence || "moderate");
       const riskLevel = calculateRiskLevel(likelihood, consequence);
       nextConfig.risk_level = riskLevel;
       nextHeading = `${riskLevel.charAt(0).toUpperCase()}${riskLevel.slice(1)}`;
+    } else {
+      const nextLabel = String(nextConfig.label ?? "").trim();
+      const nextDescription = String(nextConfig.description ?? "").trim();
+      nextConfig.description = nextDescription;
+      nextConfig.body_display_mode = getMethodologyBodyDisplayMode(
+        nextLabel,
+        nextDescription,
+        nextConfig.body_display_mode
+      );
+      delete nextConfig.label;
+      nextHeading = nextLabel;
     }
     if (elementType === "incident_evidence" && evidenceUploadFile) {
       const ext = evidenceUploadFile.name.includes(".") ? evidenceUploadFile.name.split(".").pop() : "bin";
@@ -5372,7 +4892,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       setEvidenceUploadPreviewUrl(null);
       setEvidenceUploadFile(null);
     }
-    if (options?.closeAfterSave !== false) setSelectedBowtieElementId(null);
+    if (closeAfterSave) setSelectedBowtieElementId(null);
   }, [
     canWriteMap,
     selectedBowtieElement,
@@ -5381,36 +4901,198 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     mapId,
     setError,
     setElements,
-    canvasElementSelectColumns,
     evidenceUploadFile,
     evidenceUploadPreviewUrl,
-    setSelectedBowtieElementId,
   ]);
-  const closeAddRelationshipModal = useCallback(() => {
-    setShowAddRelationship(false);
-    setRelationshipSourceNodeId(null);
-    setRelationshipSourceSystemId(null);
-    setRelationshipSourceGroupingId(null);
-    setRelationshipTargetDocumentId("");
-    setRelationshipTargetSystemId("");
-    setRelationshipTargetGroupingId("");
-    setRelationshipDocumentQuery("");
-    setRelationshipSystemQuery("");
-    setRelationshipGroupingQuery("");
-    setShowRelationshipDocumentOptions(false);
-    setShowRelationshipSystemOptions(false);
-    setShowRelationshipGroupingOptions(false);
-    setRelationshipDescription("");
-    setRelationshipDisciplineSelection([]);
-    setShowRelationshipDisciplineMenu(false);
-    setRelationshipCategory(getDefaultRelationshipCategoryForMap(mapCategoryId));
-    setRelationshipCustomType("");
+  const handleAddAnchorLink = useCallback(async (targetAnchorId: string) => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    if (!selectedAnchor) return;
+    const targetAnchor = anchorById.get(targetAnchorId);
+    if (!targetAnchor || targetAnchor.id === selectedAnchor.id) return;
+    const alreadyLinked = anchorLinks.some(
+      (link) => link.anchor_id === selectedAnchor.id && link.linked_anchor_id === targetAnchor.id
+    );
+    if (alreadyLinked) return;
+    const selectedMaxSort = anchorLinks
+      .filter((link) => link.anchor_id === selectedAnchor.id)
+      .reduce((max, link) => Math.max(max, Number(link.sort_order) || 0), -1);
+    const targetMaxSort = anchorLinks
+      .filter((link) => link.anchor_id === targetAnchor.id)
+      .reduce((max, link) => Math.max(max, Number(link.sort_order) || 0), -1);
+    const rows = [
+      {
+        map_id: mapId,
+        anchor_id: selectedAnchor.id,
+        linked_anchor_id: targetAnchor.id,
+        sort_order: selectedMaxSort + 1,
+        created_by_user_id: userId,
+      },
+      {
+        map_id: mapId,
+        anchor_id: targetAnchor.id,
+        linked_anchor_id: selectedAnchor.id,
+        sort_order: targetMaxSort + 1,
+        created_by_user_id: userId,
+      },
+    ];
+    let insertedRows: AnchorLinkRow[];
+    if (anchorLinksPersistenceEnabled) {
+      const { data, error: e } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_anchor_links")
+        .upsert(rows, { onConflict: "map_id,anchor_id,linked_anchor_id" })
+        .select("*");
+      if (e || !data) {
+        setError(e?.message || "Unable to link anchors.");
+        return;
+      }
+      insertedRows = data as AnchorLinkRow[];
+    } else {
+      const createdAt = new Date().toISOString();
+      insertedRows = rows.map((row, index) => ({
+        id: `local-anchor-link-${Date.now()}-${index}`,
+        ...row,
+        created_at: createdAt,
+        updated_at: createdAt,
+      }));
+    }
+    setAnchorLinks((prev) => {
+      const insertedKeys = new Set(insertedRows.map((link) => `${link.anchor_id}:${link.linked_anchor_id}`));
+      return [
+        ...prev.filter((link) => !insertedKeys.has(`${link.anchor_id}:${link.linked_anchor_id}`)),
+        ...insertedRows,
+      ];
+    });
+    setAnchorLinkedOrderDraft((prev) => (prev.includes(targetAnchor.id) ? prev : [...prev, targetAnchor.id]));
+    setAnchorSearchDraft("");
+  }, [anchorById, anchorLinks, canWriteMap, mapId, selectedAnchor, setError, userId]);
+
+  const handleRemoveAnchorLink = useCallback(async (targetAnchorId: string) => {
+    if (!canWriteMap) {
+      setError("You have view access only for this map.");
+      return;
+    }
+    if (!selectedAnchor) return;
+    if (anchorLinksPersistenceEnabled) {
+      const [forwardDelete, reverseDelete] = await Promise.all([
+        supabaseBrowser
+          .schema("ms")
+          .from("canvas_anchor_links")
+          .delete()
+          .eq("map_id", mapId)
+          .eq("anchor_id", selectedAnchor.id)
+          .eq("linked_anchor_id", targetAnchorId),
+        supabaseBrowser
+          .schema("ms")
+          .from("canvas_anchor_links")
+          .delete()
+          .eq("map_id", mapId)
+          .eq("anchor_id", targetAnchorId)
+          .eq("linked_anchor_id", selectedAnchor.id),
+      ]);
+      const deleteError = forwardDelete.error || reverseDelete.error;
+      if (deleteError) {
+        setError(deleteError.message || "Unable to remove anchor link.");
+        return;
+      }
+    }
+    setAnchorLinks((prev) =>
+      prev.filter(
+        (link) =>
+          !(
+            (link.anchor_id === selectedAnchor.id && link.linked_anchor_id === targetAnchorId) ||
+            (link.anchor_id === targetAnchorId && link.linked_anchor_id === selectedAnchor.id)
+          )
+      )
+    );
+    setAnchorLinkedOrderDraft((prev) => prev.filter((id) => id !== targetAnchorId));
+  }, [canWriteMap, mapId, selectedAnchor, setError]);
+
+  const handleReorderAnchorLinks = useCallback((orderedIds: string[]) => {
+    setAnchorLinkedOrderDraft(orderedIds);
   }, []);
+
+  const handleSaveAnchor = useCallback(async (closeAfterSave = true) => {
+    if (!canWriteMap) return setError("You have view access only for this map.");
+    if (!selectedAnchor) return;
+    const heading = anchorTitleDraft.trim() || "Anchor";
+    const groupColor = normalizePreviewHex(anchorColorDraft) ?? "#0F766E";
+    const anchorGroupIds = selectedAnchorOrderIds.length ? selectedAnchorOrderIds : selectedAnchorGroupIds.length ? selectedAnchorGroupIds : [selectedAnchor.id];
+    const { data, error: e } = await supabaseBrowser
+      .schema("ms")
+      .from("canvas_elements")
+      .update({ heading, color_hex: groupColor })
+      .eq("id", selectedAnchor.id)
+      .eq("map_id", mapId)
+      .select(canvasElementSelectColumns)
+      .single();
+    if (e || !data) {
+      setError(e?.message || "Unable to save anchor.");
+      return;
+    }
+    const otherAnchorGroupIds = anchorGroupIds.filter((id) => id !== selectedAnchor.id);
+    if (otherAnchorGroupIds.length) {
+      const { error: colorUpdateError } = await supabaseBrowser
+        .schema("ms")
+        .from("canvas_elements")
+        .update({ color_hex: groupColor })
+        .eq("map_id", mapId)
+        .in("id", otherAnchorGroupIds);
+      if (colorUpdateError) {
+        setError(colorUpdateError.message || "Unable to save anchor group colour.");
+        return;
+      }
+    }
+    const anchorOrderIndexById = new Map(anchorGroupIds.map((id, index) => [id, index]));
+    const anchorOrderLinks = anchorLinks.filter(
+      (link) => anchorOrderIndexById.has(link.anchor_id) && anchorOrderIndexById.has(link.linked_anchor_id)
+    );
+    if (anchorLinksPersistenceEnabled && anchorOrderLinks.length) {
+      const updateResults = await Promise.all(
+        anchorOrderLinks.map((link) =>
+          supabaseBrowser
+            .schema("ms")
+            .from("canvas_anchor_links")
+            .update({ sort_order: anchorOrderIndexById.get(link.linked_anchor_id) ?? 0 })
+            .eq("map_id", mapId)
+            .eq("anchor_id", link.anchor_id)
+            .eq("linked_anchor_id", link.linked_anchor_id)
+        )
+      );
+      const updateError = updateResults.find((result) => result.error)?.error;
+      if (updateError) {
+        setError(updateError.message || "Unable to save anchor order.");
+        return;
+      }
+    }
+    const updated = data as unknown as CanvasElementRow;
+    const anchorGroupIdSet = new Set(anchorGroupIds);
+    setElements((prev) =>
+      prev.map((el) => {
+        if (el.id === updated.id) return updated;
+        if (anchorGroupIdSet.has(el.id) && el.element_type === "anchor") return { ...el, color_hex: groupColor };
+        return el;
+      })
+    );
+    setAnchorColorDraft(groupColor);
+    setAnchorLinks((prev) =>
+      prev.map((link) => {
+        if (!anchorOrderIndexById.has(link.anchor_id)) return link;
+        const orderIndex = anchorOrderIndexById.get(link.linked_anchor_id);
+        return orderIndex != null ? { ...link, sort_order: orderIndex } : link;
+      })
+    );
+    if (closeAfterSave) setSelectedAnchorId(null);
+  }, [anchorColorDraft, anchorLinks, anchorTitleDraft, canWriteMap, mapId, normalizePreviewHex, selectedAnchor, selectedAnchorGroupIds, selectedAnchorOrderIds, setError, setElements]);
   const closeDesktopDrilldownPanels = useCallback(() => {
     setDesktopNodeAction(null);
     closeAddRelationshipModal();
     setOutlineNodeId(null);
     setConfirmDeleteNodeId(null);
+    setConfirmDeleteElementId(null);
     setConfirmDeleteOutlineItemId(null);
     setOutlineCreateMode(null);
     setOutlineEditItemId(null);
@@ -5419,13 +5101,78 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setEditHeadingParentId("");
     setEditContentHeadingId("");
     setEditContentText("");
-  }, [closeAddRelationshipModal]);
-  const closeAllLeftAsidesImmediate = useCallback(() => {
+  }, [closeAddRelationshipModal, setDesktopNodeAction]);
+  const handleCloseDocumentPropertiesPanel = useCallback(() => {
+    setSelectedNodeId(null);
+    closeDesktopDrilldownPanels();
+  }, [closeDesktopDrilldownPanels]);
+  const { closePrimaryAside, getPrimaryAsideOpen } = usePrimaryAsideRegistry({
+    isMobile,
+    selectionSetters: canvasSelectionSetters,
+    setDesktopNodeAction,
+    handleCloseDocumentPropertiesPanel,
+    isPrimaryLeftAsideOpen,
+  });
+  const closeCategoryAside = useCallback(
+    () => closePrimaryAside("category"),
+    [closePrimaryAside]
+  );
+  const closeSystemAside = useCallback(
+    () => closePrimaryAside("system"),
+    [closePrimaryAside]
+  );
+  const closeProcessComponentAside = useCallback(
+    () => closePrimaryAside("processComponent"),
+    [closePrimaryAside]
+  );
+  const closePersonAside = useCallback(
+    () => closePrimaryAside("person"),
+    [closePrimaryAside]
+  );
+  const closeAnchorAside = useCallback(
+    () => closePrimaryAside("anchor"),
+    [closePrimaryAside]
+  );
+  const closeBowtieElementAside = useCallback(
+    () => closePrimaryAside("bowtieElement"),
+    [closePrimaryAside]
+  );
+  const closeGroupingAside = useCallback(
+    () => closePrimaryAside("grouping"),
+    [closePrimaryAside]
+  );
+  const closeStickyAside = useCallback(
+    () => closePrimaryAside("sticky"),
+    [closePrimaryAside]
+  );
+  const closeImageAside = useCallback(
+    () => closePrimaryAside("image"),
+    [closePrimaryAside]
+  );
+  const closeTextBoxAside = useCallback(
+    () => closePrimaryAside("textBox"),
+    [closePrimaryAside]
+  );
+  const closeTableAside = useCallback(
+    () => closePrimaryAside("table"),
+    [closePrimaryAside]
+  );
+  const closeFlowShapeAside = useCallback(
+    () => closePrimaryAside("flowShape"),
+    [closePrimaryAside]
+  );
+  const closeDocumentAside = useCallback(
+    () => closePrimaryAside("document"),
+    [closePrimaryAside]
+  );
+  const closeAllLeftAsides = useCallback(() => {
+    setSelectedFlowIds(new Set());
     setSelectedNodeId(null);
     setSelectedProcessId(null);
     setSelectedSystemId(null);
     setSelectedProcessComponentId(null);
     setSelectedPersonId(null);
+    setSelectedAnchorId(null);
     setSelectedGroupingId(null);
     setSelectedStickyId(null);
     setSelectedImageId(null);
@@ -5436,30 +5183,18 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     closeDesktopDrilldownPanels();
     setMobileNodeMenuId(null);
   }, [closeDesktopDrilldownPanels]);
-
   const openAddRelationshipFromSource = useCallback(
-    (source: { nodeId?: string | null; systemId?: string | null; groupingId?: string | null }) => {
-      setRelationshipSourceNodeId(source.nodeId ?? null);
-      setRelationshipSourceSystemId(source.systemId ?? null);
-      setRelationshipSourceGroupingId(source.groupingId ?? null);
-      setRelationshipDocumentQuery("");
-      setRelationshipSystemQuery("");
-      setRelationshipGroupingQuery("");
-      setRelationshipTargetDocumentId("");
-      setRelationshipTargetSystemId("");
-      setRelationshipTargetGroupingId("");
-      setShowRelationshipDocumentOptions(false);
-      setShowRelationshipSystemOptions(false);
-      setShowRelationshipGroupingOptions(false);
-      setRelationshipDescription("");
-      setRelationshipDisciplineSelection([]);
-      setShowRelationshipDisciplineMenu(false);
-      setRelationshipCategory(getDefaultRelationshipCategoryForMap(mapCategoryId));
-      setRelationshipCustomType("");
-      setShowAddRelationship(true);
+    (source: { nodeId?: string | null; systemId?: string | null; groupingId?: string | null }, openAddForm = true) => {
+      openRelationshipStateFromSource(source, openAddForm);
       setDesktopNodeAction("relationship");
     },
-    []
+    [openRelationshipStateFromSource, setDesktopNodeAction]
+  );
+  const openRelationshipListFromSource = useCallback(
+    (source: { nodeId?: string | null; systemId?: string | null; groupingId?: string | null }) => {
+      openAddRelationshipFromSource(source, false);
+    },
+    [openAddRelationshipFromSource]
   );
   const handleAddOrgDirectReport = useCallback(async () => {
     if (!canWriteMap) {
@@ -5473,8 +5208,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       setError("Please select a valid direct report.");
       return;
     }
-    const sourcePerson = elements.find((el) => el.id === sourceId && isOrgChartPersonElement(el));
-    const targetPerson = elements.find((el) => el.id === targetId && isOrgChartPersonElement(el));
+    const sourcePerson = elements.find((el) => el.id === sourceId && el.element_type === "person");
+    const targetPerson = elements.find((el) => el.id === targetId && el.element_type === "person");
     if (!sourcePerson || !targetPerson) {
       setError("Direct report links must be person-to-person.");
       return;
@@ -5527,6 +5262,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     relationshipTargetSystemId,
     relations,
     setError,
+    setDesktopNodeAction,
     setRelations,
   ]);
 
@@ -5580,105 +5316,131 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       setOutlineNodeId,
       setOutlineItems,
     });
-  const dismissLeftAsides = useCallback(async (options?: { saveBeforeClose?: boolean }) => {
-    if (options?.saveBeforeClose) {
-      if (selectedNodeId && hasUnsavedDocumentDraftChanges) return void (await handleSaveNode());
-      if (selectedProcessId && hasUnsavedProcessDraftChanges) return void (await handleSaveProcessHeading());
-      if (selectedSystemId && hasUnsavedSystemDraftChanges) return void (await handleSaveSystemName());
-      if (selectedProcessComponentId && hasUnsavedProcessComponentDraftChanges) return void (await handleSaveProcessComponent());
-      if (selectedPersonId && hasUnsavedPersonDraftChanges) return void (await handleSavePerson());
-      if (selectedGroupingId && hasUnsavedGroupingDraftChanges) return void (await handleSaveGroupingContainer());
-      if (selectedStickyId && hasUnsavedStickyDraftChanges) return void (await handleSaveStickyNote());
-      if (selectedImageId && hasUnsavedImageDraftChanges) return void (await handleSaveImageAsset());
-      if (selectedTextBoxId && hasUnsavedTextBoxDraftChanges) return void (await handleSaveTextBox());
-      if (selectedTableId && hasUnsavedTableDraftChanges) return void (await handleSaveTable());
-      if (selectedFlowShapeId && hasUnsavedFlowShapeDraftChanges) return void (await handleSaveFlowShape());
-      if (selectedBowtieElementId && hasUnsavedBowtieDraftChanges) return void (await handleSaveBowtieElement());
+  const saveOpenLeftAside = useCallback(async (closeAfterSave = false) => {
+    if (selectedNodeId) {
+      await handleSaveNode(closeAfterSave);
+      return;
     }
-    closeAllLeftAsidesImmediate();
+    if (selectedProcessId) {
+      await handleSaveProcessHeading(closeAfterSave);
+      return;
+    }
+    if (selectedSystemId) {
+      await handleSaveSystemName(closeAfterSave);
+      return;
+    }
+    if (selectedProcessComponentId) {
+      await handleSaveProcessComponent(closeAfterSave);
+      return;
+    }
+    if (selectedPersonId) {
+      await handleSavePerson(closeAfterSave);
+      return;
+    }
+    if (selectedAnchorId) {
+      await handleSaveAnchor(closeAfterSave);
+      return;
+    }
+    if (selectedGroupingId) {
+      await handleSaveGroupingContainer(closeAfterSave);
+      return;
+    }
+    if (selectedStickyId) {
+      await handleSaveStickyNote(closeAfterSave);
+      return;
+    }
+    if (selectedImageId) {
+      await handleSaveImageAsset(closeAfterSave);
+      return;
+    }
+    if (selectedTextBoxId) {
+      await handleSaveTextBox(closeAfterSave);
+      return;
+    }
+    if (selectedTableId) {
+      await handleSaveTable(closeAfterSave);
+      return;
+    }
+    if (selectedFlowShapeId) {
+      await handleSaveFlowShape(closeAfterSave);
+      return;
+    }
+    if (selectedBowtieElementId) {
+      await handleSaveBowtieElement(closeAfterSave);
+    }
   }, [
-    closeAllLeftAsidesImmediate,
-    selectedNodeId,
-    selectedProcessId,
-    selectedSystemId,
-    selectedProcessComponentId,
-    selectedPersonId,
-    selectedGroupingId,
-    selectedStickyId,
-    selectedImageId,
-    selectedTextBoxId,
-    selectedTableId,
-    selectedFlowShapeId,
-    selectedBowtieElementId,
-    hasUnsavedDocumentDraftChanges,
-    hasUnsavedProcessDraftChanges,
-    hasUnsavedSystemDraftChanges,
-    hasUnsavedProcessComponentDraftChanges,
-    hasUnsavedPersonDraftChanges,
-    hasUnsavedGroupingDraftChanges,
-    hasUnsavedStickyDraftChanges,
-    hasUnsavedImageDraftChanges,
-    hasUnsavedTextBoxDraftChanges,
-    hasUnsavedTableDraftChanges,
-    hasUnsavedFlowShapeDraftChanges,
-    hasUnsavedBowtieDraftChanges,
-    handleSaveNode,
-    handleSaveProcessHeading,
-    handleSaveSystemName,
-    handleSaveProcessComponent,
-    handleSavePerson,
-    handleSaveGroupingContainer,
-    handleSaveStickyNote,
-    handleSaveImageAsset,
-    handleSaveTextBox,
-    handleSaveTable,
-    handleSaveFlowShape,
     handleSaveBowtieElement,
+    handleSaveFlowShape,
+    handleSaveGroupingContainer,
+    handleSaveImageAsset,
+    handleSaveNode,
+    handleSaveAnchor,
+    handleSavePerson,
+    handleSaveProcessComponent,
+    handleSaveProcessHeading,
+    handleSaveStickyNote,
+    handleSaveSystemName,
+    handleSaveTable,
+    handleSaveTextBox,
+    selectedBowtieElementId,
+    selectedFlowShapeId,
+    selectedGroupingId,
+    selectedImageId,
+    selectedNodeId,
+    selectedAnchorId,
+    selectedPersonId,
+    selectedProcessComponentId,
+    selectedProcessId,
+    selectedStickyId,
+    selectedSystemId,
+    selectedTableId,
+    selectedTextBoxId,
   ]);
-  const handleCloseDocumentPropertiesPanel = useCallback(() => {
-    void dismissLeftAsides({ saveBeforeClose: true });
-  }, [dismissLeftAsides]);
-  const closeAllLeftAsides = useCallback(() => {
-    void dismissLeftAsides({ saveBeforeClose: true });
-  }, [dismissLeftAsides]);
-  useEffect(() => {
-    if (isMobile) return;
-    const hasOpenPropertyAside =
-      !!selectedNodeId ||
+  const queueOpenLeftAsideAutosave = useCallback(
+    (closeAfterSave = false) => {
+      if (autosavePointerLockRef.current) return;
+      autosavePointerLockRef.current = true;
+      void saveOpenLeftAside(closeAfterSave).finally(() => {
+        window.setTimeout(() => {
+          autosavePointerLockRef.current = false;
+        }, 0);
+      });
+    },
+    [autosavePointerLockRef, saveOpenLeftAside]
+  );
+  const hasSelectedMobileAsideOpen =
+    isMobile &&
+    (!!selectedNodeId ||
       !!selectedProcessId ||
       !!selectedSystemId ||
       !!selectedProcessComponentId ||
       !!selectedPersonId ||
+      !!selectedAnchorId ||
+      !!selectedGroupingId ||
       !!selectedStickyId ||
       !!selectedImageId ||
       !!selectedTextBoxId ||
       !!selectedTableId ||
       !!selectedFlowShapeId ||
-      !!selectedBowtieElementId ||
-      !!selectedGroupingId;
-    if (!hasOpenPropertyAside) return;
+      !!selectedBowtieElementId);
+  const hasOpenCanvasAside = hasSelectedMobileAsideOpen || Boolean(activePrimaryLeftAsideKey || shouldShowDesktopStructurePanel);
+  useEffect(() => {
+    if (!hasOpenCanvasAside) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-left-aside='true']")) return;
-      void dismissLeftAsides({ saveBeforeClose: true });
+      if (!target) return;
+      if (target.closest(".canvas-left-aside")) return;
+      if (target.closest(".react-flow__node")) return;
+      if (target.closest(".react-flow__pane")) return;
+      if (autosavePointerLockRef.current) return;
+      queueOpenLeftAsideAutosave(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [
-    isMobile,
-    selectedNodeId,
-    selectedProcessId,
-    selectedSystemId,
-    selectedProcessComponentId,
-    selectedPersonId,
-    selectedStickyId,
-    selectedImageId,
-    selectedTextBoxId,
-    selectedTableId,
-    selectedFlowShapeId,
-    selectedBowtieElementId,
-    selectedGroupingId,
-    dismissLeftAsides,
+    autosavePointerLockRef,
+    hasOpenCanvasAside,
+    queueOpenLeftAsideAutosave,
   ]);
   const { handleDeleteProcessElement, handleDeleteSelectedComponents } = useCanvasDeleteSelectionActions({
     canWriteMap,
@@ -5688,6 +5450,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setError,
     setElements,
     setRelations,
+    setAnchorLinks,
     setSelectedFlowIds,
     processFlowId,
     parseProcessFlowId,
@@ -5699,6 +5462,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
     setSelectedProcessComponentId,
     selectedPersonId,
     setSelectedPersonId,
+    selectedAnchorId,
+    setSelectedAnchorId,
     selectedGroupingId,
     setSelectedGroupingId,
     selectedStickyId,
@@ -5760,16 +5525,16 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   });
   useEffect(() => {
     if (isMobile) return;
-    if (selectedNodeId) return;
+    if (currentSpecificSelectedFlowId || selectedSingleFlowId) return;
     closeDesktopDrilldownPanels();
-  }, [selectedNodeId, isMobile, closeDesktopDrilldownPanels]);
+  }, [currentSpecificSelectedFlowId, selectedSingleFlowId, isMobile, closeDesktopDrilldownPanels]);
 
   const { handlePaneClickClearSelection, handlePaneMouseDown } = useCanvasPaneSelectionActions({
     rf,
     flowNodes,
     getFlowNodeBounds,
     canUseContextMenu,
-    canWriteMap,
+    canWriteMap: canManipulateCanvasElements,
     setSelectionMarquee,
     setSelectedFlowIds,
     setHoveredEdgeId,
@@ -5796,11 +5561,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       onDelete: handleDeleteRelation,
       onSave: (id: string) => void handleUpdateRelation(id),
       onCancelEdit: cancelEditRelation,
+      actionDisabledReason: readOnlyActionReason,
     }),
     [
       cancelEditRelation,
-      disciplineLabelByKey,
-      disciplineOptions,
       editingRelationCategory,
       editingRelationCustomType,
       editingRelationDescription,
@@ -5809,6 +5573,7 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       handleDeleteRelation,
       handleUpdateRelation,
       relationshipCategoryOptions,
+      readOnlyActionReason,
       setEditingRelationCategory,
       setEditingRelationCustomType,
       setEditingRelationDescription,
@@ -5818,6 +5583,335 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       startEditRelation,
     ]
   );
+  const relationshipModalContext = useMemo(() => {
+    if (selectedNode) {
+      return {
+        title: "Relationships",
+        addButtonLabel: "Add Relationship",
+        rows: relatedRows,
+        resolveLabels: resolveDocumentRelationLabels,
+        openAdd: () => openAddRelationshipFromSource({ nodeId: selectedNode.id }),
+      };
+    }
+    if (selectedSystem) {
+      return {
+        title: "Relationships",
+        addButtonLabel: "Add Relationship",
+        rows: relatedSystemRows,
+        resolveLabels: resolveDocumentRelationLabels,
+        openAdd: () => openAddRelationshipFromSource({ systemId: selectedSystem.id }),
+      };
+    }
+    if (selectedProcessComponent) {
+      return {
+        title: "Relationships",
+        addButtonLabel: "Add Relationship",
+        rows: relatedProcessComponentRows,
+        resolveLabels: resolveDocumentRelationLabels,
+        openAdd: () => openAddRelationshipFromSource({ systemId: selectedProcessComponent.id }),
+      };
+    }
+    if (selectedPerson) {
+      return {
+        title: "Relationships",
+        addButtonLabel: mapCategoryId === "org_chart" ? "Link Direct Report" : "Add Relationship",
+        rows: relatedPersonRows,
+        resolveLabels: resolvePersonRelationLabels,
+        openAdd: () => openAddRelationshipFromSource({ systemId: selectedPerson.id }),
+      };
+    }
+    if (selectedBowtieElement) {
+      return {
+        title: "Relationships",
+        addButtonLabel: "Add Relationship",
+        rows: relatedBowtieRows,
+        resolveLabels: resolvePersonRelationLabels,
+        openAdd: () => openAddRelationshipFromSource({ systemId: selectedBowtieElement.id }),
+      };
+    }
+    if (selectedGrouping) {
+      return {
+        title: "Relationships",
+        addButtonLabel: "Add Relationship",
+        rows: relatedGroupingRows,
+        resolveLabels: resolveGroupingRelationLabels,
+        openAdd: () => openAddRelationshipFromSource({ groupingId: selectedGrouping.id }),
+      };
+    }
+    if (selectedImage) {
+      return {
+        title: "Relationships",
+        addButtonLabel: "Add Relationship",
+        rows: relatedImageRows,
+        resolveLabels: resolvePersonRelationLabels,
+        openAdd: () => openAddRelationshipFromSource({ systemId: selectedImage.id }),
+      };
+    }
+    return null;
+  }, [
+    mapCategoryId,
+    openAddRelationshipFromSource,
+    relatedBowtieRows,
+    relatedGroupingRows,
+    relatedImageRows,
+    relatedPersonRows,
+    relatedProcessComponentRows,
+    relatedRows,
+    relatedSystemRows,
+    resolveDocumentRelationLabels,
+    resolveGroupingRelationLabels,
+    resolvePersonRelationLabels,
+    selectedBowtieElement,
+    selectedGrouping,
+    selectedImage,
+    selectedNode,
+    selectedPerson,
+    selectedProcessComponent,
+    selectedSystem,
+  ]);
+  const handleOpenToolbarConfigure = useCallback(() => {
+    if (!desktopToolbarSelection) return;
+    setDesktopNodeAction("configure");
+  }, [desktopToolbarSelection, setDesktopNodeAction]);
+  const handleOpenToolbarRelationships = useCallback(() => {
+    if (!desktopToolbarSelection?.supportsRelationships) return;
+    switch (desktopToolbarSelection.kind) {
+      case "document":
+        openRelationshipListFromSource({ nodeId: desktopToolbarSelection.id });
+        return;
+      case "system":
+      case "process_component":
+      case "person":
+      case "bowtie":
+      case "image":
+        openRelationshipListFromSource({ systemId: desktopToolbarSelection.id });
+        return;
+      case "grouping":
+        openRelationshipListFromSource({ groupingId: desktopToolbarSelection.id });
+        return;
+      default:
+        return;
+    }
+  }, [desktopToolbarSelection, openRelationshipListFromSource]);
+  const handleOpenToolbarDelete = useCallback(() => {
+    if (!canWriteMap) return;
+    if (!desktopToolbarSelection) return;
+    if (desktopToolbarSelection.kind === "document") {
+      setConfirmDeleteNodeId(desktopToolbarSelection.id);
+      return;
+    }
+    setConfirmDeleteElementId(desktopToolbarSelection.id);
+  }, [canWriteMap, desktopToolbarSelection]);
+  const isNodeTextScrollbarDoubleClick = useCallback((event: React.MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return false;
+    if (target.closest("[data-node-text-scroll-control='true']")) return true;
+
+    const scrollRegion = target.closest("[data-node-text-scroll-region='true']") as HTMLElement | null;
+    if (!scrollRegion) return false;
+    if (scrollRegion.scrollHeight <= scrollRegion.clientHeight + 1) return false;
+
+    const rect = scrollRegion.getBoundingClientRect();
+    const nativeScrollbarWidth = scrollRegion.offsetWidth - scrollRegion.clientWidth;
+    const scrollbarHitWidth = Math.max(14, nativeScrollbarWidth);
+    const isInsideVerticalScrollbar =
+      event.clientX >= rect.right - scrollbarHitWidth &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+
+    return isInsideVerticalScrollbar;
+  }, []);
+  const selectCanvasNode = useCallback(
+    (event: React.MouseEvent, node: Node<FlowData>) => {
+      handleCanvasNodeClick({
+        event,
+        node,
+        mapRole,
+        elements,
+        canEditElement,
+        isMobile,
+        lastMobileTapRef,
+        setSelectedFlowIds,
+        selectionSetters: canvasSelectionSetters,
+        setMobileNodeMenuId,
+      });
+    },
+    [canEditElement, canvasSelectionSetters, elements, isMobile, mapRole, setSelectedFlowIds]
+  );
+  const handleCanvasNodeSingleClick = useCallback(
+    (event: React.MouseEvent, node: Node<FlowData>) => {
+      armPaneClearSuppression();
+      const isChangingOpenAsideSelection =
+        !isMobile &&
+        Boolean(activePrimaryLeftAsideKey || shouldShowDesktopStructurePanel) &&
+        currentSpecificSelectedFlowId !== node.id;
+      if (isChangingOpenAsideSelection) queueOpenLeftAsideAutosave(false);
+      if (!isMobile && event.detail > 1) return;
+      if (!isMobile && desktopNodeAction === "configure" && currentSpecificSelectedFlowId === node.id) return;
+      if (!isMobile && desktopNodeAction !== "configure") closeDesktopDrilldownPanels();
+      selectCanvasNode(event, node);
+    },
+    [
+      activePrimaryLeftAsideKey,
+      armPaneClearSuppression,
+      closeDesktopDrilldownPanels,
+      currentSpecificSelectedFlowId,
+      desktopNodeAction,
+      isMobile,
+      queueOpenLeftAsideAutosave,
+      selectCanvasNode,
+      shouldShowDesktopStructurePanel,
+    ]
+  );
+  const handleCanvasNodePointerDownCapture = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isMobile) return;
+      if (event.button !== 0) return;
+      if (event.detail > 1) return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest(".nodrag, .nopan, button, input, textarea, select, [contenteditable='true']")) return;
+      const nodeElement = target.closest(".react-flow__node") as HTMLElement | null;
+      const nodeId = nodeElement?.dataset.id;
+      if (!nodeId) return;
+      armPaneClearSuppression();
+    },
+    [armPaneClearSuppression, isMobile]
+  );
+  const showAnchorNavigationNotice = useCallback((message: string, position?: { left: number; top: number }) => {
+    if (anchorNoticeTimerRef.current) {
+      clearTimeout(anchorNoticeTimerRef.current);
+      anchorNoticeTimerRef.current = null;
+    }
+    setAnchorNavigationNotice({
+      message,
+      left: position?.left ?? (canvasRef.current?.clientWidth ?? 0) / 2,
+      top: position?.top ?? 16,
+    });
+    anchorNoticeTimerRef.current = setTimeout(() => {
+      setAnchorNavigationNotice(null);
+      anchorNoticeTimerRef.current = null;
+    }, 1800);
+  }, []);
+  const getAnchorNavigationNoticePosition = useCallback((anchorId: string) => {
+    if (typeof document === "undefined") return undefined;
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    const nodeElement = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${processFlowId(anchorId)}"]`);
+    const nodeRect = nodeElement?.getBoundingClientRect();
+    if (!canvasRect || !nodeRect) return undefined;
+    return {
+      left: nodeRect.left - canvasRect.left + nodeRect.width / 2,
+      top: Math.max(40, nodeRect.top - canvasRect.top - 8),
+    };
+  }, []);
+  const handleNavigateFromAnchor = useCallback(
+    (anchorId: string, direction: "previous" | "next" = "next", noticePosition?: { left: number; top: number }) => {
+      if (!rf) return;
+      const currentAnchor = anchorById.get(anchorId);
+      if (!currentAnchor) return;
+      const fallbackNoticePosition = noticePosition ?? getAnchorNavigationNoticePosition(anchorId);
+      const anchorIds = new Set(anchorElements.map((anchor) => anchor.id));
+      const componentIds = new Set<string>();
+      const stack = [anchorId];
+      while (stack.length) {
+        const id = stack.pop();
+        if (!id || componentIds.has(id) || !anchorIds.has(id)) continue;
+        componentIds.add(id);
+        anchorLinks.forEach((link) => {
+          if (link.anchor_id === id && anchorIds.has(link.linked_anchor_id)) stack.push(link.linked_anchor_id);
+          if (link.linked_anchor_id === id && anchorIds.has(link.anchor_id)) stack.push(link.anchor_id);
+        });
+      }
+      if (componentIds.size <= 1) {
+        showAnchorNavigationNotice("No more anchor nodes to view", fallbackNoticePosition);
+        return;
+      }
+      const sequence = anchorElements
+        .filter((anchor) => componentIds.has(anchor.id))
+        .sort((a, b) => {
+          const sequenceA = anchorSequenceNumberById.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+          const sequenceB = anchorSequenceNumberById.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+          if (sequenceA !== sequenceB) return sequenceA - sequenceB;
+          const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          if (createdA !== createdB) return createdA - createdB;
+          return a.id.localeCompare(b.id);
+        });
+      const currentIndex = sequence.findIndex((anchor) => anchor.id === anchorId);
+      const offset = direction === "previous" ? -1 : 1;
+      const targetAnchor = sequence[(currentIndex + offset + sequence.length) % sequence.length];
+      if (!targetAnchor || targetAnchor.id === anchorId) {
+        showAnchorNavigationNotice("No more anchor nodes to view", fallbackNoticePosition);
+        return;
+      }
+      if (anchorNoticeTimerRef.current) {
+        clearTimeout(anchorNoticeTimerRef.current);
+        anchorNoticeTimerRef.current = null;
+      }
+      setAnchorNavigationNotice(null);
+      const canvasRect = canvasRef.current?.getBoundingClientRect();
+      const viewportWidth = canvasRect?.width ?? window.innerWidth;
+      const viewportHeight = canvasRect?.height ?? window.innerHeight;
+      const zoom = 1;
+      const width = Math.max(anchorNodeMinWidth, targetAnchor.width || anchorNodeWidth);
+      const height = Math.max(anchorNodeMinHeight, Math.round((width / anchorNodeWidth) * anchorNodeHeight));
+      rf.setViewport(
+        {
+          x: viewportWidth / 2 - (targetAnchor.pos_x + width / 2) * zoom,
+          y: viewportHeight / 2 - (targetAnchor.pos_y + height / 2) * zoom,
+          zoom,
+        },
+        { duration: 420 }
+      );
+    },
+    [
+      anchorById,
+      anchorElements,
+      anchorLinks,
+      anchorSequenceNumberById,
+      getAnchorNavigationNoticePosition,
+      rf,
+      showAnchorNavigationNotice,
+    ]
+  );
+  useEffect(() => {
+    anchorNavigateRef.current = handleNavigateFromAnchor;
+    return () => {
+      if (anchorNavigateRef.current === handleNavigateFromAnchor) anchorNavigateRef.current = null;
+    };
+  }, [handleNavigateFromAnchor]);
+  const handleCanvasNodeDoubleClick = useCallback(
+    (event: React.MouseEvent, node: Node<FlowData>) => {
+      if (isMobile) return;
+      if (isNodeTextScrollbarDoubleClick(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      armPaneClearSuppression();
+      if (desktopNodeAction === "configure" && currentSpecificSelectedFlowId === node.id) return;
+      selectCanvasNode(event, node);
+      setDesktopNodeAction("configure");
+    },
+    [
+      armPaneClearSuppression,
+      currentSpecificSelectedFlowId,
+      desktopNodeAction,
+      isNodeTextScrollbarDoubleClick,
+      isMobile,
+      selectCanvasNode,
+      setDesktopNodeAction,
+    ]
+  );
+  useEffect(() => {
+    if (isMobile || !selectedSingleFlowId || currentSpecificSelectedFlowId === selectedSingleFlowId) return;
+    const flowNode = flowNodes.find((node) => node.id === selectedSingleFlowId);
+    if (!flowNode) return;
+    syncCanvasSelectionFromFlowNode(canvasSelectionSetters, flowNode, { parseProcessPrefixedIdsOnly: true });
+  }, [canvasSelectionSetters, currentSpecificSelectedFlowId, flowNodes, isMobile, selectedSingleFlowId]);
 
   if (loading) {
     return <SystemMapLoadingView progress={loadingProgress} message={loadingMessage} />;
@@ -5828,10 +5922,14 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
   }
 
   return (
-    <div className="flex h-svh min-h-svh flex-col bg-stone-50 md:min-h-screen md:h-dvh">
+    <div className="flex h-dvh min-h-dvh flex-col overflow-hidden bg-stone-50 md:min-h-screen">
       <MapCanvasHeader
         map={map}
+        isTemplateEditor={isTemplateEditor}
         mapRole={mapRole}
+        accessState={accessState}
+        brandHref={isGuestViewer ? null : "/"}
+        showMapInfoButton={!isGuestViewer}
         canManageMapMetadata={canManageMapMetadata}
         isEditingMapTitle={isEditingMapTitle}
         mapTitleDraft={mapTitleDraft}
@@ -5845,18 +5943,68 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         setShowMapInfoAside={setShowMapInfoAside}
         setIsEditingMapInfo={setIsEditingMapInfo}
         setError={setError}
+        onOpenHelp={() => setShowHelpModal(true)}
+      />
+
+      <CanvasNodeSelectionToolbar
+        open={!isMobile && !!desktopToolbarSelection}
+        showRelationships={!!desktopToolbarSelection}
+        relationshipsDisabled={!desktopToolbarSelection?.supportsRelationships}
+        deleteDisabled={!canWriteMap}
+        deleteDisabledReason={deleteDisabledReason}
+        onConfigure={handleOpenToolbarConfigure}
+        onRelationships={handleOpenToolbarRelationships}
+        onDelete={handleOpenToolbarDelete}
       />
 
       <CanvasActionButtons
+        viewerMode={isGuestViewer ? "guest" : "member"}
         isMobile={isMobile}
         backHref={backHref}
-        backTitle={backLabel}
+        backTitle={backTitle}
         showMapInfoAside={showMapInfoAside}
-        onToggleMapInfo={handleToggleMapInfoAside}
+        canUndoSessionChanges={canUndoSessionMapChanges}
+        canRedoSessionChanges={canRedoSessionMapChanges}
+        onUndoSessionChanges={() => void handleUndoSessionChanges()}
+        onRedoSessionChanges={() => void handleRedoSessionChanges()}
         rf={rf}
         setShowAddMenu={setShowAddMenu}
         showAddMenu={showAddMenu}
         addMenuRef={addMenuRef}
+        canUseSuggestionCheck={canUseSuggestionCheck}
+        suggestionsDisabledReason={!canUseSuggestionCheck ? "Suggestions are unavailable for this map." : undefined}
+        showSuggestionsMenu={showSuggestionsMenu}
+        suggestionMenuRef={suggestionMenuRef}
+        onToggleSuggestionsMenu={handleToggleSuggestionsMenu}
+        isLoadingSuggestions={isLoadingSuggestions}
+        suggestionProgress={suggestionProgress}
+        suggestionOverview={suggestionOverview}
+        suggestionPrompt={suggestionPrompt}
+        setSuggestionPrompt={setSuggestionPrompt}
+        suggestions={mapSuggestions}
+        suggestionError={suggestionError}
+        suggestionsLastUpdatedAt={suggestionsLastUpdatedAt}
+        onRunSuggestionCheck={() => void handleRunSuggestionCheck()}
+        onDismissSuggestion={handleDismissMapSuggestion}
+        canSaveTemplate={!isTemplateEditor && canSaveTemplate}
+        canvasInteractionLocked={canvasInteractionLocked}
+        onToggleCanvasInteractionLock={() => setCanvasInteractionLocked((prev) => !prev)}
+        isPlatformAdmin={isPlatformAdmin}
+        isOrgTemplateUser={accessState?.orgManagedAccess === true}
+        templateVisibility={templateVisibility}
+        setTemplateVisibility={handleSetTemplateVisibility}
+        templateDisabledReason={templateDisabledReason}
+        showTemplateMenu={showTemplateMenu}
+        setShowTemplateMenu={setShowTemplateMenu}
+        templateMenuRef={templateMenuRef}
+        templateQuery={templateQuery}
+        setTemplateQuery={handleTemplateQueryChange}
+        templateResults={templateResults}
+        isLoadingTemplates={isLoadingTemplates}
+        isSavingTemplate={isSavingTemplate}
+        templateSaveMessage={templateSaveMessage}
+        onSelectTemplate={handleSelectTemplateResult}
+        onSaveTemplate={() => void handleSaveTemplate()}
         showSearchMenu={showSearchMenu}
         setShowSearchMenu={setShowSearchMenu}
         searchMenuRef={searchMenuRef}
@@ -5868,11 +6016,8 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         canUseWizard={canUseWizard}
         addDisabledReason={addDisabledReason}
         wizardDisabledReason={wizardDisabledReason}
-        canPrint
-        printDisabledReason={undefined}
-        canvasLocked={canvasLocked}
-        onToggleCanvasLock={() => setCanvasLocked((prev) => !prev)}
-        canvasLockTitle={canvasLockTitle}
+        canPrint={canPrintMap}
+        printDisabledReason={readOnlyActionReason}
         onOpenWizard={() => {
           if (!canUseWizard) return;
           setShowWizardModal(true);
@@ -5882,7 +6027,9 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         handleAddSystemCircle={handleAddSystemCircle}
         handleAddProcessComponent={handleAddProcessComponent}
         handleAddPerson={handleAddPerson}
-        handleAddOrgChartPerson={handleAddOrgChartPerson}
+        handleAddEquipment={handleAddEquipment}
+        handleAddEnvironment={handleAddEnvironment}
+        handleAddAnchor={handleAddAnchor}
         handleAddProcessHeading={handleAddProcessHeading}
         handleAddGroupingContainer={handleAddGroupingContainer}
         handleAddStickyNote={handleAddStickyNote}
@@ -5911,25 +6058,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
         handleAddIncidentSystemFactor={handleAddIncidentSystemFactor}
         handleAddIncidentControlBarrier={handleAddIncidentControlBarrier}
         handleAddIncidentEvidence={handleAddIncidentEvidence}
+        handleAddIncidentResponseRecovery={handleAddIncidentResponseRecovery}
         handleAddIncidentFinding={handleAddIncidentFinding}
         handleAddIncidentRecommendation={handleAddIncidentRecommendation}
         allowedNodeKinds={allowedNodeKinds}
-        canSaveTemplate={false}
-        isPlatformAdmin={false}
-        saveAsGlobalTemplate={false}
-        setSaveAsGlobalTemplate={() => undefined}
-        templateDisabledReason={undefined}
-        showTemplateMenu={false}
-        setShowTemplateMenu={() => undefined}
-        templateMenuRef={addMenuRef}
-        templateQuery=""
-        setTemplateQuery={() => undefined}
-        templateResults={[]}
-        isLoadingTemplates={false}
-        isSavingTemplate={false}
-        templateSaveMessage={null}
-        onSelectTemplate={() => undefined}
-        onSaveTemplate={() => undefined}
         showPrintMenu={showPrintMenu}
         setShowPrintMenu={setShowPrintMenu}
         printMenuRef={printMenuRef}
@@ -5949,13 +6081,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
       <SystemMapWizardModal
         open={showWizardModal}
         isMobile={isMobile}
-        categoryId={mapCategoryId}
-        documentTypeOptions={addDocumentTypes.map((type) => ({ id: type.id, name: getDisplayTypeName(type.name) }))}
-        existingDocumentOptions={nodes.map((node) => ({
-          id: node.id,
-          title: node.title?.trim() || "Untitled document",
-          subtitle: `${getDisplayTypeName(typesById.get(node.type_id)?.name ?? "Document")}${node.document_number ? ` | ${node.document_number}` : ""}`,
-        }))}
         onClose={() => setShowWizardModal(false)}
         isSaving={wizardSaving}
         onCommitStep={async (payload) => {
@@ -5967,39 +6092,70 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           }
         }}
       />
-
-      <MapInfoAside
+      <CanvasHelpModal
+        open={showHelpModal}
         isMobile={isMobile}
-        showMapInfoAside={showMapInfoAside}
-        mapInfoAsideRef={mapInfoAsideRef}
-        handleCloseMapInfoAside={handleCloseMapInfoAside}
-        canManageMapMetadata={canManageMapMetadata}
-        isEditingMapInfo={isEditingMapInfo}
-        mapInfoNameDraft={mapInfoNameDraft}
-        setMapInfoNameDraft={setMapInfoNameDraft}
-        mapCodeDraft={mapCodeDraft}
-        setMapCodeDraft={setMapCodeDraft}
-        mapInfoDescriptionDraft={mapInfoDescriptionDraft}
-        setMapInfoDescriptionDraft={setMapInfoDescriptionDraft}
-        map={map}
-        savingMapInfo={savingMapInfo}
-        handleSaveMapInfo={handleSaveMapInfo}
-        setIsEditingMapInfo={setIsEditingMapInfo}
-        setMapInfoDescriptionDraftFromMap={() => setMapInfoDescriptionDraft(map.description ?? "")}
-        setMapCodeDraftFromMap={() => setMapCodeDraft(map.map_code ?? "")}
-        mapMembers={mapMembers}
-        userId={userId}
-        userEmail={userEmail}
-        savingMemberRoleUserId={savingMemberRoleUserId}
-        handleUpdateMapMemberRole={handleUpdateMapMemberRole}
-        mapRoleLabel={mapRoleLabel}
+        mapCategoryId={mapCategoryId}
+        allowedNodeKinds={allowedNodeKinds}
+        onClose={() => setShowHelpModal(false)}
       />
 
-      <main className="relative min-h-0 flex-1 overflow-hidden">
+      {!isGuestViewer ? (
+        <MapInfoAside
+          isMobile={isMobile}
+          showMapInfoAside={showMapInfoAside}
+          mapInfoAsideRef={mapInfoAsideRef}
+          handleCloseMapInfoAside={() => {
+            setShowOrgAccessModal(false);
+            handleCloseMapInfoAside();
+          }}
+          canManageMapMetadata={canManageMapMetadata}
+          isEditingMapInfo={isEditingMapInfo}
+          mapInfoNameDraft={mapInfoNameDraft}
+          setMapInfoNameDraft={setMapInfoNameDraft}
+          mapCodeDraft={mapCodeDraft}
+          setMapCodeDraft={setMapCodeDraft}
+          mapInfoDescriptionDraft={mapInfoDescriptionDraft}
+          setMapInfoDescriptionDraft={setMapInfoDescriptionDraft}
+          map={map}
+          savingMapInfo={savingMapInfo}
+          handleSaveMapInfo={handleSaveMapInfo}
+          setIsEditingMapInfo={setIsEditingMapInfo}
+          setMapInfoDescriptionDraftFromMap={() => setMapInfoDescriptionDraft(map.description ?? "")}
+          setMapCodeDraftFromMap={() => setMapCodeDraft(map.map_code ?? "")}
+          mapMembers={mapMembers}
+          ownerHasActiveOrganisation={ownerHasActiveOrganisation}
+          showOrgAccessModal={showOrgAccessModal}
+          setShowOrgAccessModal={setShowOrgAccessModal}
+          userId={userId}
+          userEmail={userEmail}
+          orgAccessCandidates={filteredOrgAccessCandidates}
+          orgAccessSearch={orgAccessSearch}
+          setOrgAccessSearch={setOrgAccessSearch}
+          orgAccessLoading={orgAccessLoading}
+          orgAccessError={orgAccessError}
+          grantingOrgAccessUserId={grantingOrgAccessUserId}
+          handleGrantOrgUserFullWrite={handleGrantOrgUserFullWrite}
+          savingMemberRoleUserId={savingMemberRoleUserId}
+          handleUpdateMapMemberRole={handleUpdateMapMemberRoleAndRefresh}
+          mapRoleLabel={mapRoleLabel}
+        />
+      ) : null}
+
+      <main className="relative min-h-0 flex-1 overflow-hidden pb-0">
+        {anchorNavigationNotice ? (
+          <div
+            className="pointer-events-none absolute z-[160] -translate-x-1/2 -translate-y-full rounded border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-lg"
+            style={{ left: anchorNavigationNotice.left, top: anchorNavigationNotice.top }}
+          >
+            {anchorNavigationNotice.message}
+          </div>
+        ) : null}
         <div
           ref={canvasRef}
-          className={`h-full w-full bg-stone-50 ${canvasLocked ? "[&_.react-flow__edge]:pointer-events-none [&_.react-flow__node]:pointer-events-none" : ""}`}
+          className="h-full w-full bg-stone-50"
           onMouseDown={handlePaneMouseDown}
+          onPointerDownCapture={handleCanvasNodePointerDownCapture}
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
             setMobileNodeMenuId(null);
@@ -6007,47 +6163,23 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           }}
         >
           <ReactFlow
-            nodes={interactionFlowNodes}
+            nodes={flowNodes}
             edges={flowEdges}
             nodeTypes={flowNodeTypes}
             edgeTypes={flowEdgeTypes}
             onlyRenderVisibleElements
-            elementsSelectable={!canvasLocked}
             nodesConnectable={false}
             edgesReconnectable={false}
+            deleteKeyCode={null}
+            elevateNodesOnSelect={false}
             nodesFocusable={false}
             edgesFocusable={false}
             onInit={(instance) => setRf({ fitView: instance.fitView, screenToFlowPosition: instance.screenToFlowPosition, setViewport: instance.setViewport })}
             onNodesChange={handleFlowNodesChange}
-            onNodeClick={(event, n) => {
-              if (canvasLocked) return;
-              handleCanvasNodeClick({
-                event,
-                node: n,
-                mapRole,
-                elements,
-                canEditElement,
-                isMobile,
-                lastMobileTapRef,
-                setSelectedFlowIds,
-                setSelectedNodeId,
-                setSelectedProcessId,
-                setSelectedSystemId,
-                setSelectedProcessComponentId,
-                setSelectedPersonId,
-                setSelectedGroupingId,
-                setSelectedStickyId,
-                setSelectedImageId,
-                setSelectedTextBoxId,
-                setSelectedTableId,
-                setSelectedFlowShapeId,
-                setSelectedBowtieElementId,
-                setMobileNodeMenuId,
-              });
-            }}
+            onNodeClick={handleCanvasNodeSingleClick}
+            onNodeDoubleClick={handleCanvasNodeDoubleClick}
             onNodeContextMenu={(e, n) => {
-              if (canvasLocked) return;
-              if (!canUseContextMenu) return;
+              if (!canUseContextMenu || canvasInteractionLocked) return;
               e.preventDefault();
               if (n.data.entityKind === "grouping_container") {
                 const target = e.target as HTMLElement | null;
@@ -6068,35 +6200,35 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             onPaneClick={() => {
               scheduleHoveredNodeId(null);
               scheduleHoveredEdgeId(null);
+              if (isNodeDragActiveRef.current) return;
+              if (consumePaneClearSuppression()) return;
+              if (hasOpenCanvasAside) queueOpenLeftAsideAutosave(true);
               handlePaneClickClearSelection();
             }}
             onPaneContextMenu={(e) => {
               if (!canUseContextMenu) return;
               e.preventDefault();
             }}
-            onNodeMouseEnter={(_, n) => {
-              if (canvasLocked) return;
-              scheduleHoveredNodeId(n.id);
-            }}
+            onNodeMouseEnter={(_, n) => scheduleHoveredNodeId(n.id)}
             onNodeMouseLeave={() => scheduleHoveredNodeId(null)}
             onNodeDragStart={() => {
-              if (canvasLocked) return;
-              isNodeDragActiveRef.current = true;
+              beginNodeDrag();
               setIsNodeDragActive(true);
             }}
             onNodeDragStop={(event, node) => {
-              if (canvasLocked) return;
+              flushPendingFlowNodePositionChanges();
+              beginNodeDragStop();
               void onNodeDragStop(event, node).finally(() => {
-                isNodeDragActiveRef.current = false;
+                finishNodeDragStop();
                 setIsNodeDragActive(false);
               });
             }}
             onMoveEnd={onMoveEnd}
-            nodesDraggable={!canvasLocked}
+            nodesDraggable={canManipulateCanvasElements}
+            zoomOnDoubleClick={false}
             onEdgeMouseEnter={(_, edge) => scheduleHoveredEdgeId(edge.id)}
             onEdgeMouseLeave={() => scheduleHoveredEdgeId(null)}
             onEdgeClick={(event, edge) => {
-              if (canvasLocked) return;
               event.preventDefault();
               event.stopPropagation();
               const rel = relations.find((r) => r.id === edge.id);
@@ -6137,17 +6269,26 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               });
             }}
             panOnDrag
+            elementsSelectable={canManipulateCanvasElements}
+            selectionOnDrag={canManipulateCanvasElements}
             zoomOnScroll
             snapToGrid
             snapGrid={[minorGridSize, minorGridSize]}
-            minZoom={0.2}
+            minZoom={isMobile ? 0.2 : 0.2}
             maxZoom={2}
-            fitView
+            fitView={!isMobile}
             fitViewOptions={{ padding: 0.2 }}
             style={{ backgroundColor: "#fafaf9" }}
           >
             <Background id="minor" variant={BackgroundVariant.Lines} gap={minorGridSize} size={1} color="#e7e5e4" />
             <Background id="major" variant={BackgroundVariant.Lines} gap={majorGridSize} size={1.2} color="#d6d3d1" />
+            <GuestMapNotesLayer
+              enabled={isGuestViewer}
+              campaignSlug={guestCampaignSlug}
+              guestSessionEmail={guestSessionEmail}
+              canvasRef={canvasRef}
+              screenToFlowPosition={rf?.screenToFlowPosition ?? null}
+            />
           </ReactFlow>
         </div>
 
@@ -6224,25 +6365,9 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             setMobileNodeMenuId(null);
           }}
           onAddRelationship={() => {
+            if (readOnlyActionReason) return;
             if (!mobileNodeMenuId) return;
-            setRelationshipSourceNodeId(mobileNodeMenuId);
-            setRelationshipSourceSystemId(null);
-            setRelationshipSourceGroupingId(null);
-            setRelationshipDocumentQuery("");
-            setRelationshipSystemQuery("");
-            setRelationshipGroupingQuery("");
-            setRelationshipTargetDocumentId("");
-            setRelationshipTargetSystemId("");
-            setRelationshipTargetGroupingId("");
-            setShowRelationshipDocumentOptions(false);
-            setShowRelationshipSystemOptions(false);
-            setShowRelationshipGroupingOptions(false);
-            setRelationshipDescription("");
-            setRelationshipDisciplineSelection([]);
-            setShowRelationshipDisciplineMenu(false);
-            setRelationshipCategory(getDefaultRelationshipCategoryForMap(mapCategoryId));
-            setRelationshipCustomType("");
-            setShowAddRelationship(true);
+            openRelationshipStateFromSource({ nodeId: mobileNodeMenuId });
             setMobileNodeMenuId(null);
           }}
           onOpenStructure={() => {
@@ -6256,11 +6381,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             void loadOutline(mobileNodeMenuId);
           }}
           onDeleteDocument={() => {
+            if (readOnlyActionReason) return;
             if (!mobileNodeMenuId) return;
             setConfirmDeleteNodeId(mobileNodeMenuId);
             setMobileNodeMenuId(null);
           }}
           onClose={() => setMobileNodeMenuId(null)}
+          actionDisabledReason={readOnlyActionReason}
         />
 
         <MobileAddRelationshipModal
@@ -6276,7 +6403,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           setShowRelationshipGroupingOptions={setShowRelationshipGroupingOptions}
           groupingRelationCandidates={groupingRelationCandidates}
           groupingRelationCandidateLabelById={groupingRelationCandidateLabelById}
-          allowGroupingTargets={allowGroupingTargets}
           allowDocumentTargets={allowDocumentTargets}
           relationshipDocumentQuery={relationshipDocumentQuery}
           setRelationshipDocumentQuery={setRelationshipDocumentQuery}
@@ -6306,7 +6432,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           setRelationshipDisciplineSelection={setRelationshipDisciplineSelection}
           relationshipCategory={relationshipCategory}
           setRelationshipCategory={setRelationshipCategory}
-          relationshipCategoryGroups={relationshipCategoryGroups}
           relationshipCategoryOptions={relationshipCategoryOptions}
           relationshipCustomType={relationshipCustomType}
           setRelationshipCustomType={setRelationshipCustomType}
@@ -6316,14 +6441,20 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
           relationshipTargetSystemId={relationshipTargetSystemId}
           relationshipTargetGroupingId={relationshipTargetGroupingId}
           onCancel={closeAddRelationshipModal}
-          onAdd={handleAddRelation}
+          onAdd={() => {
+            if (readOnlyActionReason) return;
+            void handleAddRelation();
+          }}
+          actionDisabledReason={readOnlyActionReason}
         />
 
         <CanvasConfirmDialogs
           confirmDeleteNodeId={confirmDeleteNodeId}
-          isMobile={isMobile}
           setConfirmDeleteNodeId={setConfirmDeleteNodeId}
           handleDeleteNode={handleDeleteNode}
+          confirmDeleteElementId={confirmDeleteElementId}
+          setConfirmDeleteElementId={setConfirmDeleteElementId}
+          handleDeleteElement={handleDeleteProcessElement}
           confirmDeleteOutlineItemId={confirmDeleteOutlineItemId}
           setConfirmDeleteOutlineItemId={setConfirmDeleteOutlineItemId}
           handleDeleteOutlineItem={handleDeleteOutlineItem}
@@ -6331,17 +6462,19 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
 
         <CanvasElementPropertyOverlays
           categoryProps={{
-            open: !!selectedProcess,
+            open: getPrimaryAsideOpen("category", selectedProcess, selectedProcessId),
             isMobile,
             leftAsideSlideIn,
-            processMinWidthSquares,
-            processMinHeightSquares,
             processHeadingDraft,
             setProcessHeadingDraft,
-            processWidthDraft,
-            setProcessWidthDraft,
-            processHeightDraft,
-            setProcessHeightDraft,
+            processFontSizeDraft,
+            setProcessFontSizeDraft,
+            processFillModeDraft,
+            setProcessFillModeDraft,
+            processOutlineColorDraft,
+            setProcessOutlineColorDraft,
+            processOutlineWidthDraft,
+            setProcessOutlineWidthDraft,
             categoryColorOptions,
             processColorDraft,
             setProcessColorDraft,
@@ -6349,11 +6482,15 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               if (!selectedProcess) return;
               await handleDeleteProcessElement(selectedProcess.id);
             },
-            onSave: handleSaveProcessHeading,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onSave: async () => {
+              await handleSaveProcessHeading();
+              closeCategoryAside();
+            },
+            onClose: closeCategoryAside,
+            actionDisabledReason: readOnlyActionReason,
           }}
           systemProps={{
-            open: !!selectedSystem,
+            open: getPrimaryAsideOpen("system", selectedSystem, selectedSystemId),
             isMobile,
             leftAsideSlideIn,
             systemNameDraft,
@@ -6362,8 +6499,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               if (!selectedSystem) return;
               await handleDeleteProcessElement(selectedSystem.id);
             },
-            onSave: handleSaveSystemName,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onSave: async () => {
+              await handleSaveSystemName();
+              closeSystemAside();
+            },
+            onClose: closeSystemAside,
             onAddRelationship: () => {
               if (!selectedSystem) return;
               openAddRelationshipFromSource({ systemId: selectedSystem.id });
@@ -6371,9 +6511,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relatedRows: relatedSystemRows,
             resolveLabels: resolveDocumentRelationLabels,
             relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
           }}
           processProps={{
-            open: !!selectedProcessComponent,
+            open: getPrimaryAsideOpen("processComponent", selectedProcessComponent, selectedProcessComponentId),
             isMobile,
             leftAsideSlideIn,
             processComponentLabelDraft,
@@ -6382,8 +6523,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               if (!selectedProcessComponent) return;
               await handleDeleteProcessElement(selectedProcessComponent.id);
             },
-            onSave: handleSaveProcessComponent,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onSave: async () => {
+              await handleSaveProcessComponent();
+              closeProcessComponentAside();
+            },
+            onClose: closeProcessComponentAside,
             onAddRelationship: () => {
               if (!selectedProcessComponent) return;
               openAddRelationshipFromSource({ systemId: selectedProcessComponent.id });
@@ -6391,13 +6535,21 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relatedRows: relatedProcessComponentRows,
             resolveLabels: resolveDocumentRelationLabels,
             relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
           }}
           personProps={{
-            open: !!selectedPerson,
+            open: getPrimaryAsideOpen("person", selectedPerson, selectedPersonId),
             isMobile,
             leftAsideSlideIn,
             mapCategoryId,
-            selectedPersonElementType: selectedPerson ? (isOrgChartPersonElement(selectedPerson) ? "org_chart_person" : "person") : null,
+            selectedElementType:
+              selectedPerson?.element_type === "person" ||
+              selectedPerson?.element_type === "equipment" ||
+              selectedPerson?.element_type === "environment"
+                ? selectedPerson.element_type
+                : null,
+            personTypeDraft,
+            setPersonTypeDraft,
             personRoleDraft,
             setPersonRoleDraft,
             personRoleIdDraft,
@@ -6418,13 +6570,24 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             setPersonRecruitingDraft,
             personProposedRoleDraft,
             setPersonProposedRoleDraft,
+            equipmentTypeDraft,
+            setEquipmentTypeDraft,
+            equipmentIdentifierDraft,
+            setEquipmentIdentifierDraft,
+            environmentDetailDraft,
+            setEnvironmentDetailDraft,
+            environmentFactorTypeDraft,
+            setEnvironmentFactorTypeDraft,
             orgChartDepartmentOptions,
             onDelete: async () => {
               if (!selectedPerson) return;
               await handleDeleteProcessElement(selectedPerson.id);
             },
-            onSave: handleSavePerson,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onSave: async () => {
+              await handleSavePerson();
+              closePersonAside();
+            },
+            onClose: closePersonAside,
             onAddRelationship: () => {
               if (!selectedPerson) return;
               openAddRelationshipFromSource({ systemId: selectedPerson.id });
@@ -6432,9 +6595,38 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relatedRows: relatedPersonRows,
             resolveLabels: resolvePersonRelationLabels,
             relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
+          }}
+          anchorProps={{
+            open: getPrimaryAsideOpen("anchor", selectedAnchor, selectedAnchorId),
+            isMobile,
+            leftAsideSlideIn,
+            anchorTitleDraft,
+            setAnchorTitleDraft,
+            anchorColorDraft,
+            setAnchorColorDraft,
+            anchorSearchDraft,
+            setAnchorSearchDraft,
+            selectedAnchorSequenceNumber,
+            anchorGroupSize: Math.max(1, selectedAnchorOrderIds.length || selectedAnchorGroupIds.length),
+            linkedAnchors: selectedAnchorOrderItems,
+            searchResults: anchorSearchResults,
+            onAddLink: handleAddAnchorLink,
+            onRemoveLink: handleRemoveAnchorLink,
+            onReorderLinkedAnchors: handleReorderAnchorLinks,
+            onDelete: async () => {
+              if (!selectedAnchor) return;
+              await handleDeleteProcessElement(selectedAnchor.id);
+            },
+            onSave: async () => {
+              await handleSaveAnchor();
+              closeAnchorAside();
+            },
+            onClose: closeAnchorAside,
+            actionDisabledReason: readOnlyActionReason,
           }}
           bowtieProps={{
-            open: !!selectedBowtieElement,
+            open: getPrimaryAsideOpen("bowtieElement", selectedBowtieElement, selectedBowtieElementId),
             isMobile,
             leftAsideSlideIn,
             bowtieElementType:
@@ -6456,13 +6648,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
                     | "incident_system_factor"
                     | "incident_control_barrier"
                     | "incident_evidence"
+                    | "incident_response_recovery"
                     | "incident_finding"
                     | "incident_recommendation")
                 : null,
-            bowtieHeadingDraft,
-            setBowtieHeadingDraft,
             bowtieDraft,
             setBowtieDraft,
+            availableFactorPeople,
             evidenceUploadPreviewUrl,
             evidenceUploadFileName: evidenceUploadFile?.name ?? "",
             evidenceUploadFileMime: evidenceUploadFile?.type ?? "",
@@ -6485,8 +6677,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               await handleDeleteProcessElement(selectedBowtieElement.id);
               setSelectedBowtieElementId(null);
             },
-            onSave: handleSaveBowtieElement,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onSave: async () => {
+              await handleSaveBowtieElement(isMobile);
+              closeBowtieElementAside();
+            },
+            onClose: closeBowtieElementAside,
             onAddRelationship: () => {
               if (!selectedBowtieElement) return;
               openAddRelationshipFromSource({ systemId: selectedBowtieElement.id });
@@ -6494,23 +6689,29 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relatedRows: relatedBowtieRows,
             resolveLabels: resolvePersonRelationLabels,
             relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
           }}
           groupingProps={{
-            open: !!selectedGrouping,
+            open: getPrimaryAsideOpen("grouping", selectedGrouping, selectedGroupingId),
             isMobile,
             leftAsideSlideIn,
             groupingLabelDraft,
             setGroupingLabelDraft,
-            groupingWidthDraft,
-            setGroupingWidthDraft,
-            groupingHeightDraft,
-            setGroupingHeightDraft,
+            groupingHeaderColorDraft,
+            setGroupingHeaderColorDraft,
+            groupingHeaderFontSizeDraft,
+            setGroupingHeaderFontSizeDraft,
+            groupingOutlineWidthDraft,
+            setGroupingOutlineWidthDraft,
             onDelete: async () => {
               if (!selectedGrouping) return;
               await handleDeleteProcessElement(selectedGrouping.id);
             },
-            onSave: handleSaveGroupingContainer,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onSave: async () => {
+              await handleSaveGroupingContainer();
+              closeGroupingAside();
+            },
+            onClose: closeGroupingAside,
             onAddRelationship: () => {
               if (!selectedGrouping) return;
               openAddRelationshipFromSource({ groupingId: selectedGrouping.id });
@@ -6518,29 +6719,35 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relatedRows: relatedGroupingRows,
             resolveLabels: resolveGroupingRelationLabels,
             relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
           }}
           stickyProps={{
-            open: !!selectedSticky,
+            open: getPrimaryAsideOpen("sticky", selectedSticky, selectedStickyId),
             isMobile,
             leftAsideSlideIn,
             stickyTextDraft,
             setStickyTextDraft,
+            stickyBackgroundColorDraft,
+            setStickyBackgroundColorDraft,
+            stickyOutlineColorDraft,
+            setStickyOutlineColorDraft,
+            stickyFillModeDraft,
+            setStickyFillModeDraft,
+            stickyOutlineWidthDraft,
+            setStickyOutlineWidthDraft,
             onDelete: async () => {
               if (!selectedSticky) return;
               await handleDeleteProcessElement(selectedSticky.id);
             },
-            onSave: handleSaveStickyNote,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
-            onAddRelationship: () => {
-              if (!selectedSticky) return;
-              openAddRelationshipFromSource({ systemId: selectedSticky.id });
+            onSave: async () => {
+              await handleSaveStickyNote();
+              closeStickyAside();
             },
-            relatedRows: relatedStickyRows,
-            resolveLabels: resolvePersonRelationLabels,
-            relationshipSectionProps: sharedRelationshipSectionProps,
+            onClose: closeStickyAside,
+            actionDisabledReason: readOnlyActionReason,
           }}
           imageProps={{
-            open: !!selectedImage,
+            open: getPrimaryAsideOpen("image", selectedImage, selectedImageId),
             isMobile,
             leftAsideSlideIn,
             imageDescriptionDraft,
@@ -6555,8 +6762,11 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               await handleDeleteProcessElement(selectedImage.id);
               setSelectedImageId(null);
             },
-            onSave: handleSaveImageAsset,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onSave: async () => {
+              await handleSaveImageAsset();
+              closeImageAside();
+            },
+            onClose: closeImageAside,
             onAddRelationship: () => {
               if (!selectedImage) return;
               openAddRelationshipFromSource({ systemId: selectedImage.id });
@@ -6564,9 +6774,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relatedRows: relatedImageRows,
             resolveLabels: resolvePersonRelationLabels,
             relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
           }}
           textBoxProps={{
-            open: !!selectedTextBox,
+            open: getPrimaryAsideOpen("textBox", selectedTextBox, selectedTextBoxId),
             isMobile,
             leftAsideSlideIn,
             textBoxContentDraft,
@@ -6581,23 +6792,28 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             setTextBoxAlignDraft,
             textBoxFontSizeDraft,
             setTextBoxFontSizeDraft,
+            textBoxBackgroundColorDraft,
+            setTextBoxBackgroundColorDraft,
+            textBoxOutlineDraft,
+            setTextBoxOutlineDraft,
+            textBoxOutlineColorDraft,
+            setTextBoxOutlineColorDraft,
+            textBoxOutlineWidthDraft,
+            setTextBoxOutlineWidthDraft,
             onDelete: async () => {
               if (!selectedTextBox) return;
               await handleDeleteProcessElement(selectedTextBox.id);
               setSelectedTextBoxId(null);
             },
-            onSave: handleSaveTextBox,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
-            onAddRelationship: () => {
-              if (!selectedTextBox) return;
-              openAddRelationshipFromSource({ systemId: selectedTextBox.id });
+            onSave: async () => {
+              await handleSaveTextBox();
+              closeTextBoxAside();
             },
-            relatedRows: relatedTextBoxRows,
-            resolveLabels: resolvePersonRelationLabels,
-            relationshipSectionProps: sharedRelationshipSectionProps,
+            onClose: closeTextBoxAside,
+            actionDisabledReason: readOnlyActionReason,
           }}
           tableProps={{
-            open: !!selectedTable,
+            open: getPrimaryAsideOpen("table", selectedTable, selectedTableId),
             isMobile,
             leftAsideSlideIn,
             tableRowsDraft,
@@ -6606,8 +6822,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             setTableColumnsDraft,
             tableHeaderBgDraft,
             setTableHeaderBgDraft,
-            tableHeaderFillModeDraft,
-            setTableHeaderFillModeDraft,
+            tableGridLineColorDraft,
+            setTableGridLineColorDraft,
+            tableGridLineWeightDraft,
+            setTableGridLineWeightDraft,
             tableBoldDraft,
             setTableBoldDraft,
             tableItalicDraft,
@@ -6625,18 +6843,15 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               await handleDeleteProcessElement(selectedTable.id);
               setSelectedTableId(null);
             },
-            onSave: handleSaveTable,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
-            onAddRelationship: () => {
-              if (!selectedTable) return;
-              openAddRelationshipFromSource({ systemId: selectedTable.id });
+            onSave: async () => {
+              await handleSaveTable();
+              closeTableAside();
             },
-            relatedRows: relatedTableRows,
-            resolveLabels: resolvePersonRelationLabels,
-            relationshipSectionProps: sharedRelationshipSectionProps,
+            onClose: closeTableAside,
+            actionDisabledReason: readOnlyActionReason,
           }}
           flowShapeProps={{
-            open: !!selectedFlowShape,
+            open: getPrimaryAsideOpen("flowShape", selectedFlowShape, selectedFlowShapeId),
             isMobile,
             leftAsideSlideIn,
             title:
@@ -6667,6 +6882,10 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             setShapeColorDraft: setFlowShapeColorDraft,
             shapeFillModeDraft: flowShapeFillModeDraft,
             setShapeFillModeDraft: setFlowShapeFillModeDraft,
+            shapeOutlineColorDraft: flowShapeOutlineColorDraft,
+            setShapeOutlineColorDraft: setFlowShapeOutlineColorDraft,
+            shapeOutlineWidthDraft: flowShapeOutlineWidthDraft,
+            setShapeOutlineWidthDraft: setFlowShapeOutlineWidthDraft,
             canFlipDirection:
               selectedFlowShape?.element_type === "shape_pentagon" ||
               selectedFlowShape?.element_type === "shape_chevron_left",
@@ -6681,20 +6900,17 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
               await handleDeleteProcessElement(selectedFlowShape.id);
               setSelectedFlowShapeId(null);
             },
-            onSave: handleSaveFlowShape,
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
-            onAddRelationship: () => {
-              if (!selectedFlowShape) return;
-              openAddRelationshipFromSource({ systemId: selectedFlowShape.id });
+            onSave: async () => {
+              await handleSaveFlowShape();
+              closeFlowShapeAside();
             },
-            relatedRows: relatedFlowShapeRows,
-            resolveLabels: resolvePersonRelationLabels,
-            relationshipSectionProps: sharedRelationshipSectionProps,
+            onClose: closeFlowShapeAside,
+            actionDisabledReason: readOnlyActionReason,
           }}
           documentProps={{
-            open: !!selectedNode && !isMobile,
+            open: getPrimaryAsideOpen("document", selectedNode, selectedNodeId),
             leftAsideSlideIn,
-            onClose: handleCloseDocumentPropertiesPanel,
+            onClose: closeDocumentAside,
             onOpenRelationship: () => {
               if (!selectedNode) return;
               openAddRelationshipFromSource({ nodeId: selectedNode.id });
@@ -6712,7 +6928,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             onOpenDelete: () => {
               if (!selectedNode) return;
               setConfirmDeleteNodeId(selectedNode.id);
-              setDesktopNodeAction("delete");
             },
             selectedTypeId,
             setSelectedTypeId,
@@ -6738,15 +6953,21 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             userGroupOptions,
             ownerName,
             setOwnerName,
-            onSaveNode: handleSaveNode,
+            onSaveNode: async () => {
+              await handleSaveNode();
+              closeDocumentAside();
+            },
             relatedRows,
             resolveLabels: resolveDocumentRelationLabels,
             relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
           }}
         />
         <CanvasDrilldownOverlays
           orgChartDirectReportAsideProps={{
             open: Boolean(mapCategoryId === "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship),
+            isMobile,
+            leftAsideSlideIn,
             sourceLabel: orgDirectReportSourceLabel,
             query: relationshipSystemQuery,
             setQuery: setRelationshipSystemQuery,
@@ -6757,14 +6978,39 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             setSelectedTargetId: setRelationshipTargetSystemId,
             notes: relationshipDescription,
             setNotes: setRelationshipDescription,
-            onAdd: handleAddOrgDirectReport,
+            onAdd: async () => {
+              if (readOnlyActionReason) return;
+              await handleAddOrgDirectReport();
+              setShowAddRelationship(false);
+            },
             onCancel: () => {
+              setShowAddRelationship(false);
+            },
+            actionDisabledReason: readOnlyActionReason,
+          }}
+          relationshipManagerAsideProps={{
+            open: Boolean(!isMobile && desktopNodeAction === "relationship" && !showAddRelationship && relationshipModalContext),
+            isMobile,
+            leftAsideSlideIn,
+            title: relationshipModalContext?.title,
+            addButtonLabel: relationshipModalContext?.addButtonLabel,
+            onAddRelationship: () => {
+              if (readOnlyActionReason) return;
+              relationshipModalContext?.openAdd();
+            },
+            onClose: () => {
               closeAddRelationshipModal();
               setDesktopNodeAction(null);
             },
+            rows: relationshipModalContext?.rows ?? [],
+            resolveLabels: relationshipModalContext?.resolveLabels ?? resolveDocumentRelationLabels,
+            relationshipSectionProps: sharedRelationshipSectionProps,
+            actionDisabledReason: readOnlyActionReason,
           }}
           addRelationshipAsideProps={{
             open: Boolean(mapCategoryId !== "org_chart" && !isMobile && desktopNodeAction === "relationship" && showAddRelationship),
+            isMobile,
+            leftAsideSlideIn,
             relationshipModeGrouping,
             relationshipSourceLabel:
               relationshipSourceNode?.title ||
@@ -6775,7 +7021,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relationshipSourceGroupingHeading: relationshipSourceGrouping?.heading || "",
             allowDocumentTargets,
             allowSystemTargets,
-            allowGroupingTargets,
             relationshipGroupingQuery,
             setRelationshipGroupingQuery,
             groupingRelationCandidateIdByLabel,
@@ -6812,7 +7057,6 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             setRelationshipDisciplineSelection,
             relationshipCategory,
             setRelationshipCategory,
-            relationshipCategoryGroups,
             relationshipCategoryOptions,
             relationshipCustomType,
             setRelationshipCustomType,
@@ -6822,31 +7066,30 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             relationshipTargetSystemId,
             relationshipTargetGroupingId,
             onAdd: async () => {
+              if (readOnlyActionReason) return;
               await handleAddRelation();
-              setDesktopNodeAction(null);
+              setShowAddRelationship(false);
             },
             onCancel: () => {
-              closeAddRelationshipModal();
-              setDesktopNodeAction(null);
+              setShowAddRelationship(false);
             },
+            actionDisabledReason: readOnlyActionReason,
           }}
           deleteDocumentAsideProps={{
-            open: Boolean(selectedNode && !isMobile && desktopNodeAction === "delete" && !!confirmDeleteNodeId),
+            open: false,
             onDelete: async () => {
               const id = confirmDeleteNodeId;
               setConfirmDeleteNodeId(null);
-              setDesktopNodeAction(null);
               if (!id) return;
               await handleDeleteNode(id);
             },
             onCancel: () => {
               setConfirmDeleteNodeId(null);
-              setDesktopNodeAction(null);
             },
           }}
           mobileDocumentPropertiesModalProps={{
             open: Boolean(selectedNode && isMobile),
-            onClose: () => void dismissLeftAsides({ saveBeforeClose: true }),
+            onClose: () => setSelectedNodeId(null),
             selectedTypeId,
             setSelectedTypeId,
             addDocumentTypes,
@@ -6867,9 +7110,13 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
             userGroupOptions,
             ownerName,
             setOwnerName,
-            onSaveNode: handleSaveNode,
+            onSaveNode: async () => {
+              await handleSaveNode();
+              setSelectedNodeId(null);
+            },
             relatedItems: mobileRelatedItems,
             onDeleteRelation: handleDeleteRelation,
+            actionDisabledReason: readOnlyActionReason,
           }}
           documentStructureAsideProps={{
             open: Boolean(isMobile || shouldShowDesktopStructurePanel),
@@ -6930,13 +7177,81 @@ function SystemMapCanvasInner({ mapId, showWelcomeOnLoad = false }: { mapId: str
 export default function SystemMapCanvasClient({
   mapId,
   showWelcomeOnLoad = false,
+  templateEditorTemplateId = null,
+  templateEditorTemplateName = null,
+  templateEditorIsGlobal = false,
+  templateEditorVisibility = templateEditorIsGlobal ? "global" : "private",
+  entrySource = "dashboard",
+  viewerMode = "member",
+  initialSnapshot = null,
+  guestSessionEmail = null,
+  guestCampaignSlug = null,
 }: {
   mapId: string;
   showWelcomeOnLoad?: boolean;
+  templateEditorTemplateId?: string | null;
+  templateEditorTemplateName?: string | null;
+  templateEditorIsGlobal?: boolean;
+  templateEditorVisibility?: InvestigationTemplateVisibility;
+  entrySource?: "dashboard" | "templates";
+  viewerMode?: "member" | "guest";
+  initialSnapshot?: SystemMapCanvasSnapshot | null;
+  guestSessionEmail?: string | null;
+  guestCampaignSlug?: string | null;
 }) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const proto = Element.prototype as Element & {
+      __systemMapReleasePointerCapturePatched?: boolean;
+      __systemMapOriginalReleasePointerCapture?: typeof Element.prototype.releasePointerCapture;
+    };
+    if (proto.__systemMapReleasePointerCapturePatched) return;
+    const original = Element.prototype.releasePointerCapture;
+    proto.__systemMapOriginalReleasePointerCapture = original;
+    Element.prototype.releasePointerCapture = function patchedReleasePointerCapture(pointerId: number) {
+      try {
+        if (typeof this.hasPointerCapture === "function" && !this.hasPointerCapture(pointerId)) {
+          return;
+        }
+        original.call(this, pointerId);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "NotFoundError") {
+          return;
+        }
+        throw error;
+      }
+    };
+    proto.__systemMapReleasePointerCapturePatched = true;
+  }, []);
+
+  useEffect(() => {
+    const body = document.body;
+    const main = document.querySelector("body > main");
+
+    body.classList.add("system-map-route");
+    main?.classList.add("dashboardSystemMapMain");
+
+    return () => {
+      body.classList.remove("system-map-route");
+      main?.classList.remove("dashboardSystemMapMain");
+    };
+  }, []);
+
   return (
     <ReactFlowProvider>
-      <SystemMapCanvasInner mapId={mapId} showWelcomeOnLoad={showWelcomeOnLoad} />
+      <SystemMapCanvasInner
+        mapId={mapId}
+        showWelcomeOnLoad={showWelcomeOnLoad}
+        templateEditorTemplateId={templateEditorTemplateId}
+        templateEditorTemplateName={templateEditorTemplateName}
+        templateEditorIsGlobal={templateEditorIsGlobal}
+        templateEditorVisibility={templateEditorVisibility}
+        entrySource={entrySource}
+        viewerMode={viewerMode}
+        initialSnapshot={initialSnapshot}
+        guestSessionEmail={guestSessionEmail}
+        guestCampaignSlug={guestCampaignSlug}
+      />
     </ReactFlowProvider>
   );
 }
