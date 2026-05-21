@@ -343,6 +343,8 @@ function SystemMapCanvasInner({
   const anchorNavigateRef = useRef<((anchorId: string, direction: "previous" | "next") => void) | null>(null);
   const resizePersistTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const resizePersistValuesRef = useRef<Map<string, { width: number; height: number }>>(new Map());
+  const documentResizePersistTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const documentResizePersistValuesRef = useRef<Map<string, { width: number; height: number }>>(new Map());
   const savedPos = useRef<Record<string, { x: number; y: number }>>({});
   const convertedMediaObjectUrlsRef = useRef<Set<string>>(new Set());
   const lastMobileTapRef = useRef<{ id: string; ts: number } | null>(null);
@@ -518,8 +520,8 @@ function SystemMapCanvasInner({
   const deleteDisabledReason = !canWriteMap
     ? readOnlyActionReason || "You have view access only for this map."
     : undefined;
-  const backHref = entrySource === "templates" ? "/templates" : "/dashboard";
-  const backTitle = entrySource === "templates" ? "Back to templates" : "Back to dashboard";
+  const backHref = entrySource === "templates" ? "/templates" : "/dashboard/map-builders";
+  const backTitle = entrySource === "templates" ? "Back to templates" : "Back to map builders";
   const canPrintMap = accessAllowsEditing;
   const addDisabledReason = !accessAllowsEditing
     ? accessState?.readOnlyReason || "This map is read only for your current access."
@@ -1854,16 +1856,40 @@ function SystemMapCanvasInner({
       return (
         change.type === "dimensions" &&
         typeof change.id === "string" &&
-        change.id.startsWith("process:") &&
+        (change.id.startsWith("process:") || nodesById.has(change.id)) &&
         !!change.dimensions &&
         typeof (change as { resizing?: boolean }).resizing === "boolean"
       );
     }) as Array<{ id: string; dimensions: { width: number; height: number }; resizing?: boolean }>;
     if (!dimensionChanges.length) return;
 
-    const nextSizes = new Map<string, { width: number; height: number }>();
-    const completedResizeIds = new Set<string>();
+    const nextDocumentSizes = new Map<string, { width: number; height: number }>();
+    const completedDocumentResizeIds = new Set<string>();
+    const nextElementSizes = new Map<string, { width: number; height: number }>();
+    const completedElementResizeIds = new Set<string>();
     dimensionChanges.forEach((change) => {
+      if (!change.id.startsWith("process:")) {
+        if (!canManipulateCanvasElements) return;
+        const current = nodesById.get(change.id);
+        if (!current) return;
+        const rawTypeName = typesById.get(current.type_id)?.name ?? "Document";
+        const isLandscape = isLandscapeTypeName(rawTypeName);
+        const baseSize = getNormalizedDocumentSize(isLandscape, null, null);
+        const widthScale = Math.max(1, snapToMinorGrid(change.dimensions.width) / baseSize.width);
+        const heightScale = Math.max(1, snapToMinorGrid(change.dimensions.height) / baseSize.height);
+        const scale = Math.max(widthScale, heightScale);
+        const width = Math.max(baseSize.width, snapToMinorGrid(baseSize.width * scale));
+        const height = Math.max(baseSize.height, Math.round((width / baseSize.width) * baseSize.height));
+        const currentSize = getNodeSize(current);
+        const currentWidth = Math.max(baseSize.width, Math.round(currentSize.width));
+        const currentHeight = Math.max(baseSize.height, Math.round(currentSize.height));
+        if (width !== currentWidth || height !== currentHeight) {
+          nextDocumentSizes.set(change.id, { width, height });
+          if (change.resizing === false) completedDocumentResizeIds.add(change.id);
+        }
+        return;
+      }
+
       const elementId = parseProcessFlowId(change.id);
       const current = elementsById.get(elementId);
       if (!current) return;
@@ -1874,8 +1900,8 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(processMinWidth, snapToMinorGrid(current.width || processHeadingWidth));
         const currentHeight = Math.max(processMinHeight, snapToMinorGrid(current.height || processHeadingHeight));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -1885,8 +1911,8 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(anchorNodeMinWidth, snapToMinorGrid(current.width || anchorNodeWidth));
         const currentHeight = Math.max(anchorNodeMinHeight, Math.round((currentWidth / anchorNodeWidth) * anchorNodeHeight));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -1896,8 +1922,8 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(groupingMinWidth, snapToMinorGrid(current.width || groupingDefaultWidth));
         const currentHeight = Math.max(groupingMinHeight, snapToMinorGrid(current.height || groupingDefaultHeight));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -1907,8 +1933,8 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(stickyMinSize, snapToMinorGrid(current.width || stickyDefaultSize));
         const currentHeight = Math.max(stickyMinSize, snapToMinorGrid(current.height || stickyDefaultSize));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -1918,8 +1944,8 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(imageMinWidth, snapToMinorGrid(current.width || imageDefaultWidth));
         const currentHeight = Math.max(imageMinHeight, snapToMinorGrid(current.height || imageDefaultWidth));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -1929,8 +1955,8 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(textBoxMinWidth, snapToMinorGrid(current.width || textBoxDefaultWidth));
         const currentHeight = Math.max(textBoxMinHeight, snapToMinorGrid(current.height || textBoxDefaultHeight));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -1940,8 +1966,8 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(tableMinWidth, snapToMinorGrid(current.width || tableDefaultWidth));
         const currentHeight = Math.max(tableMinHeight, snapToMinorGrid(current.height || tableDefaultHeight));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -2045,7 +2071,7 @@ function SystemMapCanvasInner({
                 el.element_type === "shape_arrow")
           )
           .some((el) => {
-            const pending = nextSizes.get(el.id);
+            const pending = nextElementSizes.get(el.id);
             const size = getShapeSize(el, pending ? { width: pending.width, height: pending.height } : undefined);
             const otherRect = { x: el.pos_x, y: el.pos_y, width: size.width, height: size.height };
             if (!boxesOverlap(candidateRect, otherRect, 0)) return false;
@@ -2071,8 +2097,8 @@ function SystemMapCanvasInner({
           if (overlapsAnyElement) return;
         }
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
         return;
       }
@@ -2101,14 +2127,48 @@ function SystemMapCanvasInner({
         const currentWidth = Math.max(minWidth, snapToMinorGrid(current.width || minWidth));
         const currentHeight = Math.max(minHeight, snapToMinorGrid(current.height || minHeight));
         if (width !== currentWidth || height !== currentHeight) {
-          nextSizes.set(elementId, { width, height });
-          if (change.resizing === false) completedResizeIds.add(elementId);
+          nextElementSizes.set(elementId, { width, height });
+          if (change.resizing === false) completedElementResizeIds.add(elementId);
         }
       }
     });
-    if (!nextSizes.size) return;
 
-    nextSizes.forEach((size, elementId) => {
+    nextDocumentSizes.forEach((size, nodeId) => {
+      documentResizePersistValuesRef.current.set(nodeId, size);
+      const existing = documentResizePersistTimersRef.current.get(nodeId);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(async () => {
+        const queued = documentResizePersistValuesRef.current.get(nodeId);
+        if (!queued) return;
+        setNodes((prev) => {
+          let changed = false;
+          const next = prev.map((node) => {
+            if (node.id !== nodeId) return node;
+            if ((node.width ?? 0) === queued.width && (node.height ?? 0) === queued.height) return node;
+            changed = true;
+            return {
+              ...node,
+              width: queued.width,
+              height: queued.height,
+            };
+          });
+          return changed ? next : prev;
+        });
+        const { error: e } = await supabaseBrowser
+          .schema("ms")
+          .from("document_nodes")
+          .update({ width: queued.width, height: queued.height })
+          .eq("id", nodeId)
+          .eq("map_id", mapId);
+        if (e && !isAbortLikeError(e)) setError(e.message || "Unable to save document size.");
+        documentResizePersistTimersRef.current.delete(nodeId);
+      }, completedDocumentResizeIds.has(nodeId) ? 0 : 220);
+      documentResizePersistTimersRef.current.set(nodeId, timer);
+    });
+
+    if (!nextElementSizes.size) return;
+
+    nextElementSizes.forEach((size, elementId) => {
       resizePersistValuesRef.current.set(elementId, size);
       const existing = resizePersistTimersRef.current.get(elementId);
       if (existing) clearTimeout(existing);
@@ -2139,7 +2199,7 @@ function SystemMapCanvasInner({
           .eq("map_id", mapId);
         if (e && !isAbortLikeError(e)) setError(e.message || "Unable to save component size.");
         resizePersistTimersRef.current.delete(elementId);
-      }, completedResizeIds.has(elementId) ? 0 : 220);
+      }, completedElementResizeIds.has(elementId) ? 0 : 220);
       resizePersistTimersRef.current.set(elementId, timer);
     });
   }, [
@@ -2147,12 +2207,15 @@ function SystemMapCanvasInner({
     flushPendingFlowNodePositionChanges,
     scheduleFlowNodePositionChanges,
     elementsById,
+    nodesById,
+    typesById,
     elements,
     nodes,
     getNodeSize,
     getFlowNodeBounds,
     mapId,
     snapToMinorGrid,
+    canManipulateCanvasElements,
     canEditElement,
     selectedFlowShapeId,
     hasUnsavedFlowShapeDraftChanges,
@@ -2161,10 +2224,15 @@ function SystemMapCanvasInner({
   useEffect(() => {
     const resizeTimers = resizePersistTimersRef.current;
     const resizeValues = resizePersistValuesRef.current;
+    const documentResizeTimers = documentResizePersistTimersRef.current;
+    const documentResizeValues = documentResizePersistValuesRef.current;
     return () => {
       resizeTimers.forEach((timer) => clearTimeout(timer));
       resizeTimers.clear();
       resizeValues.clear();
+      documentResizeTimers.forEach((timer) => clearTimeout(timer));
+      documentResizeTimers.clear();
+      documentResizeValues.clear();
     };
   }, []);
 

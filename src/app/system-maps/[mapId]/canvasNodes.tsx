@@ -16,6 +16,9 @@ import {
   anchorNodeWidth,
   bowtieControlHeight,
   bowtieDefaultWidth,
+  bowtieHazardHeight,
+  bowtieRiskRatingHeight,
+  bowtieSquareHeight,
   defaultCategoryColor,
   disciplineOptions,
   type FlowData,
@@ -376,67 +379,105 @@ function NodeInfoBadge({
   );
 }
 
-function DocumentTileNode({ data }: NodeProps<Node<FlowData>>) {
+function DocumentTileNode({ data, selected, width, height }: NodeProps<Node<FlowData>>) {
+  const baseWidthRaw = Number(data.documentBaseWidth ?? 120);
+  const baseHeightRaw = Number(data.documentBaseHeight ?? 170);
+  const widthRaw = Number(width ?? baseWidthRaw);
+  const heightRaw = Number(height ?? baseHeightRaw);
+  const baseWidth = Number.isFinite(baseWidthRaw) ? Math.max(1, baseWidthRaw) : 120;
+  const baseHeight = Number.isFinite(baseHeightRaw) ? Math.max(1, baseHeightRaw) : 170;
+  const renderedWidth = Number.isFinite(widthRaw) ? Math.max(baseWidth, widthRaw) : baseWidth;
+  const renderedHeight = Number.isFinite(heightRaw) ? Math.max(baseHeight, heightRaw) : baseHeight;
+  const scale = Math.max(0.1, Math.min(renderedWidth / baseWidth, renderedHeight / baseHeight));
+  const scaledWidth = baseWidth * scale;
+  const scaledHeight = baseHeight * scale;
+  const selectedDisciplineOptions = disciplineOptions.filter((option) => data.disciplineKeys.includes(option.key));
+  const resizeHandle =
+    selected && data.canResize !== false ? (
+      <NodeResizeControl
+        position="bottom-right"
+        minWidth={baseWidth}
+        minHeight={baseHeight}
+        keepAspectRatio
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 0,
+          border: "1px solid #334155",
+          background: "#ffffff",
+          cursor: "nwse-resize",
+          zIndex: 180,
+        }}
+      />
+    ) : null;
+
   if (data.isUnconfigured) {
     return (
-      <div className="relative flex h-full w-full items-center justify-center border border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
-        <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-        <div className="text-center text-[12px] font-semibold text-slate-600">{unconfiguredDocumentTitle}</div>
+      <div className="relative h-full w-full overflow-visible">
+        <HiddenEdgeHandles />
+        {resizeHandle}
+        <div
+          className="absolute left-1/2 top-1/2"
+          style={{ width: scaledWidth, height: scaledHeight, transform: "translate(-50%, -50%)" }}
+        >
+          <div
+            className="flex items-center justify-center border border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]"
+            style={{ width: baseWidth, height: baseHeight, transform: `scale(${scale})`, transformOrigin: "top left" }}
+          >
+            <div className="text-center text-[12px] font-semibold text-slate-600">{unconfiguredDocumentTitle}</div>
+          </div>
+        </div>
       </div>
     );
   }
   return (
-    <div className="relative flex h-full w-full flex-col border border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]">
-      <Handle id="top" type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="top-source" type="source" position={Position.Top} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="bottom-target" type="target" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left" type="source" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right" type="source" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="left-target" type="target" position={Position.Left} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
-      <Handle id="right-target" type="target" position={Position.Right} style={{ opacity: 0, pointerEvents: "none", width: 6, height: 6 }} />
+    <div className="relative h-full w-full overflow-visible">
+      <HiddenEdgeHandles />
+      {resizeHandle}
       <div
-        className="flex h-6 items-center justify-center px-1 text-center text-[7px] font-semibold uppercase tracking-[0.04em] leading-tight"
-        style={{ backgroundColor: data.bannerBg, color: data.bannerText }}
+        className="absolute left-1/2 top-1/2"
+        style={{ width: scaledWidth, height: scaledHeight, transform: "translate(-50%, -50%)" }}
       >
-        <span className="block w-full truncate">{data.typeName}</span>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col px-2 pt-1 pb-2">
-        <div className={`overflow-hidden text-center font-semibold leading-tight text-slate-900 ${data.isLandscape ? "text-[9px]" : "text-[10px]"}`}>
-          {data.title ?? "Untitled Document"}
-        </div>
-        {data.documentNumber ? (
-          <div className={`mt-0.5 overflow-hidden text-center font-normal leading-tight text-slate-700 ${data.isLandscape ? "text-[8px]" : "text-[9px]"}`}>
-            {data.documentNumber}
+        <div
+          className="flex flex-col border border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]"
+          style={{ width: baseWidth, height: baseHeight, transform: `scale(${scale})`, transformOrigin: "top left" }}
+        >
+          <div
+            className="flex h-6 items-center justify-center px-1 text-center text-[7px] font-semibold uppercase tracking-[0.04em] leading-tight"
+            style={{ backgroundColor: data.bannerBg, color: data.bannerText }}
+          >
+            <span className="block w-full truncate">{data.typeName}</span>
           </div>
-        ) : null}
-        <div className="mt-auto space-y-1 text-[8px] leading-tight">
-          <div className="space-y-[1px] border border-slate-300 px-1 py-[2px]">
-            <div className="text-center font-semibold text-slate-700">User Group</div>
-            <div className={`${data.isLandscape ? "text-[7px]" : ""} truncate text-center text-slate-500`}>{data.userGroup || "Unassigned"}</div>
-          </div>
-          <div className="space-y-[1px] px-1 py-[2px]">
-            <div className="text-center font-semibold text-slate-700">Discipline</div>
-            <div className="mt-0.5 grid grid-cols-6 gap-[2px]">
-              {disciplineOptions.map((option) => {
-                const active = data.disciplineKeys.includes(option.key);
-                return (
-                  <div
-                    key={option.key}
-                    title={option.label}
-                    className={`flex h-4 w-full items-center justify-center border border-slate-300 text-[8px] leading-none ${active ? "bg-emerald-200 font-bold text-emerald-900" : "bg-white font-medium text-slate-500"}`}
-                  >
-                    {option.letter}
+          <div className="flex min-h-0 flex-1 flex-col px-2 pt-1 pb-2">
+            <div className={`overflow-hidden text-center font-semibold leading-tight text-slate-900 ${data.isLandscape ? "text-[9px]" : "text-[10px]"}`}>
+              {data.title ?? "Untitled Document"}
+            </div>
+            {data.documentNumber ? (
+              <div className={`mt-0.5 overflow-hidden text-center font-normal leading-tight text-slate-700 ${data.isLandscape ? "text-[8px]" : "text-[9px]"}`}>
+                {data.documentNumber}
+              </div>
+            ) : null}
+            <div className="mt-auto space-y-1 text-[8px] leading-tight">
+              <div className="space-y-[1px] border border-slate-300 px-1 py-[2px]">
+                <div className="text-center font-semibold text-slate-700">User Group</div>
+                <div className={`${data.isLandscape ? "text-[7px]" : ""} truncate text-center text-slate-500`}>{data.userGroup || "Unassigned"}</div>
+              </div>
+              <div className="space-y-[1px] px-1 py-[2px]">
+                <div className="text-center font-semibold text-slate-700">Discipline</div>
+                {selectedDisciplineOptions.length ? (
+                  <div className="mt-0.5 flex justify-center gap-[2px]">
+                    {selectedDisciplineOptions.map((option) => (
+                      <div
+                        key={option.key}
+                        title={option.label}
+                        className="flex h-4 min-w-4 items-center justify-center border border-slate-300 bg-emerald-200 px-[3px] text-[8px] font-bold leading-none text-emerald-900"
+                      >
+                        {option.letter}
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -2321,9 +2362,58 @@ function getBowtieRiskPalette(title: string) {
   return { accent: "#334155", background: "#e2e8f0", border: "#94a3b8", text: "#0f172a" };
 }
 
-function BowtieHazardNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieTypeLabel({ label, color }: { label: string; color: string }) {
+  const text = label.trim().toUpperCase();
+  if (!text) return null;
+  return (
+    <div
+      className="pointer-events-none absolute bottom-full left-0 mb-1.5 max-w-full truncate text-left text-[10px] font-extrabold uppercase leading-none tracking-[0.12em]"
+      style={{ color }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function BowtieResizeHandles({ selected, canResize, minHeight }: { selected: boolean; canResize: boolean; minHeight: number }) {
+  if (!selected || !canResize) return null;
+  const handleStyle: CSSProperties = {
+    width: 10,
+    height: 10,
+    borderRadius: 0,
+    border: "1px solid #334155",
+    background: "#ffffff",
+    zIndex: 180,
+  };
+  return (
+    <>
+      <NodeResizeControl
+        position={Position.Right}
+        minWidth={bowtieDefaultWidth}
+        minHeight={minHeight}
+        style={{ ...handleStyle, cursor: "e-resize" }}
+      />
+      <NodeResizeControl
+        position={Position.Bottom}
+        minWidth={bowtieDefaultWidth}
+        minHeight={minHeight}
+        style={{ ...handleStyle, cursor: "s-resize" }}
+      />
+      <NodeResizeControl
+        position="bottom-right"
+        minWidth={bowtieDefaultWidth}
+        minHeight={minHeight}
+        style={{ ...handleStyle, cursor: "nwse-resize" }}
+      />
+    </>
+  );
+}
+
+function BowtieHazardNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Hazard"} color="#92400e" />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieHazardHeight} />
       <BowtieCard
         title={data.title ?? "Hazard"}
         subtitle={data.description || undefined}
@@ -2336,10 +2426,12 @@ function BowtieHazardNode({ data }: NodeProps<Node<FlowData>>) {
   );
 }
 
-function BowtieTopEventNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieTopEventNode({ data, selected }: NodeProps<Node<FlowData>>) {
   const lossOfControlType = (data.description || "").trim();
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Top Event"} color="#16a34a" />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieSquareHeight} />
       <BowtieCard
         title={data.title ?? "Top Event"}
         accent="#22c55e"
@@ -2355,9 +2447,11 @@ function BowtieTopEventNode({ data }: NodeProps<Node<FlowData>>) {
   );
 }
 
-function BowtieThreatNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieThreatNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Threat"} color="#c2410c" />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieSquareHeight} />
       <BowtieCard
         title={data.title ?? "Threat"}
         subtitle={data.description || undefined}
@@ -2369,10 +2463,12 @@ function BowtieThreatNode({ data }: NodeProps<Node<FlowData>>) {
   );
 }
 
-function BowtieConsequenceNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieConsequenceNode({ data, selected }: NodeProps<Node<FlowData>>) {
   const impactCategory = (data.metaSubLabel || "").trim();
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Consequence"} color="#dc2626" />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieSquareHeight} />
       <BowtieCard
         title={data.title ?? "Consequence"}
         accent="#ef4444"
@@ -2447,11 +2543,13 @@ function getNodeInfoText(data: FlowData): string {
   }
 }
 
-function BowtieControlNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieControlNode({ data, selected }: NodeProps<Node<FlowData>>) {
   const bannerColor = data.bannerBg || "#2563eb";
 
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Control"} color={bannerColor} />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieControlHeight} />
       {data.isCritical ? (
         <div
           className="pointer-events-none absolute bottom-0 left-[-24px] top-0 w-5 rounded-l-md bg-black shadow-[0_4px_12px_rgba(0,0,0,0.35)]"
@@ -2491,9 +2589,11 @@ function BowtieControlNode({ data }: NodeProps<Node<FlowData>>) {
   */
 }
 
-function BowtieEscalationFactorNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieEscalationFactorNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Escalation Factor"} color="#d97706" />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieControlHeight} />
       <BowtieCard
         title={data.title ?? "Escalation Factor"}
         subtitle={data.description || undefined}
@@ -2505,9 +2605,11 @@ function BowtieEscalationFactorNode({ data }: NodeProps<Node<FlowData>>) {
   );
 }
 
-function BowtieRecoveryMeasureNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieRecoveryMeasureNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Recovery Measure"} color="#0f766e" />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieControlHeight} />
       <BowtieCard
         title={data.title ?? "Recovery Measure"}
         accent="#0f766e"
@@ -2518,9 +2620,11 @@ function BowtieRecoveryMeasureNode({ data }: NodeProps<Node<FlowData>>) {
   );
 }
 
-function BowtieDegradationIndicatorNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieDegradationIndicatorNode({ data, selected }: NodeProps<Node<FlowData>>) {
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Degradation Indicator"} color="#0891b2" />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieControlHeight} />
       <BowtieCard
         title={data.title ?? "Degradation Indicator"}
         accent="#06b6d4"
@@ -2531,11 +2635,13 @@ function BowtieDegradationIndicatorNode({ data }: NodeProps<Node<FlowData>>) {
   );
 }
 
-function BowtieRiskRatingNode({ data }: NodeProps<Node<FlowData>>) {
+function BowtieRiskRatingNode({ data, selected }: NodeProps<Node<FlowData>>) {
   const riskLabel = data.title ?? "Medium";
   const palette = getBowtieRiskPalette(riskLabel);
   return (
     <div className="relative h-full w-full overflow-visible">
+      <BowtieTypeLabel label={data.typeName || "Risk Rating"} color={palette.accent} />
+      <BowtieResizeHandles selected={Boolean(selected)} canResize={data.canResize !== false} minHeight={bowtieRiskRatingHeight} />
       <BowtieCard
         title={riskLabel}
         accent={palette.accent}

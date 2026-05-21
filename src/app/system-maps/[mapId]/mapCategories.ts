@@ -53,6 +53,15 @@ export type MapCategoryConfig = {
   allowedNodeKinds: NodePaletteKind[];
 };
 
+const processFlowShapeNodeKinds: NodePaletteKind[] = [
+  "shape_rectangle",
+  "shape_circle",
+  "shape_pill",
+  "shape_pentagon",
+  "shape_chevron_left",
+  "shape_arrow",
+];
+
 export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
   document_map: {
     id: "document_map",
@@ -72,6 +81,7 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
       "image_asset",
       "text_box",
       "table",
+      ...processFlowShapeNodeKinds,
     ],
   },
   bow_tie: {
@@ -85,6 +95,7 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
       "sticky_note",
       "image_asset",
       "text_box",
+      ...processFlowShapeNodeKinds,
       "bowtie_hazard",
       "bowtie_top_event",
       "bowtie_threat",
@@ -112,12 +123,7 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
       "image_asset",
       "text_box",
       "table",
-      "shape_rectangle",
-      "shape_circle",
-      "shape_pill",
-      "shape_pentagon",
-      "shape_chevron_left",
-      "shape_arrow",
+      ...processFlowShapeNodeKinds,
       "incident_sequence_step",
       "incident_outcome",
       "incident_task_condition",
@@ -133,7 +139,7 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
   org_chart: {
     id: "org_chart",
     label: "Org Chart",
-    allowedNodeKinds: ["person", "anchor", "category", "grouping_container", "image_asset", "text_box"],
+    allowedNodeKinds: ["person", "anchor", "category", "grouping_container", "image_asset", "text_box", ...processFlowShapeNodeKinds],
   },
   process_flow: {
     id: "process_flow",
@@ -149,12 +155,7 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
       "system",
       "anchor",
       "table",
-      "shape_rectangle",
-      "shape_circle",
-      "shape_pill",
-      "shape_pentagon",
-      "shape_chevron_left",
-      "shape_arrow",
+      ...processFlowShapeNodeKinds,
     ],
   },
 };

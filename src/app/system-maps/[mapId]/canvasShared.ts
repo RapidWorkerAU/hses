@@ -194,6 +194,8 @@ export type FlowData = {
   categoryOutlineWidth?: number;
   canEdit?: boolean;
   canResize?: boolean;
+  documentBaseWidth?: number;
+  documentBaseHeight?: number;
   creatorName?: string;
   createdAtLabel?: string;
   userGroup: string;
@@ -300,7 +302,7 @@ export type SystemMapCanvasSnapshot = {
   anchorLinks?: AnchorLinkRow[];
   imageUrlsByElementId?: Record<string, string>;
 };
-export type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "training";
+export type DisciplineKey = "health" | "safety" | "environment" | "security" | "communities" | "training" | "quality";
 export type RelationshipCategory =
   | "information"
   | "systems"
@@ -428,13 +430,14 @@ export const laneHeight = 260;
 export const fallbackHierarchy = [
   { name: "System Manual", level_rank: 1 },
   { name: "Policy", level_rank: 2 },
-  { name: "Risk Document", level_rank: 3 },
-  { name: "Management Plan", level_rank: 4 },
-  { name: "Procedure", level_rank: 5 },
-  { name: "Guidance Note", level_rank: 6 },
-  { name: "Work Instruction", level_rank: 7 },
-  { name: "Form / Template", level_rank: 8 },
-  { name: "Record", level_rank: 9 },
+  { name: "Standard", level_rank: 3 },
+  { name: "Risk Document", level_rank: 4 },
+  { name: "Management Plan", level_rank: 5 },
+  { name: "Procedure", level_rank: 6 },
+  { name: "Guidance Note", level_rank: 7 },
+  { name: "Work Instruction", level_rank: 8 },
+  { name: "Form / Template", level_rank: 9 },
+  { name: "Record", level_rank: 10 },
 ] as const;
 const fallbackRankByName = new Map(fallbackHierarchy.map((item) => [item.name.trim().toLowerCase(), item.level_rank]));
 export const normalizeTypeRanks = (items: DocumentTypeRow[]) =>
@@ -608,6 +611,7 @@ export const disciplineOptions: Array<{ key: DisciplineKey; label: string; lette
   { key: "security", label: "Security", letter: "S" },
   { key: "communities", label: "Communities", letter: "C" },
   { key: "training", label: "Training", letter: "T" },
+  { key: "quality", label: "Quality", letter: "Q" },
 ];
 export const disciplineKeySet = new Set<DisciplineKey>(disciplineOptions.map((option) => option.key));
 export const disciplineLabelByKey = new Map(disciplineOptions.map((option) => [option.key, option.label]));
@@ -625,6 +629,16 @@ export const parseDisciplines = (value: string | null | undefined): DisciplineKe
       selected.add("safety");
       selected.add("environment");
       selected.add("training");
+      return;
+    }
+    if (t === "hsesct" || t === "hsesctq") {
+      selected.add("health");
+      selected.add("safety");
+      selected.add("environment");
+      selected.add("security");
+      selected.add("communities");
+      selected.add("training");
+      if (t.endsWith("q")) selected.add("quality");
       return;
     }
     if (t === "hse") {
@@ -818,6 +832,7 @@ export const getTypeBannerStyle = (typeName: string) => {
   const key = typeName.toLowerCase();
   if (key.includes("manual")) return { bg: "#b91c1c", text: "#ffffff" };
   if (key.includes("policy")) return { bg: "#7e22ce", text: "#ffffff" };
+  if (key.includes("standard")) return { bg: "#be185d", text: "#ffffff" };
   if (key.includes("management plan")) return { bg: "#1d4ed8", text: "#ffffff" };
   if (key.includes("procedure")) return { bg: "#c2410c", text: "#ffffff" };
   if (key.includes("guidance")) return { bg: "#8b5a2b", text: "#ffffff" };

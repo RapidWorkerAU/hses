@@ -1223,12 +1223,12 @@ export function useCanvasElementActions(params: UseCanvasElementActionsParams) {
         },
         pos_x: center.x,
         pos_y: center.y,
-        width: incidentCardWidth,
-        height: incidentCardHeight,
+        width: bowtieDefaultWidth,
+        height: bowtieControlHeight,
       },
       "Unable to create control."
     );
-  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, incidentCardWidth, incidentCardHeight]);
+  }, [canWriteMap, setError, getCenter, addElement, mapId, userId, bowtieDefaultWidth, bowtieControlHeight]);
 
   const handleAddBowtieEscalationFactor = useCallback(async () => {
     if (!canWriteMap) return setError("You have view access only for this map.");

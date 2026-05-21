@@ -16,6 +16,8 @@ import {
   buildEnvironmentHeading,
   buildPersonHeading,
   defaultCategoryColor,
+  defaultHeight,
+  defaultWidth,
   type DocumentNodeRow,
   type DocumentTypeRow,
   type FlowData,
@@ -33,6 +35,8 @@ import {
   imageMinHeight,
   imageMinWidth,
   isLandscapeTypeName,
+  landscapeDefaultHeight,
+  landscapeDefaultWidth,
   minorGridSize,
   orgChartPersonHeight,
   orgChartPersonWidth,
@@ -219,6 +223,30 @@ const getMethodologyNodeText = (element: CanvasElementRow) => {
   const bodyDisplayMode = getMethodologyBodyDisplayMode(label, description, config.body_display_mode);
   if (bodyDisplayMode === "label") return label || description;
   return description || label;
+};
+
+const getResizableMethodologyStyle = (
+  element: CanvasElementRow,
+  isMarked: boolean,
+  fallbackWidth: number,
+  fallbackHeight: number,
+  minWidth = fallbackWidth,
+  minHeight = fallbackHeight
+) => {
+  const rawWidth = Number(element.width);
+  const rawHeight = Number(element.height);
+  const width = Math.max(minWidth, Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : fallbackWidth);
+  const height = Math.max(minHeight, Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : fallbackHeight);
+  return {
+    width,
+    height,
+    borderRadius: 0,
+    border: "none",
+    background: "transparent",
+    boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
+    padding: 0,
+    overflow: "visible",
+  };
 };
 
 const buildIncidentTag = (
@@ -589,6 +617,8 @@ export const buildDocumentFlowNodes = (params: {
         bannerText: banner.text,
         isLandscape,
         isUnconfigured: (n.title ?? "").trim().toLowerCase() === unconfiguredDocumentTitle.toLowerCase(),
+        documentBaseWidth: isLandscape ? landscapeDefaultWidth : defaultWidth,
+        documentBaseHeight: isLandscape ? landscapeDefaultHeight : defaultHeight,
       },
     };
   });
@@ -1353,16 +1383,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieHazardHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieHazardHeight),
       data: {
         entityKind: "bowtie_hazard",
         typeName: "Hazard",
@@ -1374,6 +1395,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#ffffff",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1389,16 +1411,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieSquareHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieSquareHeight),
       data: {
         entityKind: "bowtie_top_event",
         typeName: "Top Event",
@@ -1410,6 +1423,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#ffffff",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1425,16 +1439,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieSquareHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieSquareHeight),
       data: {
         entityKind: "bowtie_threat",
         typeName: "Threat",
@@ -1446,6 +1451,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#111827",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1461,16 +1467,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieSquareHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieSquareHeight),
       data: {
         entityKind: "bowtie_consequence",
         typeName: "Consequence",
@@ -1482,6 +1479,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#111827",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1509,16 +1507,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieControlHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieControlHeight),
       data: {
         entityKind: "bowtie_control",
         typeName: controlCategoryLabel,
@@ -1531,6 +1520,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#111827",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1547,16 +1537,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieControlHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieControlHeight),
       data: {
         entityKind: "bowtie_escalation_factor",
         typeName: "Escalation Factor",
@@ -1568,6 +1549,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#111827",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1580,16 +1562,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieControlHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieControlHeight),
       data: {
         entityKind: "bowtie_recovery_measure",
         typeName: "Recovery Measure",
@@ -1600,6 +1573,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#111827",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1612,16 +1586,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieControlHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieControlHeight),
       data: {
         entityKind: "bowtie_degradation_indicator",
         typeName: "Degradation Indicator",
@@ -1632,6 +1597,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#111827",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
@@ -1647,16 +1613,7 @@ export const buildSecondaryElementFlowNode = (params: {
       selected: isMarked,
       draggable: canEditThis,
       selectable: canWriteMap,
-      style: {
-        width: bowtieDefaultWidth,
-        height: bowtieRiskRatingHeight,
-        borderRadius: 0,
-        border: "none",
-        background: "transparent",
-        boxShadow: isMarked ? "0 0 0 2px rgba(15,23,42,0.9)" : "none",
-        padding: 0,
-        overflow: "visible",
-      },
+      style: getResizableMethodologyStyle(el, isMarked, bowtieDefaultWidth, bowtieRiskRatingHeight),
       data: {
         entityKind: "bowtie_risk_rating",
         typeName: "Risk Rating",
@@ -1667,6 +1624,7 @@ export const buildSecondaryElementFlowNode = (params: {
         bannerText: "#ffffff",
         isLandscape: true,
         isUnconfigured: false,
+        canResize: canEditThis,
       },
     };
   }
