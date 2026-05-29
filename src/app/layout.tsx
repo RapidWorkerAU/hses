@@ -10,7 +10,8 @@ export const metadata: Metadata = {
     default: "HSES Industry Partners",
     template: "%s | HSES Industry Partners",
   },
-  description: "Work Health and Safety management systems for high-risk businesses.",
+  description:
+    "HSES Industry Partners provides safety document development, safety management system design and safety technology for high-risk businesses in Perth and across Australia.",
   icons: {
     icon: "/images/favicon.png",
   },

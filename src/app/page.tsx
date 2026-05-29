@@ -8,13 +8,131 @@ import HeroRotatingWord from "./HeroRotatingWord";
 import HomePageHeaderActions from "./HomePageHeaderActions";
 import HeroBackgroundVideo from "./HeroBackgroundVideo";
 
+const siteUrl = "https://www.hses.com.au";
+
+const homepageDescription =
+  "HSES Industry Partners provides safety document development, safety management system design and safety technology for high-risk businesses in Perth and across Australia.";
+
+const organizationSchema = {
+  "@context": "https://schema.org",
+  "@type": "ProfessionalService",
+  "@id": `${siteUrl}/#organization`,
+  name: "HSES Industry Partners",
+  url: siteUrl,
+  logo: `${siteUrl}/images/logo-original-black.png`,
+  image: `${siteUrl}/images/systems-section.png`,
+  description: homepageDescription,
+  address: {
+    "@type": "PostalAddress",
+    addressLocality: "Perth",
+    addressRegion: "WA",
+    addressCountry: "AU",
+  },
+  areaServed: [
+    {
+      "@type": "City",
+      name: "Perth",
+    },
+    {
+      "@type": "Country",
+      name: "Australia",
+    },
+  ],
+  contactPoint: {
+    "@type": "ContactPoint",
+    email: "ask@hses.com.au",
+    contactType: "customer service",
+  },
+  sameAs: [],
+  hasOfferCatalog: {
+    "@type": "OfferCatalog",
+    name: "Safety Consulting Services",
+    itemListElement: [
+      {
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name: "Safety Document Development",
+          url: `${siteUrl}/document-development`,
+        },
+      },
+      {
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name: "Safety Management System Design",
+          url: `${siteUrl}/system-design`,
+        },
+      },
+      {
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name: "Safety Technology Options",
+          url: `${siteUrl}/technology-options`,
+        },
+      },
+    ],
+  },
+};
+
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": `${siteUrl}/#website`,
+  name: "HSES Industry Partners",
+  url: siteUrl,
+  publisher: {
+    "@id": `${siteUrl}/#organization`,
+  },
+};
+
 export const metadata: Metadata = {
-  title: "HSES Industry Partners",
+  title: {
+    absolute:
+      "Safety Consultants Perth | WHS Documents and Management Systems | HSES Industry Partners",
+  },
+  description: homepageDescription,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "Safety Consultants Perth | WHS Documents and Management Systems | HSES Industry Partners",
+    description: homepageDescription,
+    type: "website",
+    url: "/",
+    siteName: "HSES Industry Partners",
+    images: [
+      {
+        url: "/images/systems-section.png",
+        alt: "HSES Industry Partners safety management systems overview",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Safety Consultants Perth | WHS Documents and Management Systems | HSES Industry Partners",
+    description: homepageDescription,
+    images: ["/images/systems-section.png"],
+  },
 };
 
 export default function HomePage() {
   return (
     <div className={styles.page} data-home-page>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(organizationSchema),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(websiteSchema),
+        }}
+      />
+
       <PublicSiteHeader />
 
       <header className={styles.hero}>
@@ -278,7 +396,7 @@ export default function HomePage() {
           <footer className={styles.footer}>
             <div className={`${styles.shell} ${styles.footerBar}`}>
               <span className={styles.footerCopy}>
-                &copy; 2026 HSES Industry Partners
+                &copy; 2026 HSES Industry Partners, Perth, Western Australia
               </span>
               <div className={styles.footerLinks}>
                 <a className={styles.footerLink} href="/privacy">

@@ -37,18 +37,15 @@ const serviceSchema = {
   "@context": "https://schema.org",
   "@type": "Service",
   name: "Safety Document Development",
-  serviceType: "Work health and safety document development",
+  serviceType: "Safety Document Development",
   description:
-    "HSES Industry Partners develops health, safety and environment documents, procedures, plans, standards, and operational document packs for high-risk businesses.",
+    "HSES Industry Partners develops WHS documents, procedures, plans, standards and document packs for high-risk businesses in Perth and across Australia.",
   provider: {
-    "@type": "Organization",
-    name: "HSES Industry Partners",
-    url: siteUrl,
-    logo: `${siteUrl}/images/logo-original-black.png`,
+    "@id": `${siteUrl}/#organization`,
   },
   areaServed: {
-    "@type": "Country",
-    name: "Australia",
+    "@type": "City",
+    name: "Perth",
   },
   url: `${siteUrl}/document-development`,
 };
@@ -73,16 +70,19 @@ const breadcrumbSchema = {
 };
 
 export const metadata: Metadata = {
-  title: "Safety Document Development",
+  title: {
+    absolute:
+      "Safety Document Development Perth | WHS Procedures and Plans | HSES Industry Partners",
+  },
   description:
-    "HSES develops health and safety documents, procedures, plans, standards, and document packs that are technically credible and built around real work.",
+    "HSES Industry Partners develops WHS documents, procedures, plans, standards and document packs for high-risk businesses in Perth and across Australia. Built around the way your business actually works.",
   alternates: {
     canonical: "/document-development",
   },
   openGraph: {
-    title: "Safety Document Development | HSES Industry Partners",
+    title: "Safety Document Development Perth | WHS Procedures and Plans | HSES Industry Partners",
     description:
-      "Health and safety documents, procedures, plans, standards, and document packs built around your operation.",
+      "WHS documents, procedures, plans, standards and document packs for high-risk businesses in Perth and across Australia. Built around the way your business actually works.",
     url: "/document-development",
     siteName: "HSES Industry Partners",
     images: [
@@ -247,7 +247,7 @@ export default function DocumentDevelopmentPage() {
 
       <footer className={styles.footer}>
         <div className={`${styles.sectionShell} ${styles.footerInner}`}>
-          <span>&copy; 2026 HSES Industry Partners</span>
+          <span>&copy; 2026 HSES Industry Partners, Perth, Western Australia</span>
           <div className={styles.footerLinks}>
             <Link href="/privacy">Privacy Policy</Link>
             <Link href="/disclaimer">Website Disclaimer</Link>

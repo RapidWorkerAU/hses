@@ -37,18 +37,15 @@ const serviceSchema = {
   "@context": "https://schema.org",
   "@type": "Service",
   name: "Safety Management System Design",
-  serviceType: "Safety management system design and system mapping",
+  serviceType: "Safety Management System Design",
   description:
-    "HSES Industry Partners designs safety management systems using a system design mapping tool to identify required structure, system connections and development schedules.",
+    "HSES Industry Partners designs safety management systems for high-risk businesses in Perth and across Australia. We map the structure first, then plan what needs to be built and how the pieces connect.",
   provider: {
-    "@type": "Organization",
-    name: "HSES Industry Partners",
-    url: siteUrl,
-    logo: `${siteUrl}/images/logo-original-black.png`,
+    "@id": `${siteUrl}/#organization`,
   },
   areaServed: {
-    "@type": "Country",
-    name: "Australia",
+    "@type": "City",
+    name: "Perth",
   },
   url: `${siteUrl}/system-design`,
 };
@@ -73,16 +70,19 @@ const breadcrumbSchema = {
 };
 
 export const metadata: Metadata = {
-  title: "Safety Management System Design",
+  title: {
+    absolute:
+      "Safety Management System Design Perth | WHS System Development | HSES Industry Partners",
+  },
   description:
-    "HSES designs safety management systems using mapping tools that clarify structure, connected system components and practical development schedules.",
+    "HSES Industry Partners designs safety management systems for high-risk businesses in Perth and across Australia. We map the structure first, then plan what needs to be built and how the pieces connect.",
   alternates: {
     canonical: "/system-design",
   },
   openGraph: {
-    title: "Safety Management System Design | HSES Industry Partners",
+    title: "Safety Management System Design Perth | WHS System Development | HSES Industry Partners",
     description:
-      "System design mapping for safety management systems, connected documents, workflows, responsibilities and development planning.",
+      "Safety management system design for high-risk businesses in Perth and across Australia. We map the structure first, then plan what needs to be built and how the pieces connect.",
     url: "/system-design",
     siteName: "HSES Industry Partners",
     images: [
@@ -246,7 +246,7 @@ export default function SystemDesignPage() {
 
       <footer className={styles.footer}>
         <div className={`${styles.sectionShell} ${styles.footerInner}`}>
-          <span>&copy; 2026 HSES Industry Partners</span>
+          <span>&copy; 2026 HSES Industry Partners, Perth, Western Australia</span>
           <div className={styles.footerLinks}>
             <Link href="/privacy">Privacy Policy</Link>
             <Link href="/disclaimer">Website Disclaimer</Link>

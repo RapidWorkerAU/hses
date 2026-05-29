@@ -96,7 +96,7 @@ export default function DisclaimerPage() {
 
       <footer className="site-footer">
         <div className="footer-inner">
-          <span className="footer-copy">&copy; 2025 HSES Industry Partners</span>
+          <span className="footer-copy">&copy; 2026 HSES Industry Partners, Perth, Western Australia</span>
           <div className="footer-links">
             <a className="footer-link" href="/privacy">
               Privacy Policy
@@ -110,4 +110,3 @@ export default function DisclaimerPage() {
     </div>
   );
 }
-

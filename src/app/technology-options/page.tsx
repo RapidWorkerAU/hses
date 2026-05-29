@@ -58,16 +58,13 @@ const serviceSchema = {
   name: "Safety Technology Options",
   serviceType: "Safety technology, investigation tools, portals and safety documentation automation",
   description:
-    "HSES Industry Partners provides safety technology options including an investigation tool, HSES Portal for document maps, bow ties and process flows, and Safedox for auto-generated safety documentation.",
+    "HSES Industry Partners offers safety technology tools including an investigation workspace, system mapping portal and Safedox documentation automation for high-risk businesses in Perth and across Australia.",
   provider: {
-    "@type": "Organization",
-    name: "HSES Industry Partners",
-    url: siteUrl,
-    logo: `${siteUrl}/images/logo-original-black.png`,
+    "@id": `${siteUrl}/#organization`,
   },
   areaServed: {
-    "@type": "Country",
-    name: "Australia",
+    "@type": "City",
+    name: "Perth",
   },
   url: `${siteUrl}/technology-options`,
 };
@@ -92,16 +89,20 @@ const breadcrumbSchema = {
 };
 
 export const metadata: Metadata = {
-  title: "Safety Technology Options",
+  title: {
+    absolute:
+      "WHS Safety Technology Tools Perth | Investigation and System Mapping | HSES Industry Partners",
+  },
   description:
-    "HSES technology options include an investigation tool, HSES Portal for document maps, bow ties and process flows, and Safedox for auto-generated safety documentation.",
+    "HSES Industry Partners offers safety technology tools including an investigation workspace, system mapping portal and Safedox documentation automation for high-risk businesses in Perth and across Australia.",
   alternates: {
     canonical: "/technology-options",
   },
   openGraph: {
-    title: "Safety Technology Options | HSES Industry Partners",
+    title:
+      "WHS Safety Technology Tools Perth | Investigation and System Mapping | HSES Industry Partners",
     description:
-      "Investigation tools, HSES Portal system mapping, and Safedox safety documentation automation.",
+      "Safety technology tools including an investigation workspace, system mapping portal and Safedox documentation automation for high-risk businesses in Perth and across Australia.",
     url: "/technology-options",
     siteName: "HSES Industry Partners",
     images: [
@@ -271,7 +272,7 @@ export default function TechnologyOptionsPage() {
 
       <footer className={styles.footer}>
         <div className={`${styles.sectionShell} ${styles.footerInner}`}>
-          <span>&copy; 2026 HSES Industry Partners</span>
+          <span>&copy; 2026 HSES Industry Partners, Perth, Western Australia</span>
           <div className={styles.footerLinks}>
             <Link href="/privacy">Privacy Policy</Link>
             <Link href="/disclaimer">Website Disclaimer</Link>

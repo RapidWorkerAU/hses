@@ -5,7 +5,7 @@ const siteUrl = "https://www.hses.com.au";
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
-      url: siteUrl,
+      url: `${siteUrl}/`,
       lastModified: new Date(),
       changeFrequency: "monthly",
       priority: 1,
@@ -26,7 +26,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${siteUrl}/technology-options`,
       lastModified: new Date(),
       changeFrequency: "monthly",
-      priority: 0.9,
+      priority: 0.8,
     },
     {
       url: `${siteUrl}/contact`,
