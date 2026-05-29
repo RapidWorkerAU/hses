@@ -42,6 +42,7 @@ export type NodePaletteKind =
 
 export type MapCategoryId =
   | "document_map"
+  | "system_map"
   | "bow_tie"
   | "incident_investigation"
   | "org_chart"
@@ -67,6 +68,26 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
     id: "document_map",
     label: "Document Map",
     // Current behavior baseline; future categories can narrow this safely.
+    allowedNodeKinds: [
+      "document",
+      "system",
+      "process",
+      "person",
+      "equipment",
+      "environment",
+      "anchor",
+      "category",
+      "grouping_container",
+      "sticky_note",
+      "image_asset",
+      "text_box",
+      "table",
+      ...processFlowShapeNodeKinds,
+    ],
+  },
+  system_map: {
+    id: "system_map",
+    label: "System Map",
     allowedNodeKinds: [
       "document",
       "system",

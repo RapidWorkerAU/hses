@@ -1,5 +1,6 @@
 export type MapBuilderCategoryId =
   | "document_map"
+  | "system_map"
   | "bow_tie"
   | "incident_investigation"
   | "org_chart"
@@ -33,6 +34,17 @@ export const MAP_BUILDER_CATEGORIES: MapBuilderCategory[] = [
     icon: "/icons/documentmap.svg",
     createButtonLabel: "Create New Document Map",
     emptyLabel: "No document maps have been added yet.",
+  },
+  {
+    key: "system-maps",
+    slug: "system-maps",
+    mapCategory: "system_map",
+    title: "System Maps",
+    menuTitle: "System Maps",
+    subtitle: "Create and manage system architecture maps for management system structure, relationships, and flow.",
+    icon: "/icons/systemmap.svg",
+    createButtonLabel: "Create New System Map",
+    emptyLabel: "No system maps have been added yet.",
   },
   {
     key: "bow-ties",

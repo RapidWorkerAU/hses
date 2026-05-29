@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { MapCategoryId, NodePaletteKind } from "./mapCategories";
 
 type CanvasHelpModalProps = {
@@ -44,6 +44,7 @@ type HelpTopic = {
 
 const categoryLabelById: Record<MapCategoryId, string> = {
   document_map: "Document Map",
+  system_map: "System Map",
   bow_tie: "Bow Tie",
   incident_investigation: "Investigation Map",
   org_chart: "Org Chart",
@@ -680,18 +681,17 @@ export function CanvasHelpModal({
     [allTopics, normalizedQuery]
   );
 
-  useEffect(() => {
-    if (!open) {
-      setQuery("");
-      setSelectedTopicId("getting-started");
-      return;
-    }
-    if (!filteredTopics.some((topic) => topic.id === selectedTopicId)) {
-      setSelectedTopicId(filteredTopics[0]?.id ?? "getting-started");
-    }
-  }, [filteredTopics, open, selectedTopicId]);
+  const effectiveSelectedTopicId = filteredTopics.some((topic) => topic.id === selectedTopicId)
+    ? selectedTopicId
+    : filteredTopics[0]?.id ?? "getting-started";
 
-  const selectedTopic = filteredTopics.find((topic) => topic.id === selectedTopicId) ?? filteredTopics[0] ?? null;
+  const selectedTopic = filteredTopics.find((topic) => topic.id === effectiveSelectedTopicId) ?? filteredTopics[0] ?? null;
+
+  const handleClose = () => {
+    setQuery("");
+    setSelectedTopicId("getting-started");
+    onClose();
+  };
 
   if (!open) return null;
 
@@ -965,7 +965,7 @@ export function CanvasHelpModal({
               </div>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleClose}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
               >
                 Close

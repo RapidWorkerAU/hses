@@ -1,0 +1,362 @@
+.siteHeader {
+  position: sticky;
+  top: 0;
+  z-index: 70;
+  width: min(2000px, 95vw);
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid #eef2f7;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.headerInner {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.logoLink {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.logo {
+  width: 148px;
+  height: auto;
+  display: block;
+}
+
+.desktopNav {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  margin-left: auto;
+  margin-right: 18px;
+}
+
+.navLink,
+.navLinkActive {
+  color: #0a2540;
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  font-weight: 700;
+  transition: color 0.16s ease;
+}
+
+.navLinkActive,
+.navLink:hover {
+  color: #635bff;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.headerButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40px;
+  min-width: 116px;
+  padding: 0 7px 0 18px;
+  border: 0;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  font-weight: 700;
+  font-family: inherit;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.13);
+  cursor: pointer;
+  transition:
+    box-shadow 0.16s ease,
+    color 0.16s ease;
+}
+
+.headerButtonPortal {
+  background: linear-gradient(90deg, #18d6e4 0%, #147eea 56%, #2636b9 100%);
+  color: #ffffff;
+}
+
+.headerButtonLogin {
+  background: linear-gradient(90deg, #7f2ab2 0%, #cb168d 54%, #f0185f 100%);
+  color: #ffffff;
+}
+
+.headerButtonSales {
+  background: linear-gradient(90deg, #ff6a1f 0%, #ff3b60 54%, #c018a8 100%);
+  color: #ffffff;
+}
+
+.headerButtonMuted {
+  min-width: 92px;
+  padding: 0 18px;
+  border: 1px solid #d9e1ff;
+  background: #f7f9ff;
+  color: #52525b;
+  box-shadow: none;
+}
+
+.headerButtonPortal:hover,
+.headerButtonLogin:hover,
+.headerButtonSales:hover {
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.18);
+}
+
+.headerButtonMuted:hover {
+  color: #111827;
+  background: #ffffff;
+}
+
+.headerButtonArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border: 1.5px solid rgba(255, 255, 255, 0.88);
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.headerButtonBackIcon {
+  border: 0;
+  background-image: url("/icons/back.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  color: transparent;
+  font-size: 0;
+  filter: brightness(0) invert(1);
+  transform: scaleX(-1);
+}
+
+.menuToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 5px;
+  border: 1px solid #dfe7f3;
+  background: #ffffff;
+}
+
+.menuToggleInner {
+  display: grid;
+  gap: 4px;
+}
+
+.menuToggleLine {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: #111111;
+  border-radius: 999px;
+}
+
+.mobileMenu {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: none;
+}
+
+.mobileMenuOpen {
+  display: block;
+}
+
+.mobileBackdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.mobilePanel {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 28px;
+  padding: 24px;
+  background: #0f1f29;
+  color: #ffffff;
+}
+
+.mobilePanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mobileLogo {
+  width: auto;
+  height: 28px;
+}
+
+.mobileClose {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  background-image: url("/icons/close.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  color: transparent;
+  font-size: 0;
+  filter: brightness(0) invert(1);
+}
+
+.mobileNav {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+}
+
+.mobileNavLink,
+.mobileNavButton,
+.mobileNavButtonSecondary {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+.mobileNavLink {
+  justify-content: flex-start;
+  color: #ffffff;
+  font-size: clamp(1.6rem, 6vw, 2.1rem);
+  line-height: 1.05;
+}
+
+.mobileNavActions {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.mobileNavButton,
+.mobileNavButtonSecondary {
+  width: 100%;
+  min-height: 46px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 8px 0 20px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.mobileNavButton {
+  border: 0;
+  background: linear-gradient(90deg, #ff6a1f 0%, #ff3b60 54%, #c018a8 100%);
+  color: #ffffff;
+}
+
+.mobileNavButtonSecondary {
+  border: 0;
+  background: linear-gradient(90deg, #7f2ab2 0%, #cb168d 54%, #f0185f 100%);
+  color: #ffffff;
+}
+
+.mobileNavButtonPortal {
+  background: linear-gradient(90deg, #18d6e4 0%, #147eea 56%, #2636b9 100%);
+}
+
+.mobileNavButtonLogin {
+  background: linear-gradient(90deg, #7f2ab2 0%, #cb168d 54%, #f0185f 100%);
+}
+
+.mobileNavButtonSales {
+  background: linear-gradient(90deg, #ff6a1f 0%, #ff3b60 54%, #c018a8 100%);
+}
+
+.mobileNavButtonMuted {
+  justify-content: center;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: #ffffff;
+  color: #635bff;
+}
+
+.mobileButtonArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+  border: 1.5px solid rgba(255, 255, 255, 0.88);
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 1.05rem;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.mobileButtonBackIcon {
+  border: 0;
+  background-image: url("/icons/back.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  color: transparent;
+  font-size: 0;
+  filter: brightness(0) invert(1);
+  transform: scaleX(-1);
+}
+
+@media (max-width: 1100px) {
+  .desktopNav,
+  .headerActions {
+    display: none;
+  }
+
+  .menuToggle {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 820px) {
+  .siteHeader {
+    position: sticky;
+    width: min(100%, 92vw);
+    background: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .headerInner {
+    min-height: 64px;
+  }
+
+  .logo {
+    width: 126px;
+  }
+}
+
+@media (max-width: 560px) {
+  .siteHeader {
+    width: min(100%, 94vw);
+  }
+}

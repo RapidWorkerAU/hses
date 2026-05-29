@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchAdmin } from "../lib/adminFetch";
 import PortalModal from "@/components/PortalModal";
@@ -13,7 +13,7 @@ import {
 } from "@/lib/quote/emailTemplate";
 import { getQuoteFileTypeLabel } from "@/lib/quote/fileTypeLabel";
 import ContactOrgPicker from "./ContactOrgPicker";
-import DeliverableEditor from "./DeliverableEditor";
+import DeliverableEditor, { type DeliverableEditorHandle } from "./DeliverableEditor";
 import TotalsSidebar from "./TotalsSidebar";
 import type {
   AdminDeliverable,
@@ -23,6 +23,40 @@ import type {
   AdminQuoteVersion,
   Contact,
 } from "./types";
+
+type QuoteBuilderSectionKey = "info" | "items" | "notes" | "totals" | "attachments";
+
+const quoteBuilderSections: Array<{
+  key: QuoteBuilderSectionKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "info",
+    label: "Information & Contacts",
+    description: "Proposal title, status, organisation, and contact details.",
+  },
+  {
+    key: "items",
+    label: "Quote Items",
+    description: "Deliverables, milestone breakdowns, quantities, pricing, and line totals.",
+  },
+  {
+    key: "notes",
+    label: "Notes",
+    description: "Client notes, assumptions, exclusions, and terms.",
+  },
+  {
+    key: "totals",
+    label: "Quote Totals",
+    description: "Review total hours, GST settings, and proposal totals.",
+  },
+  {
+    key: "attachments",
+    label: "Attachments",
+    description: "Upload, view, and remove supporting proposal files.",
+  },
+];
 
 const formatFileSize = (value: number | null | undefined) => {
   if (!value || value <= 0) return "-";
@@ -42,10 +76,10 @@ type QuotePayload = {
 
 export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
   const router = useRouter();
+  const deliverableEditorRefs = useRef(new Map<string, DeliverableEditorHandle>());
   const [payload, setPayload] = useState<QuotePayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hasSeededDeliverable, setHasSeededDeliverable] = useState(false);
   const [openDeliverableId, setOpenDeliverableId] = useState<string | null>(null);
   const [publishModal, setPublishModal] = useState<{
     open: boolean;
@@ -62,14 +96,9 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
   const [publishEmailError, setPublishEmailError] = useState<string | null>(null);
   const [publishEmailTemplate, setPublishEmailTemplate] = useState(DEFAULT_QUOTE_EMAIL_TEMPLATE);
   const [showPublishEmailPreview, setShowPublishEmailPreview] = useState(false);
-  const [panelState, setPanelState] = useState({
-    info: false,
-    items: false,
-    notes: false,
-    totals: false,
-    attachments: false,
-  });
+  const [activeSection, setActiveSection] = useState<QuoteBuilderSectionKey>("info");
   const [infoStatus, setInfoStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [notesStatus, setNotesStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [versionNotes, setVersionNotes] = useState({
     client_notes: "",
     assumptions: "",
@@ -81,6 +110,24 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
   const [attachmentInputKey, setAttachmentInputKey] = useState(0);
+  const [isAddingDeliverable, setIsAddingDeliverable] = useState(false);
+  const panelState = {
+    info: activeSection !== "info",
+    items: activeSection !== "items",
+    notes: activeSection !== "notes",
+    totals: activeSection !== "totals",
+    attachments: activeSection !== "attachments",
+  };
+  const setPanelState = (updater: (previous: typeof panelState) => typeof panelState) => {
+    const nextState = updater(panelState);
+    const nextActiveSection = (Object.keys(nextState) as Array<keyof typeof nextState>).find(
+      (key) => !nextState[key]
+    );
+
+    if (nextActiveSection) {
+      setActiveSection(nextActiveSection);
+    }
+  };
 
   const refresh = async () => {
     if (!quoteId || quoteId === "undefined") {
@@ -98,22 +145,6 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
       return;
     }
     const data = (await response.json()) as QuotePayload;
-    if (data.deliverables.length === 0 && !hasSeededDeliverable) {
-      setHasSeededDeliverable(true);
-      await fetchAdmin("/api/admin/deliverables", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          quote_version_id: data.version.id,
-          deliverable_title: "New deliverable",
-          deliverable_order: 1,
-        }),
-      });
-      setIsLoading(false);
-      await refresh();
-      return;
-    }
-
     setPayload(data);
     if (!openDeliverableId && data.deliverables.length > 0) {
       setOpenDeliverableId(data.deliverables[0].id);
@@ -180,25 +211,61 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
     await syncPayload();
   };
 
-  const addDeliverable = async () => {
+  const saveNotes = async () => {
+    setNotesStatus("saving");
+    await updateVersion(versionNotes);
+    setNotesStatus("saved");
+    setTimeout(() => setNotesStatus("idle"), 2000);
+  };
+
+  const saveOtherEditableDeliverables = async (deliverableId: string) => {
     if (!payload) return;
-    const nextOrder = payload.deliverables.length + 1;
-    const response = await fetchAdmin("/api/admin/deliverables", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quote_version_id: payload.version.id,
-        deliverable_title: "New deliverable",
-        deliverable_order: nextOrder,
-      }),
-    });
-    if (response.ok) {
-      const data = (await response.json()) as { deliverable?: { id?: string } };
-      if (data.deliverable?.id) {
-        setOpenDeliverableId(data.deliverable.id);
-      }
+    const saveResults = await Promise.all(
+      payload.deliverables
+        .filter((deliverable) => deliverable.id !== deliverableId)
+        .map((deliverable) =>
+          deliverableEditorRefs.current.get(deliverable.id)?.saveIfEditing() ?? Promise.resolve(false)
+        )
+    );
+
+    if (saveResults.some(Boolean)) {
+      await syncPayload();
     }
-    await syncPayload();
+  };
+
+  const addDeliverable = async () => {
+    if (!payload || isAddingDeliverable) return;
+    setIsAddingDeliverable(true);
+    try {
+      const saveResults = await Promise.all(
+        payload.deliverables.map((deliverable) =>
+          deliverableEditorRefs.current.get(deliverable.id)?.saveIfEditing() ?? Promise.resolve(false)
+        )
+      );
+      if (saveResults.some(Boolean)) {
+        await syncPayload();
+      }
+
+      const nextOrder = payload.deliverables.length + 1;
+      const response = await fetchAdmin("/api/admin/deliverables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quote_version_id: payload.version.id,
+          deliverable_title: "New deliverable",
+          deliverable_order: nextOrder,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { deliverable?: { id?: string } };
+        if (data.deliverable?.id) {
+          setOpenDeliverableId(data.deliverable.id);
+        }
+      }
+      await syncPayload();
+    } finally {
+      setIsAddingDeliverable(false);
+    }
   };
 
   const addMilestoneForOpen = async () => {
@@ -211,11 +278,6 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
         milestone_title: "New milestone",
       }),
     });
-    await syncPayload();
-  };
-
-  const createNewVersion = async () => {
-    await fetchAdmin(`/api/admin/quotes/${quoteId}/version`, { method: "POST" });
     await syncPayload();
   };
 
@@ -351,29 +413,60 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
     accessCode: publishModal.code ?? "ACCESS-CODE",
     link: previewLink,
   });
+  const activeSectionMeta =
+    quoteBuilderSections.find((section) => section.key === activeSection) ?? quoteBuilderSections[0];
 
   return (
     <div className="quote-builder">
-      <div className="qb-topbar">
-        <div>
-          <div className="qb-title">Proposal Creator</div>
-          <div className="qb-breadcrumb">
-            Home / Proposal Manager / {payload.quote.quote_number}
+      <div className="qb-builder-layout">
+        <aside className="qb-section-menu" aria-label="Quote builder sections">
+          <div className="qb-section-menu-label">Sections</div>
+          <div className="qb-section-menu-title">Quote Builder</div>
+          <div className="qb-section-menu-list">
+            {quoteBuilderSections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                className={`qb-section-menu-item ${activeSection === section.key ? "is-active" : ""}`}
+                onClick={() => setActiveSection(section.key)}
+              >
+                <span>{section.label}</span>
+              </button>
+            ))}
           </div>
-        </div>
-        <div className="qb-actions">
-          <button type="button" className="qb-btn" onClick={createNewVersion}>
-            New Version
-          </button>
-          <button
-            type="button"
-            className="qb-btn qb-btn-primary"
-            onClick={() => setPublishModal({ open: true })}
-          >
-            Publish quote
-          </button>
-        </div>
-      </div>
+        </aside>
+
+        <div className="qb-builder-content">
+          <div className="qb-section-content-header">
+            <div className="qb-section-content-copy">
+              <p className="qb-section-eyebrow">Proposal Section</p>
+              <h2>{activeSectionMeta.label}</h2>
+              <p>Home / Proposal Manager / {payload.quote.quote_number}</p>
+            </div>
+            <div className="qb-section-header-actions">
+              {activeSection === "items" ? (
+                <button
+                  type="button"
+                  className="qb-btn qb-btn-outline-dark qb-add-deliverable-header-btn"
+                  onClick={() => void addDeliverable()}
+                  disabled={isAddingDeliverable}
+                  aria-busy={isAddingDeliverable}
+                >
+                  <span className="qb-add-deliverable-plus" aria-hidden="true">
+                    +
+                  </span>
+                  <span>{isAddingDeliverable ? "Adding..." : "Add deliverable"}</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="qb-btn qb-btn-primary qb-publish-header-btn"
+                onClick={() => setPublishModal({ open: true })}
+              >
+                Publish quote
+              </button>
+            </div>
+          </div>
 
       <div className="qb-panel">
         <div className="qb-panel-header">
@@ -385,76 +478,89 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
               setPanelState((prev) => ({ ...prev, info: !prev.info }))
             }
           >
-            <span>Information & Recipients Summary</span>
+            <span>Information & Contacts</span>
             <span className="qb-panel-toggle-icon">
               {panelState.info ? "+" : "−"}
             </span>
           </button>
         </div>
         {!panelState.info && (
-          <div className="qb-panel-body qb-grid">
-          <div className="qb-field">
-            <label>Proposal Title</label>
-            <input
-              className="qb-input"
-              value={payload.quote.title ?? ""}
-              onChange={(event) =>
-                setPayload({ ...payload, quote: { ...payload.quote, title: event.target.value } })
-              }
-            />
+          <div className="qb-panel-body qb-info-form">
+            <div className="qb-info-grid">
+              <div className="qb-field">
+                <label>Proposal Title</label>
+                <input
+                  className="qb-input"
+                  value={payload.quote.title ?? ""}
+                  onChange={(event) =>
+                    setPayload({ ...payload, quote: { ...payload.quote, title: event.target.value } })
+                  }
+                />
+              </div>
+              <div className="qb-field">
+                <label>Status</label>
+                <select
+                  className="qb-select"
+                  value={payload.quote.status ?? "draft"}
+                  onChange={(event) =>
+                    setPayload({
+                      ...payload,
+                      quote: { ...payload.quote, status: event.target.value },
+                    })
+                  }
+                >
+                  <option value="draft">Draft</option>
+                  <option value="published">Published</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              <ContactOrgPicker
+                organisationId={payload.quote.organisation_id}
+                contactId={payload.quote.contact_id}
+                onOrganisationChange={(orgId) =>
+                  setPayload((current) =>
+                    current
+                      ? { ...current, quote: { ...current.quote, organisation_id: orgId } }
+                      : current
+                  )
+                }
+                onContactChange={(contactId) =>
+                  setPayload((current) =>
+                    current
+                      ? { ...current, quote: { ...current.quote, contact_id: contactId } }
+                      : current
+                  )
+                }
+                embedded
+                inline
+              />
+            </div>
+            <div className="qb-info-actions">
+              <button
+                type="button"
+                className="qb-btn qb-btn-primary qb-info-save-btn"
+                onClick={() =>
+                  updateQuote({
+                    title: payload.quote.title ?? "",
+                    status: payload.quote.status ?? "draft",
+                    organisation_id: payload.quote.organisation_id,
+                    contact_id: payload.quote.contact_id,
+                  })
+                }
+                disabled={infoStatus === "saving"}
+                aria-busy={infoStatus === "saving"}
+              >
+                {infoStatus === "saving"
+                  ? "Saving..."
+                  : infoStatus === "saved"
+                    ? "Saved"
+                    : "Save Information"}
+              </button>
+            </div>
           </div>
-          <div className="qb-field">
-            <label>Status</label>
-            <select
-              className="qb-select"
-              value={payload.quote.status ?? "draft"}
-              onChange={(event) =>
-                setPayload({
-                  ...payload,
-                  quote: { ...payload.quote, status: event.target.value },
-                })
-              }
-            >
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </div>
-          <div className="qb-field">
-            <label>Version</label>
-            <div className="qb-input">Version {payload.version.version_number}</div>
-          </div>
-          <div className="qb-field">
-            <label>Actions</label>
-            <button
-              type="button"
-              className="qb-btn"
-              onClick={() =>
-                updateQuote({
-                  title: payload.quote.title ?? "",
-                  status: payload.quote.status ?? "draft",
-                })
-              }
-              disabled={infoStatus === "saving"}
-            >
-              {infoStatus === "saving"
-                ? "Saving..."
-                : infoStatus === "saved"
-                  ? "Saved"
-                  : "Save Info"}
-            </button>
-          </div>
-        </div>
         )}
       </div>
-
-      <ContactOrgPicker
-        organisationId={payload.quote.organisation_id}
-        contactId={payload.quote.contact_id}
-        onOrganisationChange={(orgId) => updateQuote({ organisation_id: orgId })}
-        onContactChange={(contactId) => updateQuote({ contact_id: contactId })}
-      />
 
       <div className="qb-panel">
         <div className="qb-panel-header">
@@ -473,49 +579,54 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
           </button>
         </div>
         {!panelState.items && (
-          <div className="qb-panel-body">
-          <div className="qb-table-actions">
-            <button
-              type="button"
-              className="qb-btn qb-btn-primary"
-              onClick={(event) => {
-                event.preventDefault();
-                addDeliverable();
-              }}
-            >
-              + Add deliverable
-            </button>
-          </div>
-          <table className="qb-table qb-table--nested">
+          <div className="qb-panel-body qb-panel-body--quote-items">
+          <table className="qb-table qb-table--nested qb-table--quote-items">
             <thead>
               <tr>
-                <th></th>
-                <th>Product name</th>
+                <th>#</th>
+                <th>Deliverable</th>
                 <th>Description</th>
                 <th>Unit</th>
                 <th>Quantity</th>
                 <th>Unit price</th>
                 <th>Total</th>
-                <th></th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {payload.deliverables.map((deliverable) => (
-                <DeliverableEditor
-                  key={deliverable.id}
-                  deliverable={deliverable}
-                  milestones={milestonesByDeliverable[deliverable.id] ?? []}
-                  onSync={syncPayload}
-                  onDelete={syncPayload}
-                  isOpen={openDeliverableId === deliverable.id}
-                  onToggle={() =>
-                    setOpenDeliverableId((prev) =>
-                      prev === deliverable.id ? null : deliverable.id
-                    )
-                  }
-                  onOpen={() => setOpenDeliverableId(deliverable.id)}
-                />
-              ))}
+              {payload.deliverables.length === 0 ? (
+                <tr className="qb-empty-row qb-empty-row--deliverables">
+                  <td colSpan={8} className="qb-empty-cell">
+                    <strong>No deliverables yet.</strong>
+                    <span>Use Add deliverable in the header to add your first deliverable row.</span>
+                  </td>
+                </tr>
+              ) : (
+                payload.deliverables.map((deliverable) => (
+                  <DeliverableEditor
+                    key={deliverable.id}
+                    ref={(editor) => {
+                      if (editor) {
+                        deliverableEditorRefs.current.set(deliverable.id, editor);
+                      } else {
+                        deliverableEditorRefs.current.delete(deliverable.id);
+                      }
+                    }}
+                    deliverable={deliverable}
+                    milestones={milestonesByDeliverable[deliverable.id] ?? []}
+                    onSync={syncPayload}
+                    onDelete={syncPayload}
+                    isOpen={openDeliverableId === deliverable.id}
+                    onToggle={() =>
+                      setOpenDeliverableId((prev) =>
+                        prev === deliverable.id ? null : deliverable.id
+                      )
+                    }
+                    onOpen={() => setOpenDeliverableId(deliverable.id)}
+                    onBeforeEdit={saveOtherEditableDeliverables}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -589,9 +700,11 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
               <button
                 type="button"
                 className="qb-btn qb-btn-primary"
-                onClick={() => updateVersion(versionNotes)}
+                onClick={() => void saveNotes()}
+                disabled={notesStatus === "saving"}
+                aria-busy={notesStatus === "saving"}
               >
-                Save Notes
+                {notesStatus === "saving" ? "Saving..." : notesStatus === "saved" ? "Saved" : "Save Notes"}
               </button>
             </div>
           </div>
@@ -679,6 +792,7 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
                   className="qb-btn qb-btn-primary qb-btn--fixed"
                   onClick={() => void uploadAttachments()}
                   disabled={attachmentStatus === "uploading"}
+                  aria-busy={attachmentStatus === "uploading"}
                 >
                   {attachmentStatus === "uploading" ? "Uploading..." : "Upload attachments"}
                 </button>
@@ -737,6 +851,7 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
                             className="qb-btn"
                             onClick={() => void deleteAttachment(attachment.id)}
                             disabled={deletingAttachmentId === attachment.id}
+                            aria-busy={deletingAttachmentId === attachment.id}
                           >
                             {deletingAttachmentId === attachment.id ? "Deleting..." : "Delete"}
                           </button>
@@ -749,6 +864,8 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
             </table>
           </div>
         )}
+      </div>
+        </div>
       </div>
 
       {publishModal.open && (
@@ -781,9 +898,10 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
               {!publishModal.code ? (
                 <button
                   type="button"
-                  className={modalStyles.primaryButton}
+                  className={`${modalStyles.primaryButton} qb-button-loading`}
                   onClick={publishQuote}
                   disabled={isPublishing}
+                  aria-busy={isPublishing}
                 >
                   {isPublishing ? "Publishing..." : "Publish now"}
                 </button>
@@ -898,9 +1016,10 @@ export default function QuoteBuilderClient({ quoteId }: { quoteId: string }) {
                   {publishEmailStatus === "sent" ? <div className={modalStyles.noticeSuccess}>Email sent.</div> : null}
                   <button
                     type="button"
-                    className={modalStyles.primaryButton}
+                    className={`${modalStyles.primaryButton} qb-button-loading`}
                     onClick={sendPublishEmail}
                     disabled={publishEmailStatus === "sending"}
+                    aria-busy={publishEmailStatus === "sending"}
                   >
                     {publishEmailStatus === "sending" ? "Sending..." : "Send email"}
                   </button>

@@ -18,7 +18,7 @@ type SystemMapRow = {
   description: string | null;
   owner_id: string;
   map_code: string | null;
-  map_category?: "document_map" | "bow_tie" | "incident_investigation" | "org_chart" | "process_flow" | null;
+  map_category?: "document_map" | "system_map" | "bow_tie" | "incident_investigation" | "org_chart" | "process_flow" | null;
   role: string;
   updated_at: string;
   created_at: string;
@@ -96,13 +96,14 @@ type DocumentOutlineItemRow = {
 };
 
 type MapCategoryOption = {
-  id: "document_map" | "bow_tie" | "incident_investigation" | "org_chart" | "process_flow";
+  id: "document_map" | "system_map" | "bow_tie" | "incident_investigation" | "org_chart" | "process_flow";
   label: string;
   description: string;
 };
 
 const mapCategoryOptions: MapCategoryOption[] = [
   { id: "document_map", label: "Document Map", description: "Document-centric compliance and management maps." },
+  { id: "system_map", label: "System Map", description: "Management system architecture and relationship maps." },
   { id: "bow_tie", label: "Bow Tie", description: "Hazard, controls, escalation and consequence mapping." },
   { id: "incident_investigation", label: "Incident Investigation", description: "Investigation workflows and evidence maps." },
   { id: "org_chart", label: "Org Chart", description: "People and team structure mapping." },
@@ -433,6 +434,7 @@ export default function SystemMapsListClient() {
   const getCategoryLabel = (row: SystemMapRow) => {
     if (!row.map_category) return "Document Type";
     if (row.map_category === "document_map") return "Document Type";
+    if (row.map_category === "system_map") return "System Map";
     if (row.map_category === "bow_tie") return "Bow Tie";
     if (row.map_category === "incident_investigation") return "Incident Investigation";
     if (row.map_category === "org_chart") return "Org Chart";

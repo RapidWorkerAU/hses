@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import { fetchAdmin } from "../lib/adminFetch";
 import type { AdminDeliverable, AdminMilestone } from "./types";
 import MilestoneRow from "./MilestoneRow";
@@ -17,14 +17,19 @@ const formatMoney = (value: number | null | undefined) => {
 type DeliverableEditorProps = {
   deliverable: AdminDeliverable;
   milestones: AdminMilestone[];
-  onSync: () => void;
-  onDelete: () => void;
+  onSync: () => void | Promise<void>;
+  onDelete: () => void | Promise<void>;
   isOpen: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  onBeforeEdit?: (deliverableId: string) => Promise<void>;
 };
 
-export default function DeliverableEditor({
+export type DeliverableEditorHandle = {
+  saveIfEditing: () => Promise<boolean>;
+};
+
+const DeliverableEditor = forwardRef<DeliverableEditorHandle, DeliverableEditorProps>(function DeliverableEditor({
   deliverable,
   milestones,
   onSync,
@@ -32,7 +37,8 @@ export default function DeliverableEditor({
   isOpen,
   onToggle,
   onOpen,
-}: DeliverableEditorProps) {
+  onBeforeEdit,
+}, ref) {
   const lockKey = `deliverable-locked-${deliverable.id}`;
   const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
@@ -46,6 +52,9 @@ export default function DeliverableEditor({
     default_client_rate: deliverable.default_client_rate ?? 150,
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isAddingMilestone, setIsAddingMilestone] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isPreparingEdit, setIsPreparingEdit] = useState(false);
   const derivedTotalHours = milestones.reduce((sum, entry) => {
     const unit = entry.pricing_unit ?? "hours";
     if (unit === "hours") {
@@ -62,48 +71,77 @@ export default function DeliverableEditor({
     }
   }, [lockKey]);
 
-  const save = async () => {
+  const saveDeliverable = useCallback(async ({ sync = true }: { sync?: boolean } = {}) => {
     setIsSaving(true);
-    await fetchAdmin(`/api/admin/deliverables/${deliverable.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, total_hours: derivedTotalHours }),
-    });
-    setIsSaving(false);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(lockKey, "true");
+    try {
+      await fetchAdmin(`/api/admin/deliverables/${deliverable.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, total_hours: derivedTotalHours }),
+      });
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(lockKey, "true");
+      }
+      setIsLocked(true);
+      if (sync) {
+        await onSync();
+      }
+    } finally {
+      setIsSaving(false);
     }
-    setIsLocked(true);
-    onSync();
-  };
+  }, [deliverable.id, derivedTotalHours, form, lockKey, onSync]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      saveIfEditing: async () => {
+        if (!isEditable) return false;
+        await saveDeliverable({ sync: false });
+        return true;
+      },
+    }),
+    [isEditable, saveDeliverable]
+  );
 
   const addMilestone = async () => {
+    if (isAddingMilestone) return;
+    setIsAddingMilestone(true);
     onOpen();
-    const nextOrder = milestones.length + 1;
-    const response = await fetchAdmin("/api/admin/milestones", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        deliverable_id: deliverable.id,
-        milestone_title: "New milestone",
-        milestone_order: nextOrder,
-      }),
-    });
-    if (response.ok) {
-      const data = (await response.json()) as { milestone?: { id?: string } };
-      if (data.milestone?.id) {
-        setEditingMilestoneId(data.milestone.id);
+    try {
+      const nextOrder = milestones.length + 1;
+      const response = await fetchAdmin("/api/admin/milestones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deliverable_id: deliverable.id,
+          milestone_title: "New milestone",
+          milestone_order: nextOrder,
+        }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { milestone?: { id?: string } };
+        if (data.milestone?.id) {
+          setEditingMilestoneId(data.milestone.id);
+        }
       }
+      await onSync();
+    } finally {
+      setIsAddingMilestone(false);
     }
-    onSync();
   };
 
   const remove = async () => {
-    await fetchAdmin(`/api/admin/deliverables/${deliverable.id}`, { method: "DELETE" });
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(lockKey);
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await fetchAdmin(`/api/admin/deliverables/${deliverable.id}`, { method: "DELETE" });
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(lockKey);
+      }
+      await onDelete();
+    } finally {
+      setIsDeleting(false);
     }
-    onDelete();
   };
 
   const quantityValue = derivedTotalHours;
@@ -119,11 +157,18 @@ export default function DeliverableEditor({
 
   const showMilestones = isOpen;
 
-  const handleEdit = () => {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(lockKey);
+  const handleEdit = async () => {
+    if (isPreparingEdit) return;
+    setIsPreparingEdit(true);
+    try {
+      await onBeforeEdit?.(deliverable.id);
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(lockKey);
+      }
+      setIsLocked(false);
+    } finally {
+      setIsPreparingEdit(false);
     }
-    setIsLocked(false);
   };
 
   return (
@@ -132,10 +177,13 @@ export default function DeliverableEditor({
         <td>
           <button
             type="button"
-            className="qb-toggle-btn"
+            className={`qb-toggle-btn ${showMilestones ? "is-open" : ""}`}
             onClick={onToggle}
+            title={showMilestones ? "Collapse milestones" : "Expand milestones"}
+            aria-label={showMilestones ? "Collapse milestones" : "Expand milestones"}
+            aria-expanded={showMilestones}
           >
-            {showMilestones ? "–" : "+"}
+            <span className="qb-toggle-chevron" aria-hidden="true" />
           </button>
         </td>
         <td>
@@ -155,7 +203,7 @@ export default function DeliverableEditor({
           ) : (
             <textarea
               className="qb-textarea"
-              rows={2}
+              rows={1}
               value={form.deliverable_description}
               onChange={(event) =>
                 setForm({ ...form, deliverable_description: event.target.value })
@@ -210,32 +258,63 @@ export default function DeliverableEditor({
           <div className="qb-row-actions">
             {!isEditable ? (
               <>
-                <button type="button" className="qb-btn" onClick={handleEdit}>
-                  Edit
+                <button
+                  type="button"
+                  className="qb-icon-btn qb-icon-btn--edit"
+                  onClick={() => void handleEdit()}
+                  disabled={isPreparingEdit}
+                  aria-busy={isPreparingEdit}
+                  title={isPreparingEdit ? "Opening deliverable editor" : "Edit deliverable"}
+                  aria-label={isPreparingEdit ? "Opening deliverable editor" : "Edit deliverable"}
+                >
+                  <span className="qb-icon qb-icon--edit" aria-hidden="true" />
                 </button>
-                <button type="button" className="qb-btn" onClick={remove}>
-                  Delete
+                <button
+                  type="button"
+                  className="qb-icon-btn qb-icon-btn--add"
+                  onClick={addMilestone}
+                  disabled={isAddingMilestone}
+                  aria-busy={isAddingMilestone}
+                  title={isAddingMilestone ? "Adding milestone" : "Add milestone"}
+                  aria-label={isAddingMilestone ? "Adding milestone" : "Add milestone"}
+                >
+                  <span className="qb-icon qb-icon--add" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="qb-icon-btn qb-icon-btn--delete"
+                  onClick={remove}
+                  disabled={isDeleting}
+                  aria-busy={isDeleting}
+                  title={isDeleting ? "Deleting deliverable" : "Delete deliverable"}
+                  aria-label={isDeleting ? "Deleting deliverable" : "Delete deliverable"}
+                >
+                  <span className="qb-icon qb-icon--delete" aria-hidden="true" />
                 </button>
               </>
             ) : (
               <>
-                <button type="button" className="qb-btn" onClick={remove}>
-                  Delete
-                </button>
                 <button
                   type="button"
-                  className="qb-btn qb-btn-secondary"
-                  onClick={addMilestone}
+                  className="qb-icon-btn qb-icon-btn--delete"
+                  onClick={remove}
+                  disabled={isDeleting}
+                  aria-busy={isDeleting}
+                  title={isDeleting ? "Deleting deliverable" : "Delete deliverable"}
+                  aria-label={isDeleting ? "Deleting deliverable" : "Delete deliverable"}
                 >
-                  + Milestone
+                  <span className="qb-icon qb-icon--delete" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  className="qb-btn qb-btn-primary"
-                  onClick={save}
+                  className="qb-icon-btn qb-icon-btn--save"
+                  onClick={() => void saveDeliverable()}
                   disabled={isSaving}
+                  aria-busy={isSaving}
+                  title={isSaving ? "Saving deliverable" : "Save deliverable"}
+                  aria-label={isSaving ? "Saving deliverable" : "Save deliverable"}
                 >
-                  {isSaving ? "Saving..." : "Save"}
+                  <span className="qb-icon qb-icon--save" aria-hidden="true" />
                 </button>
               </>
             )}
@@ -243,49 +322,73 @@ export default function DeliverableEditor({
         </td>
       </tr>
       {showMilestones && (
-        <>
-          <tr className="qb-nested-header">
-            <td></td>
-            <td>Milestone</td>
-            <td>Description</td>
-            <td>Unit</td>
-            <td>Qty/Hrs</td>
-            <td>Unit price</td>
-            <td>Line total</td>
-            <td></td>
-          </tr>
-          {milestones.map((milestone) => {
-            const totalMilestoneHours = milestones.reduce((sum, entry) => {
-              const unit = entry.pricing_unit ?? "hours";
-              if (unit !== "hours") return sum;
-              return sum + (entry.estimated_hours ?? 0);
-            }, 0);
-            const milestoneHours =
-              (milestone.pricing_unit ?? "hours") === "hours"
-                ? milestone.estimated_hours ?? 0
-                : 0;
-            const otherHours = totalMilestoneHours - milestoneHours;
-            return (
-            <MilestoneRow
-              key={milestone.id}
-              milestone={milestone}
-              maxHours={0}
-              otherHours={otherHours}
-              deliverableUnitPrice={unitPriceValue}
-              deliverableRate={form.default_client_rate}
-              editingMilestoneId={editingMilestoneId}
-              onEdit={(id) => setEditingMilestoneId(id)}
-              onStopEdit={() => setEditingMilestoneId(null)}
-              onAddAfterSave={addMilestone}
-              onSaved={onSync}
-              onDeleted={onSync}
-            />
-            );
-          })}
-        </>
+        <tr className="qb-milestone-subtable-row">
+          <td></td>
+          <td colSpan={7} className="qb-milestone-subtable-cell">
+            <div className="qb-milestone-subtable-wrap">
+              <table className="qb-milestone-subtable">
+                <thead>
+                  <tr>
+                    <th>Milestone</th>
+                    <th>Description</th>
+                    <th>Unit</th>
+                    <th>Qty/Hrs</th>
+                    <th>Unit price</th>
+                    <th>Line total</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {milestones.length === 0 ? (
+                    <tr className="qb-empty-row qb-empty-row--milestones">
+                      <td colSpan={7} className="qb-empty-cell">
+                        <strong>No milestones yet.</strong>
+                        <span>
+                          Select the edit action for this deliverable, then use the blue plus action to add a
+                          milestone row.
+                        </span>
+                      </td>
+                    </tr>
+                  ) : (
+                    milestones.map((milestone) => {
+                      const totalMilestoneHours = milestones.reduce((sum, entry) => {
+                        const unit = entry.pricing_unit ?? "hours";
+                        if (unit !== "hours") return sum;
+                        return sum + (entry.estimated_hours ?? 0);
+                      }, 0);
+                      const milestoneHours =
+                        (milestone.pricing_unit ?? "hours") === "hours"
+                          ? milestone.estimated_hours ?? 0
+                          : 0;
+                      const otherHours = totalMilestoneHours - milestoneHours;
+                      return (
+                        <MilestoneRow
+                          key={milestone.id}
+                          milestone={milestone}
+                          maxHours={0}
+                          otherHours={otherHours}
+                          deliverableUnitPrice={unitPriceValue}
+                          deliverableRate={form.default_client_rate}
+                          editingMilestoneId={editingMilestoneId}
+                          onEdit={(id) => setEditingMilestoneId(id)}
+                          onStopEdit={() => setEditingMilestoneId(null)}
+                          onAddAfterSave={addMilestone}
+                          onSaved={onSync}
+                          onDeleted={onSync}
+                        />
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
       )}
     </>
   );
-}
+});
+
+export default DeliverableEditor;
 
 

@@ -19,10 +19,6 @@ export default function HomePageHeaderActions({
     isMobile
       ? styles.mobileNavButton
       : `${styles.headerButton} ${styles.headerButtonPrimary}`;
-  const loggedInPrimaryClass =
-    isMobile
-      ? styles.mobileNavButtonLoggedIn
-      : `${styles.headerButton} ${styles.headerButtonLoggedIn}`;
   const secondaryClass =
     isMobile
       ? styles.mobileNavLink
@@ -58,11 +54,16 @@ export default function HomePageHeaderActions({
   if (isLoggedIn) {
     const content = (
       <>
-        <a className={mobileSecondaryButtonClass} href="/dashboard">
+        <a className={defaultPrimaryClass} href="/dashboard">
           Access Portal
+          {!isMobile && (
+            <span className={styles.headerButtonArrow} aria-hidden="true">
+              &gt;
+            </span>
+          )}
         </a>
         <button
-          className={loggedInPrimaryClass}
+          className={mobileSecondaryButtonClass}
           type="button"
           onClick={() => void logoutPortalUser()}
         >
@@ -76,11 +77,16 @@ export default function HomePageHeaderActions({
 
   const content = (
     <>
-      <a className={secondaryClass} href="/contact">
-        Let&apos;s Talk
+      <a className={mobileSecondaryButtonClass} href="/login">
+        Sign in
       </a>
-      <a className={secondaryClass} href="/login">
-        Portal Login
+      <a className={defaultPrimaryClass} href="/contact">
+        Contact sales
+        {!isMobile && (
+          <span className={styles.headerButtonArrow} aria-hidden="true">
+            &gt;
+          </span>
+        )}
       </a>
     </>
   );

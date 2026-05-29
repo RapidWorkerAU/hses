@@ -51,6 +51,14 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
     ],
   },
   {
+    key: "system-architect",
+    title: "System Architect",
+    description: "Create and manage system maps for your management system architecture.",
+    href: "/dashboard/system-architect",
+    requiresAdmin: false,
+    icon: "/icons/systemmap.svg",
+  },
+  {
     key: "canvas-creator",
     title: "Canvas Creator",
     description: "Create and manage document maps, bow ties, investigation maps, org charts, and process flows from one workspace.",
@@ -76,6 +84,7 @@ export const hasPortalAccess = (email: string | null | undefined, portalKey: str
 export const hasMapCategoryAccess = (email: string | null | undefined, mapCategory: string | null | undefined) => {
   if (!mapCategory) return true;
   if (mapCategory === "document_map") return true;
+  if (mapCategory === "system_map") return true;
   if (mapCategory === "risk_assessment") return false;
   return hasAdminAccess(email);
 };

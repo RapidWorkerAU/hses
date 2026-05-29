@@ -42,6 +42,7 @@ export type NodePaletteKind =
 
 export type MapCategoryId =
   | "document_map"
+  | "system_map"
   | "bow_tie"
   | "incident_investigation"
   | "org_chart"
@@ -72,6 +73,31 @@ export const mapCategoryConfigs: Record<MapCategoryId, MapCategoryConfig> = {
       "image_asset",
       "text_box",
       "table",
+    ],
+  },
+  system_map: {
+    id: "system_map",
+    label: "System Map",
+    allowedNodeKinds: [
+      "document",
+      "system",
+      "process",
+      "person",
+      "equipment",
+      "environment",
+      "anchor",
+      "category",
+      "grouping_container",
+      "sticky_note",
+      "image_asset",
+      "text_box",
+      "table",
+      "shape_rectangle",
+      "shape_circle",
+      "shape_pill",
+      "shape_pentagon",
+      "shape_chevron_left",
+      "shape_arrow",
     ],
   },
   bow_tie: {

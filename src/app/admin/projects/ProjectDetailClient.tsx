@@ -8,6 +8,25 @@ import { DetailPageSkeleton } from "@/components/loading/HsesLoaders";
 import PortalTableFooter from "@/components/table/PortalTableFooter";
 
 const TIME_ENTRIES_PER_PAGE = 7;
+type ProjectSectionKey = "deliverables" | "time";
+
+const projectSections: Array<{
+  key: ProjectSectionKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "deliverables",
+    label: "Deliverables & Milestones",
+    description: "Review planned work, milestone dates, logged hours, and progress.",
+  },
+  {
+    key: "time",
+    label: "Time Log",
+    description: "Review, add, and edit logged time against project milestones.",
+  },
+];
+
 const MONTH_OPTIONS = [
   "January",
   "February",
@@ -128,6 +147,7 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
   const [showLogModal, setShowLogModal] = useState(false);
   const [showTimesheetModal, setShowTimesheetModal] = useState(false);
+  const [activeSection, setActiveSection] = useState<ProjectSectionKey>("deliverables");
   const [openDeliverableId, setOpenDeliverableId] = useState<string | null>(null);
   const [openTimesheetDeliverableId, setOpenTimesheetDeliverableId] = useState<string | null>(null);
   const [timeLogPage, setTimeLogPage] = useState(1);
@@ -412,6 +432,8 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
     projectPlannedHours > 0
       ? Math.min(100, Math.round((projectLoggedHours / projectPlannedHours) * 100))
       : 0;
+  const activeSectionMeta =
+    projectSections.find((section) => section.key === activeSection) ?? projectSections[0];
   const selectedLogMilestone = logForm.milestoneId
     ? milestoneById[logForm.milestoneId]
     : undefined;
@@ -655,30 +677,70 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          {project.name ?? project.quotes?.title ?? "Project"}
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Quote {project.quotes?.quote_number ?? "-"} |{" "}
-          {project.quotes?.organisations?.name ?? "Unknown organisation"}
-        </p>
-      </div>
-
+    <div className="quote-builder project-builder">
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Deliverables &amp; Milestones
-          </h2>
-        </div>
+      <div className="qb-builder-layout">
+        <aside className="qb-section-menu" aria-label="Project sections">
+          <div className="qb-section-menu-label">Project</div>
+          <div className="qb-section-menu-title">
+            {project.name ?? project.quotes?.title ?? "Project"}
+          </div>
+          <div className="qb-section-menu-list">
+            {projectSections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                className={`qb-section-menu-item ${activeSection === section.key ? "is-active" : ""}`}
+                onClick={() => setActiveSection(section.key)}
+              >
+                {section.label}
+              </button>
+            ))}
+          </div>
+        </aside>
 
+        <div className="qb-builder-content">
+          <div className="qb-section-content-header">
+            <div className="qb-section-content-copy">
+              <p className="qb-section-eyebrow">Project Section</p>
+              <h2>{activeSectionMeta.label}</h2>
+              <p>
+                Home / Project Manager / {project.quotes?.quote_number ?? "-"} |{" "}
+                {project.quotes?.organisations?.name ?? "Unknown organisation"}
+              </p>
+            </div>
+            {activeSection === "time" ? (
+              <div className="qb-section-header-actions">
+                <button
+                  type="button"
+                  className="qb-btn qb-btn-outline-dark"
+                  onClick={() => setShowTimesheetModal(true)}
+                >
+                  View Timesheet Information
+                </button>
+                <button
+                  type="button"
+                  className="qb-btn qb-btn--dark"
+                  onClick={() => {
+                    setError(null);
+                    setLogModalError(null);
+                    setShowLogModal(true);
+                  }}
+                >
+                  Add time entry
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {activeSection === "deliverables" ? (
+            <div className="qb-panel">
+              <div className="qb-panel-body qb-project-section-body">
         <div className="mt-4 space-y-3 md:hidden">
           {deliverables.map((deliverable) => {
             const deliverableMilestones = milestonesByDeliverable[deliverable.id] ?? [];
@@ -960,32 +1022,13 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
             </tbody>
           </table>
         </div>
-      </div>
+              </div>
+            </div>
+          ) : null}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Time log</h2>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-              onClick={() => setShowTimesheetModal(true)}
-            >
-              View Timesheet Information
-            </button>
-            <button
-              type="button"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-              onClick={() => {
-                setError(null);
-                setLogModalError(null);
-                setShowLogModal(true);
-              }}
-            >
-              Add time entry
-            </button>
-          </div>
-        </div>
+          {activeSection === "time" ? (
+            <div className="qb-panel">
+              <div className="qb-panel-body qb-project-section-body">
         <div className="mt-4 space-y-3 md:hidden">
           {paginatedTimeEntries.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
@@ -1182,6 +1225,10 @@ export default function ProjectDetailClient({ projectId }: { projectId: string }
           onPageChange={setTimeLogPage}
           label="time entries"
         />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {showTimesheetModal && (

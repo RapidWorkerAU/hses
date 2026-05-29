@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
@@ -23,6 +23,17 @@ type SystemMapRow = {
   map_code: string | null;
   map_category: MapBuilderCategory["mapCategory"] | null;
   role: string;
+  updated_at: string;
+  created_at: string;
+};
+
+type SmsMapApiRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  canvas_generated: boolean;
   updated_at: string;
   created_at: string;
 };
@@ -138,6 +149,12 @@ const getCategoryForMap = (mapCategory: MapBuilderCategory["mapCategory"] | null
 
 const getResponseErrorMessage = (...messages: Array<string | null | undefined>) =>
   messages.find((message) => typeof message === "string" && message.trim().length > 0) ?? null;
+
+const getPortalAuthorizationHeader = async () => {
+  const { data } = await supabaseBrowser.auth.getSession();
+  const token = data.session?.access_token ?? (typeof window !== "undefined" ? window.localStorage.getItem("hses_access_token") : null);
+  return token ? { Authorization: `Bearer ${token}` } : null;
+};
 
 const cloneMapContent = async (sourceMapId: string, targetMapId: string) => {
   const [typesRes, nodesRes, elementsRes, relationsRes, outlineRes] = await Promise.all([
@@ -368,6 +385,8 @@ const getTitlePlaceholder = (category: MapBuilderCategory) => {
       return "Example: Forklift collision in warehouse";
     case "document_map":
       return "Example: Contractor onboarding document map";
+    case "system_map":
+      return "Example: Contractor management system map";
     case "bow_tie":
       return "Example: Working at heights bow tie";
     case "org_chart":
@@ -385,6 +404,8 @@ const getDescriptionPlaceholder = (category: MapBuilderCategory) => {
       return "Summarise what happened, who is involved, and what the investigation needs to establish.";
     case "document_map":
       return "Outline the documents, relationships, and structure this map needs to capture.";
+    case "system_map":
+      return "Describe the management system structure, components, and relationships this map should represent.";
     case "bow_tie":
       return "Summarise the hazard, key controls, escalation factors, and consequences this bow tie will cover.";
     case "org_chart":
@@ -398,9 +419,10 @@ const getDescriptionPlaceholder = (category: MapBuilderCategory) => {
 
 type MapBuilderLandingClientProps = {
   category?: MapBuilderCategory;
+  returnToPath?: string;
 };
 
-export default function MapBuilderLandingClient({ category }: MapBuilderLandingClientProps) {
+export default function MapBuilderLandingClient({ category, returnToPath = "/dashboard/map-builders" }: MapBuilderLandingClientProps) {
   const pageSize = 7;
   const router = useRouter();
   const linkPanelRef = useRef<HTMLDivElement | null>(null);
@@ -432,24 +454,59 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState<{ percent: number; message: string } | null>(null);
   const [page, setPage] = useState(1);
 
-  const redirectToLogin = "/login?returnTo=%2Fdashboard%2Fmap-builders";
+  const redirectToLogin = useMemo(() => `/login?returnTo=${encodeURIComponent(returnToPath)}`, [returnToPath]);
 
   const resolvedCreateCategory = getCategoryForMap(selectedMapCategory);
+  const filterMapCategory = category?.mapCategory ?? null;
+  const isSystemArchitectMode = filterMapCategory === "system_map";
 
   const getRecordHref = (row: SystemMapRow) =>
-    row.map_category === "incident_investigation"
+    row.map_category === "system_map"
+      ? `/dashboard/system-architect/${row.id}/intake`
+      : row.map_category === "incident_investigation"
       ? `/dashboard/map-builders/investigation-maps/${row.id}`
       : `/system-maps/${row.id}`;
 
-  const loadMaps = async () => {
+  const loadMaps = useCallback(async (): Promise<SystemMapRow[]> => {
     const user = await ensurePortalSupabaseUser();
     if (!user) {
       window.location.assign(redirectToLogin);
-      return;
+      return [];
     }
 
     setCurrentUserId(user.id);
     setCurrentUserEmail(user.email ?? getStoredUserEmail());
+
+    if (filterMapCategory === "system_map") {
+      const authHeader = await getPortalAuthorizationHeader();
+      if (!authHeader) {
+        window.location.assign(redirectToLogin);
+        return [];
+      }
+
+      const response = await fetch("/api/sms/maps", { headers: authHeader });
+      const payload = (await response.json()) as { maps?: SmsMapApiRow[]; error?: string };
+      if (!response.ok) {
+        setError(payload.error || "Unable to load system maps.");
+        return [];
+      }
+
+      const smsRows: SystemMapRow[] = (payload.maps ?? []).map((row) => ({
+        id: row.id,
+        title: row.name,
+        description: row.description,
+        owner_id: row.user_id,
+        map_code: null,
+        map_category: "system_map",
+        role: "full_write",
+        updated_at: row.updated_at,
+        created_at: row.created_at,
+      }));
+
+      setRows(smsRows);
+      setSelectedMapIds((current) => current.filter((id) => smsRows.some((row) => row.id === id)));
+      return smsRows;
+    }
 
     const { data: memberRows, error: memberError } = await supabaseBrowser
       .schema("ms")
@@ -459,7 +516,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
 
     if (memberError) {
       setError(memberError.message || "Unable to load map memberships.");
-      return;
+      return [];
     }
 
     const memberByMapId = new Map<string, MapMemberRow>();
@@ -469,7 +526,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
     if (!mapIds.length) {
       setRows([]);
       setSelectedMapIds([]);
-      return;
+      return [];
     }
 
     const { data, error: mapsError } = await supabaseBrowser
@@ -481,7 +538,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
 
     if (mapsError) {
       setError(mapsError.message || "Unable to load maps.");
-      return;
+      return [];
     }
 
     const mergedRows = ((data ?? []) as Omit<SystemMapRow, "role">[])
@@ -489,11 +546,13 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
         ...row,
         role: memberByMapId.get(row.id)?.role ?? "read",
       }))
-      .filter((row) => hasMapCategoryAccess(user.email ?? getStoredUserEmail(), row.map_category));
+      .filter((row) => hasMapCategoryAccess(user.email ?? getStoredUserEmail(), row.map_category))
+      .filter((row) => !filterMapCategory || getCategoryForMap(row.map_category).mapCategory === filterMapCategory);
 
     setRows(mergedRows);
     setSelectedMapIds((current) => current.filter((id) => mergedRows.some((row) => row.id === id)));
-  };
+    return mergedRows;
+  }, [filterMapCategory, redirectToLogin]);
 
   useEffect(() => {
     const run = async () => {
@@ -509,7 +568,7 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
     };
 
     void run();
-  }, [category?.mapCategory]);
+  }, [loadMaps]);
 
   useEffect(() => {
     if (!successMessage) return;
@@ -592,6 +651,35 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
       const user = await ensurePortalSupabaseUser();
       if (!user) {
         window.location.assign(redirectToLogin);
+        return;
+      }
+
+      if (selectedMapCategory === "system_map") {
+        const authHeader = await getPortalAuthorizationHeader();
+        if (!authHeader) {
+          window.location.assign(redirectToLogin);
+          return;
+        }
+
+        const response = await fetch("/api/sms/maps", {
+          method: "POST",
+          headers: {
+            ...authHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: newTitle.trim(),
+            description: newDescription.trim() || null,
+          }),
+        });
+        const payload = (await response.json()) as { href?: string; error?: string };
+
+        if (!response.ok || !payload.href) {
+          setError(payload.error || "Unable to create system map intake.");
+          return;
+        }
+
+        router.push(payload.href);
         return;
       }
 
@@ -682,6 +770,11 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
   };
 
   const handleLinkMapToProfile = async () => {
+    if (isSystemArchitectMode) {
+      setError("System Architect maps do not use map codes yet.");
+      return;
+    }
+
     try {
       setIsLinking(true);
       setError(null);
@@ -709,8 +802,15 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
 
       setMapCodeInput("");
       setShowLinkForm(false);
+      const loadedRows = await loadMaps();
+      const linkedRowVisible = loadedRows.some((row) => (row.map_code ?? "").toUpperCase() === code);
+
+      if (category && !linkedRowVisible) {
+        setError(`This page only shows ${category.title.toLowerCase()}. The linked map will stay available from Canvas Creator if you have access.`);
+        return;
+      }
+
       setSuccessMessage("Map linked.");
-      await loadMaps();
     } catch {
       setError("Unable to link map to your profile.");
     } finally {
@@ -729,6 +829,39 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
       window.setTimeout(() => {
         setDeleteProgress((current) => (current ? { percent: 68, message: "Deleting map content..." } : current));
       }, 180);
+
+      if (row.map_category === "system_map") {
+        const authHeader = await getPortalAuthorizationHeader();
+        if (!authHeader) {
+          window.location.assign(redirectToLogin);
+          return;
+        }
+
+        const response = await fetch("/api/sms/maps", {
+          method: "DELETE",
+          headers: {
+            ...authHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ids: [row.id] }),
+        });
+        const payload = (await response.json()) as { error?: string };
+
+        if (!response.ok) {
+          setError(payload.error || "Unable to delete system map.");
+          return;
+        }
+
+        setDeleteProgress({ percent: 100, message: "Finalising..." });
+        setRows((current) => current.filter((item) => item.id !== row.id));
+        setSelectedMapIds((current) => current.filter((id) => id !== row.id));
+        window.setTimeout(() => {
+          setPendingDeleteRow(null);
+          setDeleteProgress(null);
+        }, 180);
+        setSuccessMessage("System map deleted.");
+        return;
+      }
 
       const { error: deleteError } = await supabaseBrowser
         .schema("ms")
@@ -769,6 +902,39 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
       window.setTimeout(() => {
         setBulkDeleteProgress((current) => (current ? { percent: 72, message: "Deleting selected maps..." } : current));
       }, 180);
+
+      if (isSystemArchitectMode) {
+        const authHeader = await getPortalAuthorizationHeader();
+        if (!authHeader) {
+          window.location.assign(redirectToLogin);
+          return;
+        }
+
+        const response = await fetch("/api/sms/maps", {
+          method: "DELETE",
+          headers: {
+            ...authHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ids: selectedOwnedMapIds }),
+        });
+        const payload = (await response.json()) as { error?: string };
+
+        if (!response.ok) {
+          setError(payload.error || "Unable to bulk delete system maps.");
+          return;
+        }
+
+        setBulkDeleteProgress({ percent: 100, message: "Finalising..." });
+        setRows((current) => current.filter((row) => !selectedOwnedMapIds.includes(row.id)));
+        setSelectedMapIds((current) => current.filter((id) => !selectedOwnedMapIds.includes(id)));
+        window.setTimeout(() => {
+          setShowBulkDeleteConfirm(false);
+          setBulkDeleteProgress(null);
+        }, 180);
+        setSuccessMessage(`${selectedOwnedMapIds.length} system map${selectedOwnedMapIds.length === 1 ? "" : "s"} deleted.`);
+        return;
+      }
 
       const { error: deleteError } = await supabaseBrowser
         .schema("ms")
@@ -820,6 +986,35 @@ export default function MapBuilderLandingClient({ category }: MapBuilderLandingC
 
       duplicateOwnerId = user.id;
       const duplicateTitle = `${row.title} (Copy)`;
+
+      if (row.map_category === "system_map") {
+        const authHeader = await getPortalAuthorizationHeader();
+        if (!authHeader) {
+          window.location.assign(redirectToLogin);
+          return;
+        }
+
+        const response = await fetch("/api/sms/maps", {
+          method: "POST",
+          headers: {
+            ...authHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: duplicateTitle,
+            description: row.description,
+          }),
+        });
+        const payload = (await response.json()) as { href?: string; error?: string };
+        if (!response.ok || !payload.href) {
+          setError(payload.error || "Unable to duplicate system map.");
+          return;
+        }
+
+        setPendingDuplicateRow(null);
+        router.push(payload.href);
+        return;
+      }
 
       const { data, error: createErrorResponse } = await supabaseBrowser
         .schema("ms")

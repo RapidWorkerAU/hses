@@ -2,7 +2,7 @@
 
 import { supabaseBrowser } from "./client";
 
-export async function logoutPortalUser(redirectTo = "/login") {
+export async function logoutPortalUser(redirectTo = "/login?loggedOut=1") {
   localStorage.removeItem("hses_access_token");
   localStorage.removeItem("hses_refresh_token");
   localStorage.removeItem("hses_user_email");

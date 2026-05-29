@@ -11,6 +11,8 @@ type ContactOrgPickerProps = {
   contactId: string | null;
   onOrganisationChange: (orgId: string | null) => void;
   onContactChange: (contactId: string | null) => void;
+  embedded?: boolean;
+  inline?: boolean;
 };
 
 type ComboItem = {
@@ -121,6 +123,8 @@ export default function ContactOrgPicker({
   contactId,
   onOrganisationChange,
   onContactChange,
+  embedded = false,
+  inline = false,
 }: ContactOrgPickerProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [orgQuery, setOrgQuery] = useState("");
@@ -144,6 +148,8 @@ export default function ContactOrgPicker({
   const [showOrgModal, setShowOrgModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [contactOrgInput, setContactOrgInput] = useState("");
+  const [isCreatingOrganisation, setIsCreatingOrganisation] = useState(false);
+  const [isCreatingContact, setIsCreatingContact] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -197,35 +203,47 @@ export default function ContactOrgPicker({
   }, [contactId, contactResults]);
 
   const createOrganisation = async () => {
-    const response = await fetchAdmin("/api/admin/organisations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(orgForm),
-    });
-    if (response.ok) {
-      const data = (await response.json()) as { organisation: Organisation };
-      onOrganisationChange(data.organisation.id);
-      setOrgInput(data.organisation.name);
-      setOrgQuery(data.organisation.name);
-      setShowOrgModal(false);
+    if (isCreatingOrganisation) return;
+    setIsCreatingOrganisation(true);
+    try {
+      const response = await fetchAdmin("/api/admin/organisations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orgForm),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { organisation: Organisation };
+        onOrganisationChange(data.organisation.id);
+        setOrgInput(data.organisation.name);
+        setOrgQuery(data.organisation.name);
+        setShowOrgModal(false);
+      }
+    } finally {
+      setIsCreatingOrganisation(false);
     }
   };
 
   const createContact = async () => {
     const orgId = organisationId || contactForm.organisation_id;
     if (!orgId) return;
-    const response = await fetchAdmin("/api/admin/contacts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...contactForm, organisation_id: orgId }),
-    });
-    if (response.ok) {
-      const data = (await response.json()) as { contact: Contact };
-      onContactChange(data.contact.id);
-      setContactInput(data.contact.full_name);
-      setContactQuery(data.contact.full_name);
-      setShowContactModal(false);
-      setContactOrgInput("");
+    if (isCreatingContact) return;
+    setIsCreatingContact(true);
+    try {
+      const response = await fetchAdmin("/api/admin/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...contactForm, organisation_id: orgId }),
+      });
+      if (response.ok) {
+        const data = (await response.json()) as { contact: Contact };
+        onContactChange(data.contact.id);
+        setContactInput(data.contact.full_name);
+        setContactQuery(data.contact.full_name);
+        setShowContactModal(false);
+        setContactOrgInput("");
+      }
+    } finally {
+      setIsCreatingContact(false);
     }
   };
 
@@ -280,21 +298,16 @@ export default function ContactOrgPicker({
     }
   };
 
-  return (
-    <div className="qb-panel qb-panel--overflow">
-      <div className="qb-panel-header">
-        <button
-          type="button"
-          className="qb-panel-toggle"
-          aria-expanded={!isCollapsed}
-          onClick={() => setIsCollapsed((prev) => !prev)}
-        >
-          <span>Contacts &amp; Organisation</span>
-          <span className="qb-panel-toggle-icon">{isCollapsed ? "+" : "−"}</span>
-        </button>
-      </div>
-      {!isCollapsed && (
-        <div className="qb-panel-body">
+  const pickerFields = (
+    <div
+      className={
+        inline
+          ? "qb-contact-picker-fields"
+          : embedded
+            ? "qb-panel-body qb-panel-body--embedded"
+            : "qb-panel-body"
+      }
+    >
         <div className="qb-field">
           <label>Organisation</label>
           <div className="qb-field-row">
@@ -326,37 +339,56 @@ export default function ContactOrgPicker({
           </div>
         </div>
 
-        <div className="mt-4">
-          <div className="qb-field">
-            <label>Contact</label>
-            <div className="qb-field-row">
-              <Combobox
-                value={contactInput}
-                placeholder={organisationId ? "Select contact..." : "Select contact (all)"}
-                items={contactItems}
-                emptyText="No contacts found."
-                onInputChange={handleContactInput}
-                onSelect={(item) => {
-                  onContactChange(item.id);
-                  setContactInput(item.label);
-                  setContactQuery(item.label);
-                }}
-              />
-              <button
-                type="button"
-                className="qb-btn qb-btn--fixed"
-                onClick={() => {
-                  setShowContactModal(true);
-                  setContactForm({ full_name: "", email: "", phone: "", organisation_id: "" });
-                  setContactOrgInput("");
-                }}
-              >
-                Create new contact
-              </button>
-            </div>
+        <div className={inline ? "qb-field" : "mt-4 qb-field"}>
+          <label>Contact</label>
+          <div className="qb-field-row">
+            <Combobox
+              value={contactInput}
+              placeholder={organisationId ? "Select contact..." : "Select contact (all)"}
+              items={contactItems}
+              emptyText="No contacts found."
+              onInputChange={handleContactInput}
+              onSelect={(item) => {
+                onContactChange(item.id);
+                setContactInput(item.label);
+                setContactQuery(item.label);
+              }}
+            />
+            <button
+              type="button"
+              className="qb-btn qb-btn--fixed"
+              onClick={() => {
+                setShowContactModal(true);
+                setContactForm({ full_name: "", email: "", phone: "", organisation_id: "" });
+                setContactOrgInput("");
+              }}
+            >
+              Create new contact
+            </button>
           </div>
         </div>
       </div>
+  );
+
+  return (
+    <>
+      {embedded ? (
+        <div className="qb-contact-picker qb-contact-picker--embedded">{pickerFields}</div>
+      ) : (
+        <div className="qb-panel qb-panel--overflow">
+          <div className="qb-panel-header">
+            <button
+              type="button"
+              className="qb-panel-toggle"
+              aria-expanded={!isCollapsed}
+              onClick={() => setIsCollapsed((prev) => !prev)}
+            >
+              <span>Contacts &amp; Organisation</span>
+              <span className="qb-panel-toggle-icon">{isCollapsed ? "+" : "−"}</span>
+            </button>
+          </div>
+          {!isCollapsed && pickerFields}
+        </div>
       )}
 
       {showOrgModal && (
@@ -374,11 +406,12 @@ export default function ContactOrgPicker({
               </button>
               <button
                 type="button"
-                className={modalStyles.primaryButton}
+                className={`${modalStyles.primaryButton} qb-button-loading`}
                 onClick={createOrganisation}
-                disabled={!orgForm.name.trim()}
+                disabled={!orgForm.name.trim() || isCreatingOrganisation}
+                aria-busy={isCreatingOrganisation}
               >
-                Save organisation
+                {isCreatingOrganisation ? "Saving..." : "Save organisation"}
               </button>
             </>
           }
@@ -431,15 +464,17 @@ export default function ContactOrgPicker({
               </button>
               <button
                 type="button"
-                className={modalStyles.primaryButton}
+                className={`${modalStyles.primaryButton} qb-button-loading`}
                 onClick={createContact}
                 disabled={
+                  isCreatingContact ||
                   !(organisationId || contactForm.organisation_id) ||
                   !contactForm.full_name.trim() ||
                   !contactForm.email.trim()
                 }
+                aria-busy={isCreatingContact}
               >
-                Save contact
+                {isCreatingContact ? "Saving..." : "Save contact"}
               </button>
             </>
           }
@@ -486,6 +521,6 @@ export default function ContactOrgPicker({
           </div>
         </PortalModal>
       )}
-    </div>
+    </>
   );
 }

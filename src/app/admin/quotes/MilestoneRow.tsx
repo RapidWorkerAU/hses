@@ -23,8 +23,8 @@ type MilestoneRowProps = {
   onEdit: (id: string) => void;
   onStopEdit: () => void;
   onAddAfterSave?: () => void;
-  onSaved: () => void;
-  onDeleted: () => void;
+  onSaved: () => void | Promise<void>;
+  onDeleted: () => void | Promise<void>;
 };
 
 export default function MilestoneRow({
@@ -55,6 +55,8 @@ export default function MilestoneRow({
     milestone_order: milestone.milestone_order ?? 1,
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const exceedsHours =
     form.pricing_unit === "hours" &&
     maxHours > 0 &&
@@ -86,23 +88,33 @@ export default function MilestoneRow({
   const save = async () => {
     if (exceedsHours || isLocked || !isEditable) return;
     setIsSaving(true);
-    await fetchAdmin(`/api/admin/milestones/${milestone.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, client_rate: deliverableRate }),
-    });
-    setIsSaving(false);
-    onSaved();
-    if (isComplete) {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(lockKey, "true");
+    setErrorMessage(null);
+    try {
+      const response = await fetchAdmin(`/api/admin/milestones/${milestone.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, client_rate: deliverableRate }),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        setErrorMessage(message || "Unable to save milestone.");
+        return;
       }
-      setIsLocked(true);
-      onStopEdit();
+      await onSaved();
+      if (isComplete) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(lockKey, "true");
+        }
+        setIsLocked(true);
+        onStopEdit();
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleEdit = () => {
+    setErrorMessage(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(lockKey);
     }
@@ -111,114 +123,171 @@ export default function MilestoneRow({
   };
 
   const remove = async () => {
-    await fetchAdmin(`/api/admin/milestones/${milestone.id}`, { method: "DELETE" });
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(lockKey);
+    if (isDeleting) return;
+    setIsDeleting(true);
+    setErrorMessage(null);
+    try {
+      const response = await fetchAdmin(`/api/admin/milestones/${milestone.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const message = await response.text();
+        setErrorMessage(message || "Unable to delete milestone.");
+        return;
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(lockKey);
+      }
+      await onDeleted();
+    } finally {
+      setIsDeleting(false);
     }
-    onDeleted();
   };
 
   return (
-    <tr className="qb-nested-row">
-      <td></td>
-      <td>
-        {!isEditable ? (
-          <div>{form.milestone_title || "-"}</div>
-        ) : (
-          <input
-            className="qb-input"
-            value={form.milestone_title}
-            onChange={(event) => setForm({ ...form, milestone_title: event.target.value })}
-          />
-        )}
-      </td>
-      <td>
-        {!isEditable ? (
-          <div>{form.milestone_description || "-"}</div>
-        ) : (
-          <input
-            className="qb-input"
-            value={form.milestone_description}
-            onChange={(event) =>
-              setForm({ ...form, milestone_description: event.target.value })
-            }
-          />
-        )}
-      </td>
-      <td>
-        {!isEditable ? (
-          <div>{form.pricing_unit === "hours" ? "Hours" : "Each"}</div>
-        ) : (
-          <select
-            className="qb-select"
-            value={form.pricing_unit}
-            onChange={(event) => setForm({ ...form, pricing_unit: event.target.value })}
-          >
-            <option value="hours">Hours</option>
-            <option value="each">Each</option>
-          </select>
-        )}
-      </td>
-      <td>
-        {!isEditable ? (
-          <div>{milestoneUnits || 0}</div>
-        ) : form.pricing_unit === "hours" ? (
-          <div>
+    <>
+      <tr className="qb-nested-row">
+        <td>
+          {!isEditable ? (
+            <div>{form.milestone_title || "-"}</div>
+          ) : (
+            <input
+              className="qb-input"
+              value={form.milestone_title}
+              onChange={(event) => setForm({ ...form, milestone_title: event.target.value })}
+            />
+          )}
+        </td>
+        <td>
+          {!isEditable ? (
+            <div>{form.milestone_description || "-"}</div>
+          ) : (
+            <input
+              className="qb-input"
+              value={form.milestone_description}
+              onChange={(event) =>
+                setForm({ ...form, milestone_description: event.target.value })
+              }
+            />
+          )}
+        </td>
+        <td>
+          {!isEditable ? (
+            <div>{form.pricing_unit === "hours" ? "Hours" : "Each"}</div>
+          ) : (
+            <select
+              className="qb-select"
+              value={form.pricing_unit}
+              onChange={(event) => setForm({ ...form, pricing_unit: event.target.value })}
+            >
+              <option value="hours">Hours</option>
+              <option value="each">Each</option>
+            </select>
+          )}
+        </td>
+        <td>
+          {!isEditable ? (
+            <div>{milestoneUnits || 0}</div>
+          ) : form.pricing_unit === "hours" ? (
+            <div>
+              <input
+                type="number"
+                className="qb-input"
+                value={form.estimated_hours}
+                onChange={(event) =>
+                  setForm({ ...form, estimated_hours: Number(event.target.value) })
+                }
+              />
+              {maxHours > 0 && (
+                <div className="qb-muted text-xs">
+                  {exceedsHours
+                    ? `Exceeds deliverable hours (${hoursRemaining} remaining).`
+                    : `${hoursRemaining} hours remaining.`}
+                </div>
+              )}
+            </div>
+          ) : (
             <input
               type="number"
               className="qb-input"
-              value={form.estimated_hours}
-              onChange={(event) =>
-                setForm({ ...form, estimated_hours: Number(event.target.value) })
-              }
+              value={form.quantity}
+              onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })}
             />
-            {maxHours > 0 && (
-              <div className="qb-muted text-xs">
-                {exceedsHours
-                  ? `Exceeds deliverable hours (${hoursRemaining} remaining).`
-                  : `${hoursRemaining} hours remaining.`}
-              </div>
+          )}
+        </td>
+        <td>{formattedUnitPrice}</td>
+        <td>{formattedClientAmount}</td>
+        <td>
+          <div className="qb-row-actions">
+            {!isEditable ? (
+              <>
+                <button
+                  type="button"
+                  className="qb-icon-btn qb-icon-btn--edit"
+                  onClick={handleEdit}
+                  title="Edit milestone"
+                  aria-label="Edit milestone"
+                >
+                  <span className="qb-icon qb-icon--edit" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="qb-icon-btn qb-icon-btn--delete"
+                  onClick={remove}
+                  disabled={isDeleting}
+                  aria-busy={isDeleting}
+                  title={isDeleting ? "Deleting milestone" : "Delete milestone"}
+                  aria-label={isDeleting ? "Deleting milestone" : "Delete milestone"}
+                >
+                  <span className="qb-icon qb-icon--delete" aria-hidden="true" />
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="qb-icon-btn qb-icon-btn--delete"
+                  onClick={remove}
+                  disabled={isDeleting}
+                  aria-busy={isDeleting}
+                  title={isDeleting ? "Deleting milestone" : "Delete milestone"}
+                  aria-label={isDeleting ? "Deleting milestone" : "Delete milestone"}
+                >
+                  <span className="qb-icon qb-icon--delete" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="qb-icon-btn qb-icon-btn--save"
+                  onClick={save}
+                  disabled={isSaving || exceedsHours}
+                  aria-busy={isSaving}
+                  title={
+                    exceedsHours
+                      ? "Resolve over hours before saving"
+                      : isSaving
+                        ? "Saving milestone"
+                        : "Save milestone"
+                  }
+                  aria-label={
+                    exceedsHours
+                      ? "Resolve over hours before saving"
+                      : isSaving
+                        ? "Saving milestone"
+                        : "Save milestone"
+                  }
+                >
+                  <span className="qb-icon qb-icon--save" aria-hidden="true" />
+                </button>
+              </>
             )}
           </div>
-        ) : (
-          <input
-            type="number"
-            className="qb-input"
-            value={form.quantity}
-            onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })}
-          />
-        )}
-      </td>
-      <td>{formattedUnitPrice}</td>
-      <td>{formattedClientAmount}</td>
-      <td>
-        <div className="qb-row-actions">
-          {!isEditable ? (
-            <>
-              <button type="button" className="qb-btn" onClick={handleEdit}>
-                Edit
-              </button>
-              <button type="button" className="qb-btn" onClick={remove}>
-                Delete
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="qb-btn" onClick={remove}>
-                Delete
-              </button>
-              <button
-                type="button"
-                className="qb-btn qb-btn-primary"
-                onClick={save}
-                disabled={isSaving || exceedsHours}
-              >
-                {exceedsHours ? "Over hours" : isSaving ? "Saving..." : "Save"}
-              </button>
-            </>
-          )}
-        </div>
-      </td>
-    </tr>
+        </td>
+      </tr>
+      {errorMessage ? (
+        <tr className="qb-nested-row qb-nested-row--error">
+          <td colSpan={7} className="qb-row-error-cell">
+            {errorMessage}
+          </td>
+        </tr>
+      ) : null}
+    </>
   );
 }

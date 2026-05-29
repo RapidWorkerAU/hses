@@ -53,6 +53,7 @@ export function MapCanvasHeader({
     if (isTemplateEditor) return "Create / Edit Template Canvas";
     const category = (map.map_category || "").toLowerCase();
     if (category === "document_map") return "Document Map";
+    if (category === "system_map") return "System Map";
     if (category === "bow_tie") return "Bow Tie Builder";
     if (category === "incident_investigation") return "Investigation Map";
     if (category === "org_chart") return "Org Chart Builder";

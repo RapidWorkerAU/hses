@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
   const company = getValue(formData, "company");
   const location = getValue(formData, "location");
   const need = getValue(formData, "need");
+  const source = getValue(formData, "source");
   const timing = getValue(formData, "timing");
   const context = getValue(formData, "context");
 
@@ -62,6 +63,7 @@ export async function POST(request: NextRequest) {
     ["Company", company || "-"],
     ["Location", location || "-"],
     ["Need", need || "-"],
+    ["Source", source || "-"],
     ["Preferred time", timing || "-"],
     ["Additional context", context || "-"],
   ];

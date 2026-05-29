@@ -5,6 +5,7 @@ import HashRedirector from "./HashRedirector";
 import GoogleTag from "./GoogleTag";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.hses.com.au"),
   title: {
     default: "HSES Industry Partners",
     template: "%s | HSES Industry Partners",

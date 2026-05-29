@@ -24,6 +24,7 @@ export default function LoginClient() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo") || "/dashboard";
   const queryEmail = searchParams.get("email") || "";
+  const loggedOut = searchParams.get("loggedOut") === "1";
 
   const [email, setEmail] = useState(queryEmail);
   const [password, setPassword] = useState("");
@@ -44,6 +45,11 @@ export default function LoginClient() {
     let active = true;
 
     const routeAuthenticatedUser = async () => {
+      if (loggedOut) {
+        setIsCheckingSession(false);
+        return;
+      }
+
       const {
         data: { session },
       } = await supabaseBrowser.auth.getSession();
@@ -71,7 +77,7 @@ export default function LoginClient() {
     return () => {
       active = false;
     };
-  }, [returnTo]);
+  }, [loggedOut, returnTo]);
 
   const resendConfirmation = async () => {
     if (!emailTrimmed || isResending) return;

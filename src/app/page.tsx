@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import PublicSiteHeader from "@/components/PublicSiteHeader";
+import Link from "next/link";
 import HomePageScripts from "./home-page-scripts";
 import styles from "./HomePage.module.css";
 import PricingEstimator from "./PricingEstimator";
@@ -13,49 +15,9 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <div className={styles.page} data-home-page>
+      <PublicSiteHeader />
+
       <header className={styles.hero}>
-        <div className={`${styles.shell} ${styles.header}`}>
-          <div className={styles.headerRow}>
-            <a href="/" className={styles.logoLink}>
-              <img
-                src="/images/logo-original-black.png"
-                alt="HSES Industry Partners"
-                className={styles.logo}
-              />
-            </a>
-
-            <nav className={styles.desktopNav} aria-label="Primary">
-              <a className={styles.desktopNavLink} href="#documents">
-                Documents
-              </a>
-              <a className={styles.desktopNavLink} href="#systems">
-                Systems
-              </a>
-              <a className={styles.desktopNavLink} href="#technology">
-                Technology
-              </a>
-            </nav>
-
-            <div className={styles.desktopActions}>
-              <HomePageHeaderActions />
-            </div>
-
-            <button
-              className={styles.menuToggle}
-              type="button"
-              aria-label="Open menu"
-              aria-expanded="false"
-              data-mobile-menu-toggle
-            >
-              <span className={styles.menuToggleInner}>
-                <span className={styles.menuToggleLine}></span>
-                <span className={styles.menuToggleLine}></span>
-                <span className={styles.menuToggleLine}></span>
-              </span>
-            </button>
-          </div>
-        </div>
-
         <div className={`${styles.shell} ${styles.heroInner}`}>
           <div className={styles.heroPanel}>
             <div className={styles.heroMedia} aria-hidden="true">
@@ -176,63 +138,26 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className={styles.documents} id="documents">
-          <div className={`${styles.shell} ${styles.documentsInner}`}>
-            <div className={styles.documentsIntro}>
-              <p className={styles.documentsEyebrow}>Documents</p>
-              <h2 className={styles.documentsTitle}>
-                We develop technical documents that don&apos;t sound like generic
-                {" "}
-                <span className={styles.noWrapMobile}>safety cr*p...</span>
-              </h2>
-              <p className={styles.documentsSubhead}>
-                or we can improve the documents{" "}
-                <span className={styles.noWrapMobile}>you already have.</span>
-              </p>
-            </div>
-
-            <div className={styles.documentsContent}>
-              <div className={styles.documentsVisualColumn} aria-hidden="true">
-                <img
-                  src="/images/documentexamples.png"
-                  alt=""
-                  className={styles.documentsGraphic}
-                />
-              </div>
-
-              <div className={styles.documentsContentsImageColumn} aria-hidden="true">
-                <img
-                  src="/images/contentssection.png"
-                  alt=""
-                  className={styles.documentsContentsImage}
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-
         <section className={styles.systems} id="systems">
           <div className={`${styles.shell} ${styles.systemsInner}`}>
             <div className={styles.systemsTop}>
               <div className={styles.systemsHeading}>
-                <p className={styles.systemsEyebrow}>Systems</p>
+                <p className={styles.systemsEyebrow}>Connected systems</p>
                 <h2>
-                  A properly built safety management system connects every layer
-                  of your business.
+                  Documents, systems and technology work best when they are
+                  built as one connected system.
                 </h2>
                 <p className={`${styles.systemsIntro} ${styles.systemsIntroSecondary}`}>
-                  Most businesses have safety documents. Very few have a system.
-                  The difference is whether your policies, procedures, roles,
-                  risks and controls are connected to each other and to the way
-                  your operation actually runs.
+                  Powerful systems are not built from documents alone, and
+                  technology does not fix a weak structure. The power comes from
+                  how procedures, responsibilities, controls and tools connect
+                  to the real work.
                 </p>
                 <p className={styles.systemsIntro}>
-                  We design and build safety management systems from the
-                  architecture up. Before a single document gets written, we map
-                  how your business operates, where accountability sits, and
-                  what the system needs to hold together at scale. What gets
-                  built reflects your operation, not a generic template someone
-                  adapted.
+                  We map the system first, then build the documents, workflows
+                  and digital tools around it. That keeps information findable,
+                  ownership clear and the whole system easier to use, maintain
+                  and defend.
                 </p>
 
                 <div className={styles.systemsActionsDesktop}>
@@ -240,10 +165,10 @@ export default function HomePage() {
                     className={styles.systemsButton}
                     href="/contact"
                   >
-                    Talk to us about your system
+                    Build a connected system
                   </a>
                   <a className={styles.systemsLink} href="#pricing">
-                    See what a system build involves
+                    Get a cost estimate
                   </a>
                 </div>
               </div>
@@ -260,34 +185,34 @@ export default function HomePage() {
             <div className={styles.systemsGrid}>
               <article className={styles.systemsCard}>
                 <span className={styles.systemsNumber}>01</span>
-                <h3>System architecture</h3>
+                <h3>Document architecture</h3>
                 <p>
-                  We design the structure before anything is written. Every
-                  element has a place and a purpose before we start.
+                  Policies, procedures, forms and workflows are structured so
+                  people can find what they need and understand how it connects.
                 </p>
               </article>
               <article className={styles.systemsCard}>
                 <span className={styles.systemsNumber}>02</span>
-                <h3>Policy and framework</h3>
+                <h3>System framework</h3>
                 <p>
-                  The foundation of the system. Written to reflect your
-                  business, your risk profile and your obligations.
+                  Roles, risks, controls and assurance activities are mapped so
+                  the system has a clear logic behind it.
                 </p>
               </article>
               <article className={styles.systemsCard}>
                 <span className={styles.systemsNumber}>03</span>
-                <h3>Roles and accountability</h3>
+                <h3>Digital enablement</h3>
                 <p>
-                  We define who owns what inside the system so that nothing
-                  sits without a responsible party behind it.
+                  Technology supports the system where it makes information
+                  easier to access, update, search and act on.
                 </p>
               </article>
               <article className={styles.systemsCard}>
                 <span className={styles.systemsNumber}>04</span>
-                <h3>Operational integration</h3>
+                <h3>Operational rhythm</h3>
                 <p>
-                  The system is built around how your business runs. Not the
-                  other way around.
+                  The final build reflects how teams plan work, make decisions,
+                  verify controls and improve over time.
                 </p>
               </article>
             </div>
@@ -297,219 +222,11 @@ export default function HomePage() {
                 className={styles.systemsButton}
                 href="/contact"
               >
-                Talk to us about your system
+                Build a connected system
               </a>
               <a className={styles.systemsLink} href="#pricing">
-                See what a system build involves
+                Get a cost estimate
               </a>
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.technology} id="technology">
-          <div className={`${styles.shell} ${styles.technologyShell}`}>
-            <div className={styles.technologyHeader}>
-              <p className={styles.sectionKickerCenter}>Technology</p>
-              <h2 className={styles.sectionTitleLeft}>
-                Technology we built because nothing else did the job properly.
-              </h2>
-            </div>
-
-            <p className={styles.technologyIntro}>
-              A suite of purpose-built safety technology covering system
-              design, bow-tie development, document mapping, investigation
-              management, org chart creation, and process flows. Available as
-              standard products or developed to your exact operational
-              requirements.
-            </p>
-
-            <div className={styles.technologyShowcase} aria-hidden="true">
-              <img
-                src="/images/safedoxexample.png"
-                alt=""
-                className={`${styles.technologyShot} ${styles.technologyShotLeft}`}
-              />
-              <img
-                src="/images/investigationtoolexample.png"
-                alt=""
-                className={`${styles.technologyShot} ${styles.technologyShotCenter}`}
-              />
-              <img
-                src="/images/hsesportalexample.png"
-                alt=""
-                className={`${styles.technologyShot} ${styles.technologyShotRight}`}
-              />
-            </div>
-
-            <div className={styles.technologyDetails}>
-              <article
-                className={`${styles.technologyDetailCard} ${styles.technologyDetailCardAmber}`}
-              >
-                <div className={styles.technologyDetailHeader}>
-                  <img
-                    src="/images/safedox-logo-white.png"
-                    alt="Safedox"
-                    className={styles.technologyDetailLogo}
-                  />
-                  <span className={styles.technologyStatusSoon}>Coming soon</span>
-                </div>
-                <h3>Safedox</h3>
-                <p>
-                  A health and safety document builder that helps businesses
-                  generate polished, fit-for-purpose documents quickly.
-                </p>
-                <a
-                  className={styles.technologyActionLink}
-                  href="/contact"
-                >
-                  Join the waitlist
-                </a>
-              </article>
-
-              <article
-                className={`${styles.technologyDetailCard} ${styles.technologyDetailCardCyan}`}
-              >
-                <div className={styles.technologyDetailHeader}>
-                  <img
-                    src="/images/investigation-tool.png"
-                    alt="Investigation Tool"
-                    className={styles.technologyDetailLogo}
-                  />
-                  <span className={styles.technologyStatusLive}>Live</span>
-                </div>
-                <h3>Investigation Tool</h3>
-                <p>
-                  A purpose-built investigation platform for mapping incidents,
-                  managing evidence, and running structured workflows in one
-                  place.
-                </p>
-                <a
-                  className={styles.technologyActionLink}
-                  href="https://www.investigationtool.com.au"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Access the tool
-                </a>
-              </article>
-
-              <article
-                className={`${styles.technologyDetailCard} ${styles.technologyDetailCardBlue}`}
-              >
-                <div className={styles.technologyDetailHeader}>
-                  <img
-                    src="/images/logo-original-white.png"
-                    alt="HSES Client Portal"
-                    className={`${styles.technologyDetailLogo} ${styles.technologyDetailLogoHses}`}
-                  />
-                  <span className={styles.technologyStatusContact}>Contact us</span>
-                </div>
-                <h3>HSES Client Portal</h3>
-                <p>
-                  The HSES platform for system mapping, document search,
-                  bow-ties, org charts, and the wider safety management
-                  infrastructure around them.
-                </p>
-                <a
-                  className={styles.technologyActionLink}
-                  href="/contact"
-                >
-                  Request access
-                </a>
-              </article>
-            </div>
-
-            <div className={styles.technologyMobileStack}>
-              <div className={`${styles.technologyMobileItem} ${styles.technologyDetailCardAmber}`}>
-                <article className={styles.technologyDetailCard}>
-                  <div className={styles.technologyDetailHeader}>
-                    <img
-                      src="/images/safedox-logo-white.png"
-                      alt="Safedox"
-                      className={styles.technologyDetailLogo}
-                    />
-                    <span className={styles.technologyStatusSoon}>Coming soon</span>
-                  </div>
-                  <h3>Safedox</h3>
-                  <p>
-                    A health and safety document builder that helps businesses
-                    generate polished, fit-for-purpose documents quickly.
-                  </p>
-                  <a
-                    className={styles.technologyActionLink}
-                    href="/contact"
-                  >
-                    Join the waitlist
-                  </a>
-                </article>
-                <img
-                  src="/images/safedoxexample.png"
-                  alt=""
-                  className={`${styles.technologyShot} ${styles.technologyShotMobile}`}
-                />
-              </div>
-
-              <div className={`${styles.technologyMobileItem} ${styles.technologyDetailCardCyan}`}>
-                <article className={styles.technologyDetailCard}>
-                  <div className={styles.technologyDetailHeader}>
-                    <img
-                      src="/images/investigation-tool.png"
-                      alt="Investigation Tool"
-                      className={styles.technologyDetailLogo}
-                    />
-                    <span className={styles.technologyStatusLive}>Live</span>
-                  </div>
-                  <h3>Investigation Tool</h3>
-                  <p>
-                    A purpose-built investigation platform for mapping incidents,
-                    managing evidence, and running structured workflows in one
-                    place.
-                  </p>
-                  <a
-                    className={styles.technologyActionLink}
-                    href="https://www.investigationtool.com.au"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Access the tool
-                  </a>
-                </article>
-                <img
-                  src="/images/investigationtoolexample.png"
-                  alt=""
-                  className={`${styles.technologyShot} ${styles.technologyShotMobile}`}
-                />
-              </div>
-
-              <div className={`${styles.technologyMobileItem} ${styles.technologyDetailCardBlue}`}>
-                <article className={styles.technologyDetailCard}>
-                  <div className={styles.technologyDetailHeader}>
-                    <img
-                      src="/images/logo-original-white.png"
-                      alt="HSES Client Portal"
-                      className={`${styles.technologyDetailLogo} ${styles.technologyDetailLogoHses}`}
-                    />
-                    <span className={styles.technologyStatusContact}>Contact us</span>
-                  </div>
-                  <h3>HSES Client Portal</h3>
-                  <p>
-                    The HSES platform for system mapping, document search,
-                    bow-ties, org charts, and the wider safety management
-                    infrastructure around them.
-                  </p>
-                  <a
-                    className={styles.technologyActionLink}
-                    href="/contact"
-                  >
-                    Request access
-                  </a>
-                </article>
-                <img
-                  src="/images/hsesportalexample.png"
-                  alt=""
-                  className={`${styles.technologyShot} ${styles.technologyShotMobile}`}
-                />
-              </div>
             </div>
           </div>
         </section>
@@ -595,14 +312,17 @@ export default function HomePage() {
           </div>
 
           <nav className={styles.mobileNav} aria-label="Primary">
-            <a className={`${styles.mobileNavLink} js-close-mobile-menu`} href="#documents">
+            <Link className={`${styles.mobileNavLink} js-close-mobile-menu`} href="/document-development">
               Documents
-            </a>
-            <a className={`${styles.mobileNavLink} js-close-mobile-menu`} href="#systems">
+            </Link>
+            <Link className={`${styles.mobileNavLink} js-close-mobile-menu`} href="/system-design">
               Systems
-            </a>
-            <a className={`${styles.mobileNavLink} js-close-mobile-menu`} href="#technology">
+            </Link>
+            <Link className={`${styles.mobileNavLink} js-close-mobile-menu`} href="/technology-options">
               Technology
+            </Link>
+            <a className={`${styles.mobileNavLink} js-close-mobile-menu`} href="#pricing">
+              Pricing
             </a>
               <HomePageHeaderActions variant="mobile" />
           </nav>

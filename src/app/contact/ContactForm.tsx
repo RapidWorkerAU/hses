@@ -1,11 +1,32 @@
+type NeedOption = {
+  value: string;
+  label: string;
+};
+
+const defaultNeedOptions: NeedOption[] = [
+  { value: "design", label: "Design a system" },
+  { value: "build", label: "Build a system" },
+  { value: "fix", label: "Fix a system" },
+  { value: "implement", label: "Implement a system" },
+  { value: "other", label: "Something else" },
+];
+
 type ContactFormProps = {
   title?: string;
   intro?: string;
+  defaultNeed?: string;
+  needOptions?: NeedOption[];
+  source?: string;
+  submitLabel?: string;
 };
 
 export default function ContactForm({
   title = "Book a discovery call",
   intro = "Share what you need. We'll confirm fit and next steps.",
+  defaultNeed = "",
+  needOptions = defaultNeedOptions,
+  source,
+  submitLabel = "Send request",
 }: ContactFormProps) {
   return (
     <div className="form-panel">
@@ -19,6 +40,7 @@ export default function ContactForm({
       >
         <input type="hidden" name="form-name" value="contact-request" />
         <input type="hidden" name="bot-field" />
+        {source ? <input type="hidden" name="source" value={source} /> : null}
         <label className="field">
           <span>Name</span>
           <input type="text" name="name" required />
@@ -51,13 +73,13 @@ export default function ContactForm({
         </label>
         <label className="field">
           <span>What you need</span>
-          <select name="need">
+          <select name="need" defaultValue={defaultNeed}>
             <option value="">Select an option</option>
-            <option value="design">Design a system</option>
-            <option value="build">Build a system</option>
-            <option value="fix">Fix a system</option>
-            <option value="implement">Implement a system</option>
-            <option value="other">Something else</option>
+            {needOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="field">
@@ -73,7 +95,7 @@ export default function ContactForm({
           ></textarea>
         </label>
         <button type="submit" className="btn btn-primary">
-          Send request
+          {submitLabel}
         </button>
         <p className="form-note">
           We respond within 48 hours. Details are only used to reply.

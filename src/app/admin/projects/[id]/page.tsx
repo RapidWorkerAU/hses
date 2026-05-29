@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "../../quotes/quote-builder.css";
 import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
 import PortalAccessGate from "@/components/dashboard/portal/PortalAccessGate";
 import ProjectDetailClient from "../ProjectDetailClient";
