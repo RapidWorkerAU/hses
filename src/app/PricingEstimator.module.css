@@ -82,6 +82,7 @@
 
 .field input,
 .field select,
+.field textarea,
 .inlineField select {
   width: 100%;
   min-height: 38px;
@@ -90,6 +91,14 @@
   background: #ffffff;
   color: #15202b;
   font-size: 0.92rem;
+}
+
+.field textarea {
+  min-height: 68px;
+  overflow: hidden;
+  padding: 10px;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 .section {
@@ -139,7 +148,13 @@
 
 .optionGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 14px;
+}
+
+.urgencyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px 14px;
 }
 
@@ -194,9 +209,11 @@
 
 .optionCard {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 92px;
+  gap: 8px;
+  min-height: 128px;
   padding: 14px 12px;
   border: 1px solid #c8d0d7;
   background: #ffffff;
@@ -214,7 +231,28 @@
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.25;
-  text-transform: capitalize;
+}
+
+.optionCard small {
+  max-width: 26ch;
+  color: #566571;
+  font-size: 0.74rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.urgencyCard {
+  min-height: 82px;
+  align-items: center;
+  text-align: center;
+}
+
+.urgencyCard small {
+  max-width: none;
+}
+
+.optionCardSelected small {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .optionCardSelected {
@@ -364,7 +402,11 @@
   }
 
   .optionGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .urgencyGrid {
+    grid-template-columns: 1fr;
   }
 
   .documentCounter {

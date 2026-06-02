@@ -1,54 +1,16 @@
 import { Resend } from "resend";
 
-type DocumentLineItem = {
-  label: string;
-  quantity: number;
-  developmentHours: number;
-  reviewHours: number;
-  finalApprovalHours: number;
-};
-
-type PricingEstimatePayload = {
+type QuoteEnquiryPayload = {
+  quoteType?: "document_development" | "management_system_design" | "safety_technology";
+  quoteTypeLabel?: string;
+  urgency?: "soon" | "scheduled" | "exploring";
+  urgencyLabel?: string;
+  urgencyDetails?: string;
   name?: string;
   businessName?: string;
   email?: string;
-  serviceType?: "document_development" | "app_development" | "incident_investigation";
-  subtotalExGst?: number;
-  gstAmount?: number;
-  totalIncGst?: number;
-  totalHours?: number;
-  breakdown?: {
-    newBusiness?: string;
-    discoveryIncluded?: boolean;
-    developmentHours?: number;
-    reviewHours?: number;
-    finalApprovalHours?: number;
-    lineItems?: DocumentLineItem[];
-    level?: string;
-  };
+  phone?: string;
 };
-
-function formatMoney(value: number) {
-  return `${new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD",
-    maximumFractionDigits: 2,
-  }).format(value)} AUD`;
-}
-
-function formatHours(value: number | null | undefined) {
-  if (value === null || value === undefined) return "-";
-  return new Intl.NumberFormat("en-AU", {
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function getServiceLabel(serviceType: PricingEstimatePayload["serviceType"]) {
-  if (serviceType === "document_development") return "Document Development";
-  if (serviceType === "incident_investigation") return "Investigation Facilitation";
-  if (serviceType === "app_development") return "App Development";
-  return "Estimate";
-}
 
 function escapeHtml(value: string) {
   return value
@@ -59,48 +21,20 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function formatSelectionLabel(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
+function getQuoteTypeLabel(payload: QuoteEnquiryPayload) {
+  if (payload.quoteTypeLabel?.trim()) return payload.quoteTypeLabel.trim();
+  if (payload.quoteType === "document_development") return "Document Development";
+  if (payload.quoteType === "management_system_design") return "Management System Design";
+  if (payload.quoteType === "safety_technology") return "Safety Technology";
+  return "";
 }
 
-function renderTable(headers: string[], rows: string[][]) {
-  return `
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;border:1px solid #d7dce1;">
-      <thead>
-        <tr>
-          ${headers
-            .map(
-              (header, index) => `
-                <th align="${index === 0 ? "left" : "center"}" style="padding:10px 12px;background:#f4f6f8;border-bottom:1px solid #d7dce1;color:#41505c;font-size:12px;letter-spacing:.08em;text-transform:uppercase;">
-                  ${escapeHtml(header)}
-                </th>
-              `
-            )
-            .join("")}
-        </tr>
-      </thead>
-      <tbody>
-        ${rows
-          .map(
-            (row) => `
-              <tr>
-                ${row
-                  .map(
-                    (cell, index) => `
-                      <td align="${index === 0 ? "left" : "center"}" style="padding:10px 12px;border-bottom:1px solid #e6eaee;color:#20303d;font-size:14px;vertical-align:top;">
-                        ${cell}
-                      </td>
-                    `
-                  )
-                  .join("")}
-              </tr>
-            `
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
+function getUrgencyLabel(payload: QuoteEnquiryPayload) {
+  if (payload.urgencyLabel?.trim()) return payload.urgencyLabel.trim();
+  if (payload.urgency === "soon") return "Urgent";
+  if (payload.urgency === "scheduled") return "Planned";
+  if (payload.urgency === "exploring") return "Exploring";
+  return "";
 }
 
 function renderSummaryRows(rows: Array<{ label: string; value: string }>) {
@@ -114,7 +48,7 @@ function renderSummaryRows(rows: Array<{ label: string; value: string }>) {
                 ${escapeHtml(row.label)}
               </td>
               <td style="padding:10px 12px;border:1px solid #d7dce1;border-left:none;background:#ffffff;color:#1f2f3c;font-size:15px;font-weight:700;" align="left">
-                ${escapeHtml(row.value)}
+                ${escapeHtml(row.value || "-")}
               </td>
             </tr>
           `
@@ -163,7 +97,7 @@ function renderEmailLayout(params: {
                     </div>
 
                     <div style="margin:0 0 22px;">
-                      <h2 style="margin:0 0 10px;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#5d6b76;">Detail</h2>
+                      <h2 style="margin:0 0 10px;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#5d6b76;">Urgency and context</h2>
                       ${params.detailHtml}
                     </div>
 
@@ -181,139 +115,70 @@ function renderEmailLayout(params: {
   `;
 }
 
-function buildCustomerEmail(payload: Required<PricingEstimatePayload>) {
-  const serviceLabel = getServiceLabel(payload.serviceType);
-  const summaryRows = [
+function buildCustomerEmail(payload: Required<QuoteEnquiryPayload>) {
+  const summaryHtml = renderSummaryRows([
     { label: "Business", value: payload.businessName },
-    { label: "Estimate Type", value: serviceLabel },
-    { label: "Total Hours", value: formatHours(payload.totalHours) },
-    { label: "Subtotal ex GST", value: formatMoney(payload.subtotalExGst) },
-    { label: "GST", value: formatMoney(payload.gstAmount) },
-    { label: "Total inc GST", value: formatMoney(payload.totalIncGst) },
-  ];
-
-  let detailHtml = "";
-
-  if (payload.serviceType === "document_development") {
-    const lineItems = payload.breakdown.lineItems ?? [];
-    detailHtml = renderTable(
-      ["Document Type", "Qty", "Development Hrs", "Review Hrs", "Approval Hrs"],
-      [
-        ...lineItems.map((item) => [
-          escapeHtml(item.label),
-          escapeHtml(String(item.quantity)),
-          escapeHtml(formatHours(item.developmentHours * item.quantity)),
-          escapeHtml(formatHours(item.reviewHours * item.quantity)),
-          escapeHtml(formatHours(item.finalApprovalHours * item.quantity)),
-        ]),
-        [
-          "Discovery (New Business)",
-          "1",
-          escapeHtml(formatHours(payload.breakdown.discoveryIncluded ? 38 : 0)),
-          "-",
-          "-",
-        ],
-      ]
-    );
-  } else {
-    detailHtml = renderTable(
-      ["Item", "Selection", "Hours"],
-      [[
-        serviceLabel,
-        escapeHtml(formatSelectionLabel(payload.breakdown.level ?? "-")),
-        escapeHtml(formatHours(payload.totalHours)),
-      ]]
-    );
-  }
+    { label: "Quote Type", value: payload.quoteTypeLabel },
+    { label: "Urgency", value: payload.urgencyLabel },
+  ]);
 
   return {
-    subject: `Your HSES price estimate for ${payload.businessName}`,
+    subject: `We received your HSES quote enquiry`,
     html: renderEmailLayout({
-      title: "Your HSES Price Estimate",
-      intro: `Hi ${payload.name}, here is your requested ${serviceLabel.toLowerCase()} estimate from HSES Industry Partners.`,
-      summaryHtml: renderSummaryRows(summaryRows),
-      detailHtml,
+      title: "Thanks for your enquiry",
+      intro: `Hi ${payload.name}, we have received your quote enquiry for ${payload.quoteTypeLabel.toLowerCase()}.`,
+      summaryHtml,
+      detailHtml: `<p style="margin:0;padding:14px 16px;border:1px solid #d7dce1;background:#f9fbfc;color:#243746;font-size:14px;line-height:1.55;white-space:pre-wrap;">${escapeHtml(
+        payload.urgencyDetails
+      )}</p>`,
       supportingText:
-        "This is an estimate only and does not constitute a formal quote. If you have not received this email within 5 minutes on mobile, please check your spam folder or contact ask@hses.com.au.",
+        "We will review the context you provided and come back to you within 1-3 business days with the most practical next step.",
     }),
     text: [
       `Hi ${payload.name},`,
       ``,
-      `Here is your requested ${serviceLabel.toLowerCase()} estimate from HSES Industry Partners.`,
+      `We have received your quote enquiry for ${payload.quoteTypeLabel}.`,
       `Business: ${payload.businessName}`,
-      `Total hours: ${formatHours(payload.totalHours)}`,
-      `Subtotal ex GST: ${formatMoney(payload.subtotalExGst)}`,
-      `GST: ${formatMoney(payload.gstAmount)}`,
-      `Total inc GST: ${formatMoney(payload.totalIncGst)}`,
       ``,
-      `This is an estimate only and does not constitute a formal quote.`,
+      `Urgency and context:`,
+      payload.urgencyDetails,
+      ``,
+      `We will come back to you within 1-3 business days.`,
     ].join("\n"),
   };
 }
 
-function buildInternalEmail(payload: Required<PricingEstimatePayload>) {
-  const serviceLabel = getServiceLabel(payload.serviceType);
-  const summaryRows = [
+function buildInternalEmail(payload: Required<QuoteEnquiryPayload>) {
+  const summaryHtml = renderSummaryRows([
     { label: "Customer", value: payload.name },
     { label: "Business", value: payload.businessName },
     { label: "Email", value: payload.email },
-    { label: "Estimate Type", value: serviceLabel },
-    { label: "Total Hours", value: formatHours(payload.totalHours) },
-    { label: "Total inc GST", value: formatMoney(payload.totalIncGst) },
-  ];
-
-  let detailHtml = "";
-
-  if (payload.serviceType === "document_development") {
-    const lineItems = payload.breakdown.lineItems ?? [];
-    detailHtml = renderTable(
-      ["Document Type", "Qty", "Development Hrs", "Review Hrs", "Approval Hrs"],
-      [
-        ...lineItems.map((item) => [
-          escapeHtml(item.label),
-          escapeHtml(String(item.quantity)),
-          escapeHtml(formatHours(item.developmentHours * item.quantity)),
-          escapeHtml(formatHours(item.reviewHours * item.quantity)),
-          escapeHtml(formatHours(item.finalApprovalHours * item.quantity)),
-        ]),
-        [
-          "Discovery (New Business)",
-          "1",
-          escapeHtml(formatHours(payload.breakdown.discoveryIncluded ? 38 : 0)),
-          "-",
-          "-",
-        ],
-      ]
-    );
-  } else {
-    detailHtml = renderTable(
-      ["Item", "Selection", "Hours"],
-      [[
-        serviceLabel,
-        escapeHtml(formatSelectionLabel(payload.breakdown.level ?? "-")),
-        escapeHtml(formatHours(payload.totalHours)),
-      ]]
-    );
-  }
+    { label: "Phone", value: payload.phone || "-" },
+    { label: "Quote Type", value: payload.quoteTypeLabel },
+    { label: "Urgency", value: payload.urgencyLabel },
+  ]);
 
   return {
-    subject: `Estimator used: ${payload.businessName} - ${serviceLabel}`,
+    subject: `Quote enquiry: ${payload.businessName} - ${payload.quoteTypeLabel}`,
     html: renderEmailLayout({
-      title: "Pricing Estimator Submission",
-      intro: `${payload.name} from ${payload.businessName} has used the HSES pricing estimator.`,
-      summaryHtml: renderSummaryRows(summaryRows),
-      detailHtml,
-      supportingText:
-        "This internal notice shows the estimate request submitted through the website pricing estimator.",
+      title: "Website Quote Enquiry",
+      intro: `${payload.name} from ${payload.businessName} submitted a quote enquiry through the website.`,
+      summaryHtml,
+      detailHtml: `<p style="margin:0;padding:14px 16px;border:1px solid #d7dce1;background:#f9fbfc;color:#243746;font-size:14px;line-height:1.55;white-space:pre-wrap;">${escapeHtml(
+        payload.urgencyDetails
+      )}</p>`,
+      supportingText: "This enquiry was submitted through the website quote request form.",
     }),
     text: [
-      `Estimator submission received.`,
+      `Website quote enquiry received.`,
       `Customer: ${payload.name}`,
       `Business: ${payload.businessName}`,
       `Email: ${payload.email}`,
-      `Estimate type: ${serviceLabel}`,
-      `Total hours: ${formatHours(payload.totalHours)}`,
-      `Total inc GST: ${formatMoney(payload.totalIncGst)}`,
+      `Phone: ${payload.phone || "-"}`,
+      `Quote type: ${payload.quoteTypeLabel}`,
+      ``,
+      `Urgency and context:`,
+      payload.urgencyDetails,
     ].join("\n"),
   };
 }
@@ -326,7 +191,7 @@ export async function POST(request: Request) {
     return new Response("Missing email configuration.", { status: 500 });
   }
 
-  const payload = (await request.json().catch(() => null)) as PricingEstimatePayload | null;
+  const payload = (await request.json().catch(() => null)) as QuoteEnquiryPayload | null;
   if (!payload) {
     return new Response("Invalid request.", { status: 400 });
   }
@@ -334,34 +199,31 @@ export async function POST(request: Request) {
   const name = payload.name?.trim() ?? "";
   const businessName = payload.businessName?.trim() ?? "";
   const email = payload.email?.trim() ?? "";
-  const serviceType = payload.serviceType;
+  const phone = payload.phone?.trim() ?? "";
+  const quoteType = payload.quoteType;
+  const quoteTypeLabel = getQuoteTypeLabel(payload);
+  const urgency = payload.urgency;
+  const urgencyLabel = getUrgencyLabel(payload);
+  const urgencyDetails = payload.urgencyDetails?.trim() ?? "";
 
-  if (!name || !businessName || !email || !serviceType) {
-    return new Response("Missing required estimate details.", { status: 400 });
+  if (!name || !businessName || !email || !quoteType || !quoteTypeLabel || !urgency || !urgencyLabel || !urgencyDetails) {
+    return new Response("Missing required enquiry details.", { status: 400 });
   }
 
   if (!email.includes("@")) {
     return new Response("Missing or invalid email address.", { status: 400 });
   }
 
-  const normalizedPayload: Required<PricingEstimatePayload> = {
+  const normalizedPayload: Required<QuoteEnquiryPayload> = {
     name,
     businessName,
     email,
-    serviceType,
-    subtotalExGst: Number(payload.subtotalExGst ?? 0),
-    gstAmount: Number(payload.gstAmount ?? 0),
-    totalIncGst: Number(payload.totalIncGst ?? 0),
-    totalHours: Number(payload.totalHours ?? 0),
-    breakdown: {
-      newBusiness: payload.breakdown?.newBusiness ?? "yes",
-      discoveryIncluded: payload.breakdown?.discoveryIncluded ?? false,
-      developmentHours: Number(payload.breakdown?.developmentHours ?? 0),
-      reviewHours: Number(payload.breakdown?.reviewHours ?? 0),
-      finalApprovalHours: Number(payload.breakdown?.finalApprovalHours ?? 0),
-      lineItems: payload.breakdown?.lineItems ?? [],
-      level: payload.breakdown?.level ?? "",
-    },
+    phone,
+    quoteType,
+    quoteTypeLabel,
+    urgency,
+    urgencyLabel,
+    urgencyDetails,
   };
 
   const customerEmail = buildCustomerEmail(normalizedPayload);

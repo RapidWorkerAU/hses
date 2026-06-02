@@ -123,7 +123,7 @@ export default function SystemDesignPage() {
 
               <div className={styles.heroActions}>
                 <a className={styles.primaryCta} href="#pricing">
-                  Get a cost estimate
+                  Request a quote
                 </a>
                 <a className={styles.secondaryLink} href="#mapping-tool">
                   See the mapping approach
@@ -202,43 +202,37 @@ export default function SystemDesignPage() {
           <div className={`${styles.sectionShell} ${styles.pricingSplit}`}>
             <div className={styles.pricingCopy}>
               <p className={styles.pricingHeading}>Pricing</p>
-              <h2 className={styles.pricingTitle}>After a Cost Estimate?</h2>
+              <h2 className={styles.pricingTitle}>Need to Understand the Cost?</h2>
               <p>
                 We understand that, in all businesses, cash flow is critical,
                 and that overheads that don&apos;t generate income need to be
-                planned.
+                planned carefully.
               </p>
               <p>
-                In honour of this, we have provided an estimation tool that you
-                can use to get a rough estimate of what our standard services
-                may cost for certain activities.
+                Necessary improvements still need to be budgeted, staged, and
+                explained to the people who approve the spend. A clear quote
+                helps you understand what the work may involve before you make
+                decisions about timing, scope, or internal priorities.
               </p>
               <p className={styles.pricingFollowUp}>
-                You will be asked to enter your email address to receive the
-                cost estimate. We may reach out to ask whether you have any
-                follow-up questions about the estimate or any unique business
-                needs that this estimate tool does not cover. We will only
-                follow up once, and you will not be added to a mailing list.
+                Use this form to tell us whether you are looking at document
+                development, management system design, or safety technology,
+                and how urgent the work is. We will review the context and come
+                back with the most practical next step for preparing a quote.
               </p>
               <p className={styles.pricingFinePrint}>
-                **Disclaimer** The figures in this estimate are based off
-                average completion times for similar tasks. These cover standard
-                tasks and do not account for unique business needs. HSES
-                Industry Partners reserves the right to alter this estimate tool
-                at any time and the figures you receive from this tool do not
-                constitute a formal quote.
+                We will not add you to a mailing list. Your enquiry is used to
+                understand the likely work type, urgency, and scope so we can
+                respond in a way that is useful for your cash flow and planning.
               </p>
             </div>
 
             <PricingEstimator />
 
             <p className={styles.pricingFinePrintMobile}>
-              **Disclaimer** The figures in this estimate are based off
-              average completion times for similar tasks. These cover standard
-              tasks and do not account for unique business needs. HSES
-              Industry Partners reserves the right to alter this estimate tool
-              at any time and the figures you receive from this tool do not
-              constitute a formal quote.
+              We will not add you to a mailing list. Your enquiry is used to
+              understand the likely work type, urgency, and scope so we can
+              respond in a way that is useful for your cash flow and planning.
             </p>
           </div>
         </section>
