@@ -503,11 +503,11 @@
 
   .heroPanel {
     padding: 26px 22px 24px;
-    text-align: center;
+    text-align: left;
   }
 
   .heroCopy {
-    justify-items: center;
+    justify-items: start;
   }
 
   .hero h1 {
@@ -515,7 +515,7 @@
   }
 
   .heroActions {
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   .heroStats {
@@ -540,37 +540,109 @@
     padding: 40px 0;
   }
 
+  .systemSectionInner,
+  .mapSectionInner,
+  .pricingSplit {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .sectionIntro,
+  .mapCopy,
+  .pricingCopy {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+
+  .sectionIntro p,
+  .mapCopy p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .capabilityCard {
+    justify-items: center;
+    padding-left: 0;
+    text-align: center;
+  }
+
+  .capabilityCard::before {
+    display: none;
+  }
+
   .mapFlow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(100%, 420px);
+    gap: 34px 18px;
     border-top: none;
+    justify-self: center;
   }
 
   .mapStep,
   .mapStep + .mapStep {
-    min-height: 72px;
-    padding: 0 14px 18px 0;
+    min-height: 92px;
+    padding: 20px 8px 14px;
     border-left: none;
     border-top: 1px solid rgba(17, 17, 17, 0.16);
+    text-align: center;
   }
 
   .mapStep:nth-child(even) {
-    padding-left: 14px;
-    border-left: 1px solid rgba(17, 17, 17, 0.13);
+    padding-left: 8px;
+    border-left: none;
   }
 
   .mapStep::before,
   .mapStep + .mapStep::before {
     top: -6px;
-    left: 0;
+    left: 50%;
+    transform: translateX(-50%);
   }
 
   .mapStep:nth-child(even)::before {
-    left: 14px;
+    left: 50%;
+  }
+
+  .mapStep::after {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    width: 38px;
+    height: 14px;
+    background: linear-gradient(90deg, #2de1ff 0%, #19a6f2 100%);
+    clip-path: polygon(0 42%, 74% 42%, 74% 0, 100% 50%, 74% 100%, 74% 58%, 0 58%);
+    pointer-events: none;
+  }
+
+  .mapStep:nth-child(1)::after,
+  .mapStep:nth-child(3)::after {
+    top: 30px;
+    right: -28px;
+  }
+
+  .mapStep:nth-child(2)::after,
+  .mapStep:nth-child(4)::after {
+    bottom: -32px;
+    left: 2px;
+    transform: rotate(135deg);
+    transform-origin: center;
+  }
+
+  .mapStep:nth-child(5) {
+    grid-column: 1 / -1;
+    width: min(48%, 180px);
+    justify-self: center;
+  }
+
+  .mapStep:nth-child(5)::after {
+    display: none;
   }
 
   .footerInner {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
+    text-align: center;
   }
 }
 
@@ -613,23 +685,37 @@
     text-align: center;
   }
 
-  .capabilityGrid,
-  .mapFlow {
+  .capabilityGrid {
     grid-template-columns: 1fr;
+  }
+
+  .mapFlow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 30px 14px;
   }
 
   .mapStep,
   .mapStep + .mapStep,
   .mapStep:nth-child(even) {
-    min-height: 0;
-    padding: 14px 0;
+    min-height: 88px;
+    padding: 20px 6px 12px;
     border-left: none;
   }
 
   .mapStep::before,
   .mapStep + .mapStep::before,
   .mapStep:nth-child(even)::before {
-    left: 0;
+    left: 50%;
+  }
+
+  .mapStep:nth-child(1)::after,
+  .mapStep:nth-child(3)::after {
+    right: -24px;
+  }
+
+  .mapStep:nth-child(2)::after,
+  .mapStep:nth-child(4)::after {
+    bottom: -29px;
   }
 
   .pricingCopy p {
@@ -648,7 +734,7 @@
 
   .footerLinks {
     width: 100%;
-    justify-content: space-between;
+    justify-content: center;
     gap: 12px;
   }
 

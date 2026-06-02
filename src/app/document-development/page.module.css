@@ -697,11 +697,11 @@
 
   .heroPanel {
     padding: 26px 22px 24px;
-    text-align: center;
+    text-align: left;
   }
 
   .heroCopy {
-    justify-items: center;
+    justify-items: start;
   }
 
   .hero h1 {
@@ -709,7 +709,7 @@
   }
 
   .heroActions {
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   .heroStats {
@@ -734,18 +734,55 @@
     padding: 40px 0;
   }
 
+  .documentSystemInner,
+  .buildSectionInner,
+  .pricingSplit {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .sectionIntro,
+  .buildCopy,
+  .pricingCopy {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+
+  .sectionIntro p,
+  .buildCopy p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .capabilityCard {
+    justify-items: center;
+    padding-left: 0;
+    text-align: center;
+  }
+
+  .capabilityCard::before {
+    display: none;
+  }
+
   .buildIconRow {
-    grid-template-columns: repeat(5, minmax(44px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    max-width: none;
+  }
+
+  .buildIconRow .buildIcon:nth-child(4) {
+    display: none;
   }
 
   .buildIcon {
-    width: clamp(44px, 12vw, 76px);
+    width: min(100%, clamp(58px, 17vw, 88px));
   }
 
   .footerInner {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
+    text-align: center;
   }
 }
 
@@ -794,12 +831,12 @@
   }
 
   .buildIconRow {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
   }
 
   .buildIcon {
-    width: clamp(38px, 16vw, 58px);
+    width: min(100%, clamp(54px, 20vw, 76px));
   }
 
   .pricingCopy p {
@@ -818,7 +855,7 @@
 
   .footerLinks {
     width: 100%;
-    justify-content: space-between;
+    justify-content: center;
     gap: 12px;
   }
 

@@ -528,11 +528,11 @@
 
   .heroPanel {
     padding: 26px 22px 24px;
-    text-align: center;
+    text-align: left;
   }
 
   .heroCopy {
-    justify-items: center;
+    justify-items: start;
   }
 
   .hero h1 {
@@ -540,7 +540,7 @@
   }
 
   .heroActions {
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   .heroStats {
@@ -565,8 +565,40 @@
     padding: 40px 0;
   }
 
+  .technologySectionInner,
+  .optionsSectionInner,
+  .pricingSplit {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .sectionIntro,
+  .optionsCopy,
+  .pricingCopy {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+  }
+
+  .sectionIntro p,
+  .optionsCopy p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .capabilityCard {
+    justify-items: center;
+    padding-left: 0;
+    text-align: center;
+  }
+
+  .capabilityCard::before {
+    display: none;
+  }
+
   .optionRail {
     grid-template-columns: 1fr;
+    justify-self: center;
   }
 
   .optionItem,
@@ -574,6 +606,11 @@
     min-height: 0;
     padding: 16px 0;
     border-left: none;
+    text-align: center;
+  }
+
+  .optionLogoSlot {
+    justify-content: center;
   }
 
   .optionItem + .optionItem {
@@ -582,7 +619,8 @@
 
   .footerInner {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
+    text-align: center;
   }
 }
 
@@ -645,7 +683,7 @@
 
   .footerLinks {
     width: 100%;
-    justify-content: space-between;
+    justify-content: center;
     gap: 12px;
   }
 
