@@ -4,6 +4,10 @@ import LoginClient from "./LoginClient";
 
 export const metadata: Metadata = {
   title: "Client Portal Login",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 export default function LoginPage() {
