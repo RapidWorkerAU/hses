@@ -6,9 +6,12 @@ import type { ReactNode } from "react";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { parsePersonLabels, type CanvasElementRow, type SystemMap } from "@/app/system-maps/[mapId]/canvasShared";
-import { TableSkeleton } from "@/components/loading/HsesLoaders";
-import PortalTableFooter from "@/components/table/PortalTableFooter";
-import styles from "./InvestigationReport.module.css";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconArrowLeft,
+  IconExternalLink,
+} from "@tabler/icons-react";
 
 type InvestigationReportClientProps = { mapId: string };
 type TabKey = "scope" | "sequence" | "people" | "factors" | "taskCondition" | "controlBarrier" | "evidence" | "finding" | "recommendation";
@@ -118,15 +121,23 @@ function paginate<T>(rows: T[], page: number) {
 
 function SortHeader({ label, active, direction, onClick }: { label: string; active: boolean; direction: SortDirection; onClick: () => void }) {
   return (
-    <button type="button" className={styles.sortHeader} onClick={onClick}>
+    <button type="button" className="inline-flex items-center gap-1 font-medium text-neutral-500 hover:text-neutral-700 transition-colors" onClick={onClick}>
       <span>{label}</span>
-      <span className={styles.sortHeaderMeta}>{active ? (direction === "asc" ? "Asc" : "Desc") : "v"}</span>
+      <span className="text-[10px] text-neutral-400">{active ? (direction === "asc" ? "↑" : "↓") : "↕"}</span>
     </button>
   );
 }
 
+const TONE_CLASS: Record<"Green" | "Red" | "Amber" | "Slate" | "Neutral", string> = {
+  Green: "bg-[#2d9692]/10 text-[#2d9692] border border-[#2d9692]/20",
+  Red: "bg-red-50 text-red-600 border border-red-200",
+  Amber: "bg-amber-50 text-amber-700 border border-amber-200",
+  Slate: "bg-neutral-100 text-neutral-600 border border-neutral-200",
+  Neutral: "bg-neutral-100 text-neutral-500 border border-neutral-200",
+};
+
 function TonePill({ children, tone }: { children: ReactNode; tone: "Green" | "Red" | "Amber" | "Slate" | "Neutral" }) {
-  return <span className={`${styles.pill} ${styles[`pill${tone}` as keyof typeof styles]}`}>{children}</span>;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${TONE_CLASS[tone]}`}>{children}</span>;
 }
 
 function ScopeField({
@@ -145,16 +156,16 @@ function ScopeField({
   className?: string;
 }) {
   return (
-    <div className={`${styles.scopeCard} ${className}`.trim()}>
-      <span>{label}</span>
+    <div className={`rounded-xl border border-neutral-200 bg-white p-4 ${className}`.trim()}>
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 block mb-1">{label}</span>
       {isEditing ? (
         multiline ? (
-          <textarea className={`${styles.scopeInput} ${styles.scopeTextarea}`} value={value} onChange={(event) => onChange(event.target.value)} />
+          <textarea className="w-full text-[13px] text-neutral-900 border border-neutral-200 rounded-md px-3 py-2 outline-none focus:ring-2 focus:ring-[#2d9692]/20 focus:border-[#2d9692] resize-none" value={value} onChange={(event) => onChange(event.target.value)} rows={4} />
         ) : (
-          <input className={styles.scopeInput} value={value} onChange={(event) => onChange(event.target.value)} />
+          <input className="w-full text-[13px] text-neutral-900 border border-neutral-200 rounded-md px-3 h-8 outline-none focus:ring-2 focus:ring-[#2d9692]/20 focus:border-[#2d9692]" value={value} onChange={(event) => onChange(event.target.value)} />
         )
       ) : (
-        <strong>{value}</strong>
+        <strong className="text-[14px] text-neutral-900 font-medium">{value || "-"}</strong>
       )}
     </div>
   );
@@ -417,339 +428,433 @@ export default function InvestigationReportClient({ mapId }: InvestigationReport
 
   if (isLoading) {
     return (
-      <div className={styles.wrap}>
-        <div className={styles.headerBlock}>
-          <div className={styles.loadingBack} />
-          <div className={styles.loadingTitleBlock}>
-            <div className={styles.loadingEyebrow} />
-            <div className={styles.loadingTitle} />
-            <div className={styles.loadingSubtitle} />
+      <div className="flex flex-col min-h-full">
+        <div className="px-6 pt-5 pb-4 border-b border-neutral-100 bg-white flex-shrink-0">
+          <div className="h-4 w-24 rounded bg-neutral-100 animate-pulse mb-2" />
+          <div className="h-6 w-48 rounded bg-neutral-100 animate-pulse mb-1" />
+          <div className="h-4 w-80 rounded bg-neutral-100 animate-pulse" />
+        </div>
+        <div className="border-b border-neutral-200 bg-white flex-shrink-0 px-6 py-2">
+          <div className="flex gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-5 w-16 rounded bg-neutral-100 animate-pulse" />
+            ))}
           </div>
         </div>
-
-        <div className={styles.topRail}>
-          <div className={styles.loadingTabRail} />
-          <div className={styles.loadingOpenButton} />
+        <div className="flex-1 p-6 bg-[#f7f8fa]">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="divide-y divide-neutral-100">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-4 py-3">
+                  <div className="h-4 w-[120px] rounded bg-neutral-100 animate-pulse" />
+                  <div className="h-4 w-[180px] rounded bg-neutral-100 animate-pulse" />
+                  <div className="h-4 flex-1 rounded bg-neutral-100 animate-pulse" />
+                  <div className="h-4 w-[80px] rounded bg-neutral-100 animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-
-        <TableSkeleton rows={7} columns="12% 16% 34% 14% 12% 12%" showToolbar={false} />
       </div>
     );
   }
-  if (error) return <div className={styles.error}>{error}</div>;
-  if (!map) return <div className={styles.empty}>Investigation not found.</div>;
+  if (error) return <div className="flex items-center justify-center p-12 text-[13px] text-red-600">{error}</div>;
+  if (!map) return <div className="flex items-center justify-center p-12 text-[13px] text-neutral-500">Investigation not found.</div>;
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.headerBlock}>
-        <Link href="/dashboard/map-builders" className={styles.backLink}>
-          <span className={styles.backIcon} aria-hidden="true">&lt;</span>
-          <span>Back</span>
-        </Link>
-
-        <div className={styles.titleBlock}>
-          <p className={styles.eyebrow}>Investigation Tool</p>
-          <h1>{map.title}</h1>
-          <p>Review the investigation record before opening the incident map.</p>
+    <div className="flex flex-col min-h-full">
+      <div className="px-6 pt-5 pb-4 border-b border-neutral-100 bg-white flex-shrink-0">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <Link href="/dashboard/map-builders" className="inline-flex items-center gap-1 text-[12px] text-neutral-400 hover:text-neutral-600 transition-colors mb-2">
+              <IconArrowLeft size={12} />Back to Map Builders
+            </Link>
+            <p className="text-[12px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">Investigation Tool</p>
+            <h1 className="text-[20px] font-semibold text-neutral-900">{map.title}</h1>
+            <p className="text-[13px] text-neutral-500 mt-[2px]">Review the investigation record before opening the incident map.</p>
+          </div>
+          <Link
+            href={`/system-maps/${map.id}`}
+            className="flex-shrink-0 inline-flex items-center gap-1.5 rounded-md bg-[#2d9692] text-white text-[13px] font-medium px-4 h-9 hover:bg-[#267d78] transition-colors"
+          >
+            Open Incident Map
+            <IconExternalLink size={14} />
+          </Link>
         </div>
       </div>
 
-      <div className={styles.topRail}>
-        <div className={styles.tabRail}>
+      <div className="border-b border-neutral-200 bg-white flex-shrink-0 px-6">
+        <div className="flex items-center overflow-x-auto -mb-px">
           {tabs.map((tab) => (
-            <button key={tab.key} type="button" className={`${styles.tabButton} ${activeTab === tab.key ? styles.tabButtonActive : ""}`} onClick={() => setActiveTab(tab.key)}>
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-3 py-3 text-[13px] font-medium border-b-2 whitespace-nowrap transition-colors ${
+                activeTab === tab.key
+                  ? "text-[#2d9692] border-[#2d9692]"
+                  : "text-neutral-500 border-transparent hover:text-neutral-700 hover:border-neutral-300"
+              }`}
+            >
               {tab.label}
             </button>
           ))}
         </div>
-
-        <Link href={`/system-maps/${map.id}`} className={styles.openMapButton}>Open Incident Map</Link>
       </div>
+
+      <div className="flex-1 p-6 bg-[#f7f8fa] flex flex-col gap-4">
 
       {activeTab === "scope" && scopeDraft ? (
         <>
-          <div className={styles.scopeGrid}>
-            <ScopeField label="Investigation Name" value={scopeDraft.investigationName} isEditing={isEditingScope} onChange={(value) => updateScopeField("investigationName", value)} className={styles.scopeCardThird} />
-            <ScopeField label="Owner" value={scopeDraft.owner} isEditing={isEditingScope} onChange={(value) => updateScopeField("owner", value)} className={styles.scopeCardThird} />
-            <ScopeField label="Created" value={scopeDraft.created} isEditing={isEditingScope} onChange={(value) => updateScopeField("created", value)} className={styles.scopeCardThird} />
-            <ScopeField label="Incident Date & Time" value={scopeDraft.incidentDateTime} isEditing={isEditingScope} onChange={(value) => updateScopeField("incidentDateTime", value)} className={styles.scopeCardHalf} />
-            <ScopeField label="Incident Location" value={scopeDraft.incidentLocation} isEditing={isEditingScope} onChange={(value) => updateScopeField("incidentLocation", value)} className={styles.scopeCardHalf} />
-            <ScopeField label="Responsible Person Name" value={scopeDraft.responsiblePersonName} isEditing={isEditingScope} onChange={(value) => updateScopeField("responsiblePersonName", value)} className={styles.scopeCardHalf} />
-            <ScopeField label="Investigation Lead Name" value={scopeDraft.investigationLeadName} isEditing={isEditingScope} onChange={(value) => updateScopeField("investigationLeadName", value)} className={styles.scopeCardHalf} />
-            <ScopeField label="Items of Interest" value={scopeDraft.itemsOfInterest} isEditing={isEditingScope} multiline onChange={(value) => updateScopeField("itemsOfInterest", value)} className={styles.scopeCardFull} />
-            <ScopeField label="Incident Long Description" value={scopeDraft.incidentLongDescription} isEditing={isEditingScope} multiline onChange={(value) => updateScopeField("incidentLongDescription", value)} className={styles.scopeCardFull} />
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+            <ScopeField label="Investigation Name" value={scopeDraft.investigationName} isEditing={isEditingScope} onChange={(value) => updateScopeField("investigationName", value)} className="md:col-span-2" />
+            <ScopeField label="Owner" value={scopeDraft.owner} isEditing={isEditingScope} onChange={(value) => updateScopeField("owner", value)} className="md:col-span-2" />
+            <ScopeField label="Created" value={scopeDraft.created} isEditing={isEditingScope} onChange={(value) => updateScopeField("created", value)} className="md:col-span-2" />
+            <ScopeField label="Incident Date & Time" value={scopeDraft.incidentDateTime} isEditing={isEditingScope} onChange={(value) => updateScopeField("incidentDateTime", value)} className="md:col-span-3" />
+            <ScopeField label="Incident Location" value={scopeDraft.incidentLocation} isEditing={isEditingScope} onChange={(value) => updateScopeField("incidentLocation", value)} className="md:col-span-3" />
+            <ScopeField label="Responsible Person Name" value={scopeDraft.responsiblePersonName} isEditing={isEditingScope} onChange={(value) => updateScopeField("responsiblePersonName", value)} className="md:col-span-3" />
+            <ScopeField label="Investigation Lead Name" value={scopeDraft.investigationLeadName} isEditing={isEditingScope} onChange={(value) => updateScopeField("investigationLeadName", value)} className="md:col-span-3" />
+            <ScopeField label="Items of Interest" value={scopeDraft.itemsOfInterest} isEditing={isEditingScope} multiline onChange={(value) => updateScopeField("itemsOfInterest", value)} className="md:col-span-6" />
+            <ScopeField label="Incident Long Description" value={scopeDraft.incidentLongDescription} isEditing={isEditingScope} multiline onChange={(value) => updateScopeField("incidentLongDescription", value)} className="md:col-span-6" />
           </div>
-          {isEditingScope ? (
-            <div className={styles.scopeActions}>
-              <button type="button" className={styles.scopeSecondaryButton} onClick={handleCancelScopeEdit}>
-                Cancel
+          <div className="flex items-center justify-end gap-2">
+            {isEditingScope ? (
+              <>
+                <button type="button" className="h-8 px-3 rounded-md border border-neutral-200 bg-white text-[13px] text-neutral-700 hover:bg-neutral-50 transition-colors" onClick={handleCancelScopeEdit}>
+                  Cancel
+                </button>
+                <button type="button" className="h-8 px-3 rounded-md bg-[#2d9692] text-white text-[13px] font-medium hover:bg-[#267d78] transition-colors" onClick={handleSaveScope}>
+                  Save Scope
+                </button>
+              </>
+            ) : (
+              <button type="button" className="h-8 px-3 rounded-md border border-neutral-200 bg-white text-[13px] text-neutral-700 hover:bg-neutral-50 transition-colors" onClick={() => setIsEditingScope(true)}>
+                Edit Scope
               </button>
-              <button type="button" className={styles.scopePrimaryButton} onClick={handleSaveScope}>
-                Save Scope
-              </button>
-            </div>
-          ) : null}
+            )}
+          </div>
         </>
       ) : null}
 
       {activeTab === "people" ? (
-        <div className={styles.peopleSection}>
-          {peopleRows.length ? peopleRows.map((person) => (
-            <article key={person.id} className={styles.personCard}>
-              <div className={styles.personAvatar}>{person.initials}</div>
-              <h3>{person.title}</h3>
-              <p>{person.subtitle}</p>
-            </article>
-          )) : (
-            <div className={styles.peopleEmpty}>
-              <div className={styles.peopleEmptyBody}>
-                <h3>No people have been added yet</h3>
-                <p>Add people on the incident map to capture roles, departments, and ownership for this investigation.</p>
-              </div>
+        <div>
+          {peopleRows.length ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {peopleRows.map((person) => (
+                <article key={person.id} className="rounded-xl border border-neutral-200 bg-white p-4 flex flex-col items-center text-center">
+                  <div className="w-10 h-10 rounded-full bg-[#2d9692]/10 text-[#2d9692] flex items-center justify-center text-[13px] font-semibold mb-3">
+                    {person.initials}
+                  </div>
+                  <h3 className="text-[14px] font-semibold text-neutral-900">{person.title}</h3>
+                  <p className="text-[12px] text-neutral-500 mt-0.5">{person.subtitle}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center">
+              <h3 className="text-[15px] font-semibold text-neutral-700 mb-1">No people have been added yet</h3>
+              <p className="text-[13px] text-neutral-500">Add people on the incident map to capture roles, departments, and ownership for this investigation.</p>
             </div>
           )}
         </div>
       ) : null}
 
       {activeTab === "sequence" ? (
-        <section className={styles.tablePanel}>
-          <div className={`${styles.tableShell} portal-table-shell`}>
-            <table className={`${styles.table} portal-table`}>
-              <thead>
-                <tr>
-                  <th className={styles.numberCol}>No.</th>
-                  <th>Sequence Step</th>
-                  <th>Description</th>
-                  <th><SortHeader label="Timestamp" active={sorts.sequence.field === "timestamp"} direction={sorts.sequence.direction} onClick={() => applySort("sequence", "timestamp")} /></th>
-                  <th>Location</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedSequence.rows.length ? pagedSequence.rows.map((row, index) => (
-                  <tr key={row.id} className="portal-table-row">
-                    <td>{pagedSequence.startIndex + index + 1}</td>
-                    <td>{row.step}</td>
-                    <td>{row.description}</td>
-                    <td>{formatDateTime(row.timestamp)}</td>
-                    <td>{row.location}</td>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-neutral-700">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className="w-10 px-4 py-3 text-left font-medium text-neutral-500">No.</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Sequence Step</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Timestamp" active={sorts.sequence.field === "timestamp"} direction={sorts.sequence.direction} onClick={() => applySort("sequence", "timestamp")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Location</th>
                   </tr>
-                )) : (
-                  <tr className="portal-table-empty-row">
-                    <td colSpan={5}>No sequence items have been added yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {pagedSequence.rows.length ? pagedSequence.rows.map((row, index) => (
+                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3 text-neutral-400">{pagedSequence.startIndex + index + 1}</td>
+                      <td className="px-4 py-3">{row.step}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.description}</td>
+                      <td className="px-4 py-3 text-neutral-600">{formatDateTime(row.timestamp)}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.location}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={5} className="px-4 py-12 text-center text-[13px] text-neutral-400">No sequence items have been added yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <PortalTableFooter total={sequenceRows.length} page={pagedSequence.page} pageSize={PAGE_SIZE} onPageChange={(next) => setPages((current) => ({ ...current, sequence: next }))} label="sequence items" />
-        </section>
+          {sequenceRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between text-[13px] text-neutral-500">
+              <span>Showing {(pagedSequence.page - 1) * PAGE_SIZE + 1}–{Math.min(pagedSequence.page * PAGE_SIZE, sequenceRows.length)} of {sequenceRows.length} sequence items</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPages((c) => ({ ...c, sequence: Math.max(1, c.sequence - 1) }))} disabled={pagedSequence.page <= 1} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Previous page"><IconChevronLeft size={14} /></button>
+                <button type="button" onClick={() => setPages((c) => ({ ...c, sequence: Math.min(pagedSequence.totalPages, c.sequence + 1) }))} disabled={pagedSequence.page >= pagedSequence.totalPages} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Next page"><IconChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : null}
 
       {activeTab === "factors" ? (
-        <section className={styles.tablePanel}>
-          <div className={`${styles.tableShell} portal-table-shell`}>
-            <table className={`${styles.table} portal-table`}>
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Title</th>
-                  <th>Description</th>
-                  <th><SortHeader label="Presence" active={sorts.factors.field === "presence"} direction={sorts.factors.direction} onClick={() => applySort("factors", "presence")} /></th>
-                  <th><SortHeader label="Classification" active={sorts.factors.field === "classification"} direction={sorts.factors.direction} onClick={() => applySort("factors", "classification")} /></th>
-                  <th><SortHeader label="Category" active={sorts.factors.field === "category"} direction={sorts.factors.direction} onClick={() => applySort("factors", "category")} /></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedFactors.rows.length ? pagedFactors.rows.map((row) => (
-                  <tr key={row.id} className="portal-table-row">
-                    <td>{row.type}</td>
-                    <td>{row.title}</td>
-                    <td>{row.description}</td>
-                    <td><TonePill tone="Green">{row.presence}</TonePill></td>
-                    <td><TonePill tone={row.classification.toLowerCase().includes("essential") ? "Red" : "Amber"}>{row.classification}</TonePill></td>
-                    <td>{row.category}</td>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-neutral-700">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Type</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Title</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Presence" active={sorts.factors.field === "presence"} direction={sorts.factors.direction} onClick={() => applySort("factors", "presence")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Classification" active={sorts.factors.field === "classification"} direction={sorts.factors.direction} onClick={() => applySort("factors", "classification")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Category" active={sorts.factors.field === "category"} direction={sorts.factors.direction} onClick={() => applySort("factors", "category")} /></th>
                   </tr>
-                )) : (
-                  <tr className="portal-table-empty-row">
-                    <td colSpan={6}>No factors have been added yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {pagedFactors.rows.length ? pagedFactors.rows.map((row) => (
+                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3">{row.type}</td>
+                      <td className="px-4 py-3">{row.title}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.description}</td>
+                      <td className="px-4 py-3"><TonePill tone="Green">{row.presence}</TonePill></td>
+                      <td className="px-4 py-3"><TonePill tone={row.classification.toLowerCase().includes("essential") ? "Red" : "Amber"}>{row.classification}</TonePill></td>
+                      <td className="px-4 py-3 text-neutral-600">{row.category}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={6} className="px-4 py-12 text-center text-[13px] text-neutral-400">No factors have been added yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <PortalTableFooter total={factorRows.length} page={pagedFactors.page} pageSize={PAGE_SIZE} onPageChange={(next) => setPages((current) => ({ ...current, factors: next }))} label="factors" />
-        </section>
+          {factorRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between text-[13px] text-neutral-500">
+              <span>Showing {(pagedFactors.page - 1) * PAGE_SIZE + 1}–{Math.min(pagedFactors.page * PAGE_SIZE, factorRows.length)} of {factorRows.length} factors</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPages((c) => ({ ...c, factors: Math.max(1, c.factors - 1) }))} disabled={pagedFactors.page <= 1} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Previous page"><IconChevronLeft size={14} /></button>
+                <button type="button" onClick={() => setPages((c) => ({ ...c, factors: Math.min(pagedFactors.totalPages, c.factors + 1) }))} disabled={pagedFactors.page >= pagedFactors.totalPages} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Next page"><IconChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : null}
 
       {activeTab === "taskCondition" ? (
-        <section className={styles.tablePanel}>
-          <div className={`${styles.tableShell} portal-table-shell`}>
-          <table className={`${styles.table} portal-table`}>
-            <thead>
-              <tr>
-                <th>Task/Condition</th>
-                <th>Description</th>
-                <th><SortHeader label="State" active={sorts.taskCondition.field === "state"} direction={sorts.taskCondition.direction} onClick={() => applySort("taskCondition", "state")} /></th>
-                <th>Environmental Context</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedTaskConditions.rows.length ? pagedTaskConditions.rows.map((row) => (
-                <tr key={row.id} className="portal-table-row">
-                  <td>{row.title}</td>
-                  <td>{row.description}</td>
-                  <td><TonePill tone={row.state.toLowerCase() === "abnormal" ? "Red" : "Green"}>{row.state}</TonePill></td>
-                  <td>{row.context}</td>
-                </tr>
-              )) : (
-                <tr className="portal-table-empty-row">
-                  <td colSpan={4}>No task or condition items have been added yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-neutral-700">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Task/Condition</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="State" active={sorts.taskCondition.field === "state"} direction={sorts.taskCondition.direction} onClick={() => applySort("taskCondition", "state")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Environmental Context</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {pagedTaskConditions.rows.length ? pagedTaskConditions.rows.map((row) => (
+                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3">{row.title}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.description}</td>
+                      <td className="px-4 py-3"><TonePill tone={row.state.toLowerCase() === "abnormal" ? "Red" : "Green"}>{row.state}</TonePill></td>
+                      <td className="px-4 py-3 text-neutral-600">{row.context}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={4} className="px-4 py-12 text-center text-[13px] text-neutral-400">No task or condition items have been added yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <PortalTableFooter total={taskConditionRows.length} page={pagedTaskConditions.page} pageSize={PAGE_SIZE} onPageChange={(next) => setPages((current) => ({ ...current, taskCondition: next }))} label="task conditions" />
-        </section>
+          {taskConditionRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between text-[13px] text-neutral-500">
+              <span>Showing {(pagedTaskConditions.page - 1) * PAGE_SIZE + 1}–{Math.min(pagedTaskConditions.page * PAGE_SIZE, taskConditionRows.length)} of {taskConditionRows.length} task conditions</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPages((c) => ({ ...c, taskCondition: Math.max(1, c.taskCondition - 1) }))} disabled={pagedTaskConditions.page <= 1} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Previous page"><IconChevronLeft size={14} /></button>
+                <button type="button" onClick={() => setPages((c) => ({ ...c, taskCondition: Math.min(pagedTaskConditions.totalPages, c.taskCondition + 1) }))} disabled={pagedTaskConditions.page >= pagedTaskConditions.totalPages} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Next page"><IconChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : null}
 
       {activeTab === "controlBarrier" ? (
-        <section className={styles.tablePanel}>
-          <div className={`${styles.tableShell} portal-table-shell`}>
-          <table className={`${styles.table} portal-table`}>
-            <thead>
-              <tr>
-                <th>Control/Barrier</th>
-                <th>Description</th>
-                <th><SortHeader label="Barrier State" active={sorts.controlBarrier.field === "barrierState"} direction={sorts.controlBarrier.direction} onClick={() => applySort("controlBarrier", "barrierState")} /></th>
-                <th><SortHeader label="Barrier Role" active={sorts.controlBarrier.field === "barrierRole"} direction={sorts.controlBarrier.direction} onClick={() => applySort("controlBarrier", "barrierRole")} /></th>
-                <th>Control Type</th>
-                <th>Owner</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedBarriers.rows.length ? pagedBarriers.rows.map((row) => (
-                <tr key={row.id} className="portal-table-row">
-                  <td>{row.title}</td>
-                  <td>{row.description}</td>
-                  <td><TonePill tone={row.barrierState.toLowerCase().includes("missing") ? "Red" : row.barrierState.toLowerCase().includes("ineffective") ? "Slate" : "Green"}>{row.barrierState}</TonePill></td>
-                  <td><TonePill tone="Green">{row.barrierRole}</TonePill></td>
-                  <td>{row.controlType}</td>
-                  <td>{row.owner}</td>
-                </tr>
-              )) : (
-                <tr className="portal-table-empty-row">
-                  <td colSpan={6}>No controls or barriers have been added yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-neutral-700">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Control/Barrier</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Barrier State" active={sorts.controlBarrier.field === "barrierState"} direction={sorts.controlBarrier.direction} onClick={() => applySort("controlBarrier", "barrierState")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Barrier Role" active={sorts.controlBarrier.field === "barrierRole"} direction={sorts.controlBarrier.direction} onClick={() => applySort("controlBarrier", "barrierRole")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Control Type</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Owner</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {pagedBarriers.rows.length ? pagedBarriers.rows.map((row) => (
+                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3">{row.title}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.description}</td>
+                      <td className="px-4 py-3"><TonePill tone={row.barrierState.toLowerCase().includes("missing") ? "Red" : row.barrierState.toLowerCase().includes("ineffective") ? "Slate" : "Green"}>{row.barrierState}</TonePill></td>
+                      <td className="px-4 py-3"><TonePill tone="Green">{row.barrierRole}</TonePill></td>
+                      <td className="px-4 py-3 text-neutral-600">{row.controlType}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.owner}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={6} className="px-4 py-12 text-center text-[13px] text-neutral-400">No controls or barriers have been added yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <PortalTableFooter total={barrierRows.length} page={pagedBarriers.page} pageSize={PAGE_SIZE} onPageChange={(next) => setPages((current) => ({ ...current, controlBarrier: next }))} label="controls and barriers" />
-        </section>
+          {barrierRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between text-[13px] text-neutral-500">
+              <span>Showing {(pagedBarriers.page - 1) * PAGE_SIZE + 1}–{Math.min(pagedBarriers.page * PAGE_SIZE, barrierRows.length)} of {barrierRows.length} controls and barriers</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPages((c) => ({ ...c, controlBarrier: Math.max(1, c.controlBarrier - 1) }))} disabled={pagedBarriers.page <= 1} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Previous page"><IconChevronLeft size={14} /></button>
+                <button type="button" onClick={() => setPages((c) => ({ ...c, controlBarrier: Math.min(pagedBarriers.totalPages, c.controlBarrier + 1) }))} disabled={pagedBarriers.page >= pagedBarriers.totalPages} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Next page"><IconChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : null}
 
       {activeTab === "evidence" ? (
-        <section className={styles.tablePanel}>
-          <div className={`${styles.tableShell} portal-table-shell`}>
-          <table className={`${styles.table} portal-table`}>
-            <thead>
-              <tr>
-                <th>Evidence</th>
-                <th>Description</th>
-                <th><SortHeader label="Type" active={sorts.evidence.field === "evidenceType"} direction={sorts.evidence.direction} onClick={() => applySort("evidence", "evidenceType")} /></th>
-                <th>Source</th>
-                <th>Attachment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedEvidence.rows.length ? pagedEvidence.rows.map((row) => (
-                <tr key={row.id} className="portal-table-row">
-                  <td>{row.title}</td>
-                  <td>{row.description}</td>
-                  <td>{row.evidenceType}</td>
-                  <td>{row.source}</td>
-                  <td>{row.attachment}</td>
-                </tr>
-              )) : (
-                <tr className="portal-table-empty-row">
-                  <td colSpan={5}>No evidence items have been added yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-neutral-700">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Evidence</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Type" active={sorts.evidence.field === "evidenceType"} direction={sorts.evidence.direction} onClick={() => applySort("evidence", "evidenceType")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Source</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Attachment</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {pagedEvidence.rows.length ? pagedEvidence.rows.map((row) => (
+                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3">{row.title}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.description}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.evidenceType}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.source}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.attachment}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={5} className="px-4 py-12 text-center text-[13px] text-neutral-400">No evidence items have been added yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <PortalTableFooter total={evidenceRows.length} page={pagedEvidence.page} pageSize={PAGE_SIZE} onPageChange={(next) => setPages((current) => ({ ...current, evidence: next }))} label="evidence items" />
-        </section>
+          {evidenceRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between text-[13px] text-neutral-500">
+              <span>Showing {(pagedEvidence.page - 1) * PAGE_SIZE + 1}–{Math.min(pagedEvidence.page * PAGE_SIZE, evidenceRows.length)} of {evidenceRows.length} evidence items</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPages((c) => ({ ...c, evidence: Math.max(1, c.evidence - 1) }))} disabled={pagedEvidence.page <= 1} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Previous page"><IconChevronLeft size={14} /></button>
+                <button type="button" onClick={() => setPages((c) => ({ ...c, evidence: Math.min(pagedEvidence.totalPages, c.evidence + 1) }))} disabled={pagedEvidence.page >= pagedEvidence.totalPages} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Next page"><IconChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : null}
 
       {activeTab === "finding" ? (
-        <section className={styles.tablePanel}>
-          <div className={`${styles.tableShell} portal-table-shell`}>
-          <table className={`${styles.table} portal-table`}>
-            <thead>
-              <tr>
-                <th className={styles.numberCol}>No.</th>
-                <th>Finding</th>
-                <th>Description</th>
-                <th><SortHeader label="Confidence Level" active={sorts.finding.field === "confidence"} direction={sorts.finding.direction} onClick={() => applySort("finding", "confidence")} /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedFindings.rows.length ? pagedFindings.rows.map((row, index) => (
-                <tr key={row.id} className="portal-table-row">
-                  <td>{pagedFindings.startIndex + index + 1}</td>
-                  <td>{row.title}</td>
-                  <td>{row.description}</td>
-                  <td><TonePill tone={row.confidence.toLowerCase() === "high" ? "Green" : row.confidence.toLowerCase() === "medium" ? "Amber" : "Red"}>{row.confidence}</TonePill></td>
-                </tr>
-              )) : (
-                <tr className="portal-table-empty-row">
-                  <td colSpan={4}>No findings have been added yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-neutral-700">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className="w-10 px-4 py-3 text-left font-medium text-neutral-500">No.</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Finding</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Confidence Level" active={sorts.finding.field === "confidence"} direction={sorts.finding.direction} onClick={() => applySort("finding", "confidence")} /></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {pagedFindings.rows.length ? pagedFindings.rows.map((row, index) => (
+                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3 text-neutral-400">{pagedFindings.startIndex + index + 1}</td>
+                      <td className="px-4 py-3">{row.title}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.description}</td>
+                      <td className="px-4 py-3"><TonePill tone={row.confidence.toLowerCase() === "high" ? "Green" : row.confidence.toLowerCase() === "medium" ? "Amber" : "Red"}>{row.confidence}</TonePill></td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={4} className="px-4 py-12 text-center text-[13px] text-neutral-400">No findings have been added yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <PortalTableFooter total={findingRows.length} page={pagedFindings.page} pageSize={PAGE_SIZE} onPageChange={(next) => setPages((current) => ({ ...current, finding: next }))} label="findings" />
-        </section>
+          {findingRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between text-[13px] text-neutral-500">
+              <span>Showing {(pagedFindings.page - 1) * PAGE_SIZE + 1}–{Math.min(pagedFindings.page * PAGE_SIZE, findingRows.length)} of {findingRows.length} findings</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPages((c) => ({ ...c, finding: Math.max(1, c.finding - 1) }))} disabled={pagedFindings.page <= 1} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Previous page"><IconChevronLeft size={14} /></button>
+                <button type="button" onClick={() => setPages((c) => ({ ...c, finding: Math.min(pagedFindings.totalPages, c.finding + 1) }))} disabled={pagedFindings.page >= pagedFindings.totalPages} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Next page"><IconChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : null}
 
       {activeTab === "recommendation" ? (
-        <section className={styles.tablePanel}>
-          <div className={`${styles.tableShell} portal-table-shell`}>
-          <table className={`${styles.table} portal-table`}>
-            <thead>
-              <tr>
-                <th className={styles.numberCol}>No.</th>
-                <th>Recommendation</th>
-                <th>Description</th>
-                <th><SortHeader label="Action Type" active={sorts.recommendation.field === "actionType"} direction={sorts.recommendation.direction} onClick={() => applySort("recommendation", "actionType")} /></th>
-                <th>Owner</th>
-                <th><SortHeader label="Due Date" active={sorts.recommendation.field === "dueDate"} direction={sorts.recommendation.direction} onClick={() => applySort("recommendation", "dueDate")} /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagedRecommendations.rows.length ? pagedRecommendations.rows.map((row, index) => (
-                <tr key={row.id} className="portal-table-row">
-                  <td>{pagedRecommendations.startIndex + index + 1}</td>
-                  <td>{row.title}</td>
-                  <td>{row.description}</td>
-                  <td><TonePill tone={row.actionType.toLowerCase() === "preventive" ? "Green" : "Amber"}>{row.actionType}</TonePill></td>
-                  <td>{row.owner}</td>
-                  <td>{formatDateOnly(row.dueDate)}</td>
-                </tr>
-              )) : (
-                <tr className="portal-table-empty-row">
-                  <td colSpan={6}>No recommendations have been added yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-neutral-700">
+                <thead>
+                  <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <th className="w-10 px-4 py-3 text-left font-medium text-neutral-500">No.</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Recommendation</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Action Type" active={sorts.recommendation.field === "actionType"} direction={sorts.recommendation.direction} onClick={() => applySort("recommendation", "actionType")} /></th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500">Owner</th>
+                    <th className="px-4 py-3 text-left font-medium text-neutral-500"><SortHeader label="Due Date" active={sorts.recommendation.field === "dueDate"} direction={sorts.recommendation.direction} onClick={() => applySort("recommendation", "dueDate")} /></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {pagedRecommendations.rows.length ? pagedRecommendations.rows.map((row, index) => (
+                    <tr key={row.id} className="hover:bg-neutral-50 transition-colors">
+                      <td className="px-4 py-3 text-neutral-400">{pagedRecommendations.startIndex + index + 1}</td>
+                      <td className="px-4 py-3">{row.title}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.description}</td>
+                      <td className="px-4 py-3"><TonePill tone={row.actionType.toLowerCase() === "preventive" ? "Green" : "Amber"}>{row.actionType}</TonePill></td>
+                      <td className="px-4 py-3 text-neutral-600">{row.owner}</td>
+                      <td className="px-4 py-3 text-neutral-600">{formatDateOnly(row.dueDate)}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={6} className="px-4 py-12 text-center text-[13px] text-neutral-400">No recommendations have been added yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <PortalTableFooter total={recommendationRows.length} page={pagedRecommendations.page} pageSize={PAGE_SIZE} onPageChange={(next) => setPages((current) => ({ ...current, recommendation: next }))} label="recommendations" />
-        </section>
+          {recommendationRows.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between text-[13px] text-neutral-500">
+              <span>Showing {(pagedRecommendations.page - 1) * PAGE_SIZE + 1}–{Math.min(pagedRecommendations.page * PAGE_SIZE, recommendationRows.length)} of {recommendationRows.length} recommendations</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setPages((c) => ({ ...c, recommendation: Math.max(1, c.recommendation - 1) }))} disabled={pagedRecommendations.page <= 1} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Previous page"><IconChevronLeft size={14} /></button>
+                <button type="button" onClick={() => setPages((c) => ({ ...c, recommendation: Math.min(pagedRecommendations.totalPages, c.recommendation + 1) }))} disabled={pagedRecommendations.page >= pagedRecommendations.totalPages} className="w-7 h-7 flex items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" aria-label="Next page"><IconChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : null}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
 import PortalAccessGate from "@/components/dashboard/portal/PortalAccessGate";
 import MapBuilderLandingClient from "@/components/dashboard/portal/MapBuilderLandingClient";
 import { MAP_BUILDER_CATEGORY_BY_ID } from "@/components/dashboard/portal/mapBuilderCategories";
@@ -16,14 +15,12 @@ export default function SystemArchitectPage() {
   }
 
   return (
-    <HsesDashboardShell
-      eyebrow="System Architect"
-      title="System Architect"
-      subtitle="Create, link, duplicate, and manage system maps for your management system architecture."
-    >
-      <PortalAccessGate portalKey="system-architect">
-        <MapBuilderLandingClient category={systemMapCategory} returnToPath="/dashboard/system-architect" />
-      </PortalAccessGate>
-    </HsesDashboardShell>
+    <div className="flex flex-col min-h-full">
+      <div className="flex-1 p-6 bg-[#f7f8fa]">
+        <PortalAccessGate portalKey="system-architect">
+          <MapBuilderLandingClient category={systemMapCategory} returnToPath="/dashboard/system-architect" />
+        </PortalAccessGate>
+      </div>
+    </div>
   );
 }

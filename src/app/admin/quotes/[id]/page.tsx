@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import "../quote-builder.css";
-import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
 import PortalAccessGate from "@/components/dashboard/portal/PortalAccessGate";
 import QuoteBuilderClient from "../QuoteBuilderClient";
 
@@ -16,19 +14,17 @@ export default async function QuoteBuilderPage({
   const { id } = await params;
 
   return (
-    <HsesDashboardShell
-      eyebrow="Business Admin"
-      title="Quote Builder"
-      subtitle="Build, revise, and publish detailed client proposals from the shared admin workspace."
-      backHref="/admin/quotes"
-      backLabel="Back"
-    >
-      <PortalAccessGate portalKey="business-admin">
-        <div className="mobile-blocked-message" role="status" aria-live="polite">
-          Quote builder is not available on mobile. Please use a desktop device.
-        </div>
-        <QuoteBuilderClient quoteId={id} />
-      </PortalAccessGate>
-    </HsesDashboardShell>
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-hidden">
+        <PortalAccessGate portalKey="business-admin">
+          <div className="md:hidden px-6 py-8 text-[13px] text-neutral-600">
+            Quote builder is not available on mobile. Please use a desktop device.
+          </div>
+          <div className="hidden md:flex h-full w-full">
+            <QuoteBuilderClient quoteId={id} />
+          </div>
+        </PortalAccessGate>
+      </div>
+    </div>
   );
 }

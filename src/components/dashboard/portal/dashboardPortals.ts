@@ -29,24 +29,14 @@ export const DASHBOARD_PORTALS: PortalItem[] = [
     icon: "/icons/admin.svg",
     children: [
       {
-        key: "business-admin-home",
-        title: "Business Admin Home",
-        href: "/dashboard/business-admin",
-      },
-      {
         key: "admin-quotes",
-        title: "Quotes & Proposals",
+        title: "Quote Builder",
         href: "/admin/quotes",
       },
       {
         key: "admin-projects",
-        title: "Project Schedule Builder",
+        title: "Client Project Schedules",
         href: "/admin/projects",
-      },
-      {
-        key: "management-system-design-dashboard",
-        title: "Management System Design",
-        href: "/dashboard/business-admin/management-system-design-dashboard",
       },
     ],
   },

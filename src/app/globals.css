@@ -1,25 +1,19 @@
-/* Base */
+/* ── Design-system tokens used by legacy portal/public CSS files ── */
 :root {
-  --bg: #05c3dd;
-  --panel: #05c3dd;
-  --card: rgba(255, 255, 255, 0.08);
-  --stroke: rgba(255, 255, 255, 0.2);
-  --text: #0a0f1a;
-  --muted: rgba(10, 15, 26, 0.75);
-  --accent: #05c3dd;
+  --bg:       #ffffff;
+  --panel:    #ffffff;
+  --card:     rgba(255, 255, 255, 0.08);
+  --stroke:   rgba(255, 255, 255, 0.2);
+  --text:     #0a0f1a;
+  --muted:    rgba(10, 15, 26, 0.75);
+  --accent:   #2d9692;
   --accent-2: #e5eaf5;
-  --danger: #ff5757;
-  --radius: 12px;
-  --shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
-  color: var(--text);
-  background: var(--bg);
+  --danger:   #ef4444;
+  --radius:   12px;
+  --shadow:   0 12px 24px rgba(0, 0, 0, 0.2);
 }
 
-html {
-  scroll-behavior: smooth;
-}
-
+/* ── Page-specific backgrounds ── */
 html:has([data-home-page]),
 body:has([data-home-page]) {
   background: #000000;
@@ -38,15 +32,20 @@ body:has([data-login-page]) {
   overflow-x: clip;
 }
 
+/* ── Reset / base ── */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
 body {
   margin: 0;
-  background: var(--bg);
   color: var(--text);
 }
 

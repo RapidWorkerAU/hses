@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function QuoteAccessClient() {
+export default function QuoteAccessClient({ initialCode = "" }: { initialCode?: string }) {
   const router = useRouter();
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

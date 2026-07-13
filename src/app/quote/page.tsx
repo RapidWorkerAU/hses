@@ -6,7 +6,14 @@ export const metadata: Metadata = {
   title: "Quote Access",
 };
 
-export default function QuoteAccessPage() {
+export default async function QuoteAccessPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ code?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const code = Array.isArray(params?.code) ? params?.code[0] : params?.code ?? "";
+
   return (
     <div className="quote-public">
       <section className="quote-public-hero">
@@ -25,7 +32,7 @@ export default function QuoteAccessPage() {
 
       <main className="quote-public-main">
         <div className="quote-public-card quote-access">
-          <QuoteAccessClient />
+          <QuoteAccessClient initialCode={code} />
         </div>
       </main>
     </div>

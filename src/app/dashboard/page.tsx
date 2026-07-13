@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
-import DashboardPortalTiles from "@/components/dashboard/portal/DashboardPortalTiles";
 
 export const metadata: Metadata = {
   title: "Portal Dashboard",
@@ -8,12 +6,8 @@ export const metadata: Metadata = {
 
 export default function DashboardPage() {
   return (
-    <HsesDashboardShell
-      eyebrow="HSES Industry Tools"
-      title="Dashboard"
-      subtitle="Access and manage your HSES workspaces from one central dashboard."
-    >
-      <DashboardPortalTiles />
-    </HsesDashboardShell>
+    <div className="flex flex-col min-h-full">
+      <div className="flex-1 p-6 bg-[#f7f8fa]" />
+    </div>
   );
 }

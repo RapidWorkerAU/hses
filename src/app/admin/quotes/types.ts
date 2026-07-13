@@ -5,6 +5,7 @@ export type AdminQuote = {
   status: string | null;
   organisation_id: string | null;
   contact_id: string | null;
+  access_code?: string | null;
 };
 
 export type AdminQuoteVersion = {

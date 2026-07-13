@@ -99,8 +99,24 @@ export async function GET(
       .getPublicUrl(attachment.storage_path).data.publicUrl,
   }));
 
+  const accessCodeResponse = await supabase
+    .from("quote_access_codes")
+    .select("access_code")
+    .eq("quote_id", quoteId)
+    .is("revoked_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (accessCodeResponse.error) {
+    return new NextResponse(accessCodeResponse.error.message, { status: 500 });
+  }
+
   return NextResponse.json({
-    quote: quoteResponse.data,
+    quote: {
+      ...quoteResponse.data,
+      access_code: accessCodeResponse.data?.access_code ?? null,
+    },
     version: versionResponse.data,
     deliverables,
     milestones: milestonesResponse.data ?? [],

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { hasAdminEmail } from "@/lib/access/admin";
 
 export default function AdminGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
           session = sessionResult.data.session;
         }
       }
-      if (!session) {
+      if (!session || !hasAdminEmail(session.user.email)) {
         const redirectTo = pathname ? `?returnTo=${encodeURIComponent(pathname)}` : "";
         router.replace(`/login${redirectTo}`);
         return;
@@ -37,8 +38,8 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-mist text-sm text-slate-600">
-        Checking admin access...
+      <div className="flex items-center justify-center p-12 text-[13px] text-neutral-500">
+        Checking access...
       </div>
     );
   }

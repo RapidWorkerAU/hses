@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "../../quotes/quote-builder.css";
-import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
 import PortalAccessGate from "@/components/dashboard/portal/PortalAccessGate";
 import ProjectDetailClient from "../ProjectDetailClient";
 
@@ -17,16 +16,12 @@ export default async function ProjectDetailPage({
   const id = resolvedParams?.id;
 
   return (
-    <HsesDashboardShell
-      eyebrow="Business Admin"
-      title="Project Schedule Builder"
-      subtitle="Review project milestones, delivery status, and logged time inside the shared admin workspace."
-      backHref="/admin/projects"
-      backLabel="Back"
-    >
-      <PortalAccessGate portalKey="business-admin">
-        {id ? <ProjectDetailClient projectId={id} /> : <div className="dashboard-panel">Missing project id.</div>}
-      </PortalAccessGate>
-    </HsesDashboardShell>
+    <PortalAccessGate portalKey="business-admin">
+      {id ? (
+        <ProjectDetailClient projectId={id} />
+      ) : (
+        <div className="p-6 text-[13px] text-neutral-500">Missing project id.</div>
+      )}
+    </PortalAccessGate>
   );
 }

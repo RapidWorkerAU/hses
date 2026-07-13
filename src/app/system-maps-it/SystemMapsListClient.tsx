@@ -1,16 +1,24 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import DashboardShell from "@/components/dashboard/DashboardShell";
-import shellStyles from "@/components/dashboard/DashboardShell.module.css";
-import { DashboardPageSkeleton } from "@/components/dashboard/DashboardTableLoadingState";
-import DashboardTableFooter from "@/components/dashboard/DashboardTableFooter";
-import LinkMapCodeControl from "@/components/dashboard/LinkMapCodeControl";
+import {
+  IconPlus,
+  IconLink,
+  IconX,
+  IconCopy,
+  IconFiles,
+  IconTrash,
+  IconChevronLeft,
+  IconChevronRight,
+} from "@tabler/icons-react";
+import { DashboardShell } from "@/components/layout/DashboardShell";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
 import { reportUserActivity } from "@/lib/userActivityClient";
+import { cn } from "@/lib/utils";
 
 type SystemMapRow = {
   id: string;
@@ -123,7 +131,6 @@ export default function SystemMapsListClient() {
   const router = useRouter();
   const pageSize = 7;
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
@@ -145,6 +152,7 @@ export default function SystemMapsListClient() {
   const [rows, setRows] = useState<SystemMapRow[]>([]);
   const duplicateAbortRef = useRef(false);
   const [page, setPage] = useState(1);
+  const createMenuRef = useRef<HTMLDivElement>(null);
 
   const redirectToLogin = useMemo(
     () => `/login?returnTo=${encodeURIComponent("/system-maps")}`,
@@ -157,12 +165,7 @@ export default function SystemMapsListClient() {
     summary: string,
     metadata: Record<string, unknown> = {}
   ) => {
-    void reportUserActivity({
-      action,
-      status,
-      summary,
-      metadata,
-    });
+    void reportUserActivity({ action, status, summary, metadata });
   };
 
   const loadMaps = async () => {
@@ -172,7 +175,6 @@ export default function SystemMapsListClient() {
       return;
     }
     setCurrentUserId(user.id);
-    setCurrentUserEmail(user.email ?? null);
 
     const { data: memberRows, error: memberError } = await supabaseBrowser
       .schema("ms")
@@ -213,13 +215,12 @@ export default function SystemMapsListClient() {
       setError(null);
       try {
         await loadMaps();
-      } catch (loadError) {
+      } catch {
         setError("Unable to load system maps.");
       } finally {
         setIsLoading(false);
       }
     };
-
     run();
   }, []);
 
@@ -227,6 +228,17 @@ export default function SystemMapsListClient() {
     const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
     setPage((current) => Math.min(current, totalPages));
   }, [pageSize, rows.length]);
+
+  useEffect(() => {
+    if (!showCreateMenu) return;
+    const handleClick = (event: MouseEvent) => {
+      if (createMenuRef.current && !createMenuRef.current.contains(event.target as Node)) {
+        setShowCreateMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showCreateMenu]);
 
   const handleCreateMap = async (mapCategory: MapCategoryOption["id"]) => {
     try {
@@ -254,7 +266,6 @@ export default function SystemMapsListClient() {
       if (!createError && data?.id) {
         createdMapId = data.id;
       } else {
-        // Some RLS setups allow INSERT but block RETURNING payloads.
         const insertWithoutReturning = await supabaseBrowser
           .schema("ms")
           .from("system_maps")
@@ -262,7 +273,7 @@ export default function SystemMapsListClient() {
             owner_id: user.id,
             title: mapCategory === "bow_tie" ? "Untitled Bow Tie Map" : mapCategory === "process_flow" ? "Untitled Process Flow Map" : "Untitled System Map",
             map_category: mapCategory,
-        });
+          });
 
         if (insertWithoutReturning.error) {
           recordMapActivity("map_creation", "failed", "Map creation failed.", {
@@ -294,9 +305,7 @@ export default function SystemMapsListClient() {
       }
 
       if (!createdMapId) {
-        recordMapActivity("map_creation", "failed", "Map id could not be resolved.", {
-          mapCategory,
-        });
+        recordMapActivity("map_creation", "failed", "Map id could not be resolved.", { mapCategory });
         setError("Map created, but the new map id could not be resolved.");
         return;
       }
@@ -304,29 +313,17 @@ export default function SystemMapsListClient() {
       const { error: memberInsertError } = await supabaseBrowser
         .schema("ms")
         .from("map_members")
-        .upsert(
-          {
-            map_id: createdMapId,
-            user_id: user.id,
-            role: "full_write",
-          },
-          { onConflict: "map_id,user_id" }
-        );
+        .upsert({ map_id: createdMapId, user_id: user.id, role: "full_write" }, { onConflict: "map_id,user_id" });
 
       if (memberInsertError) {
         recordMapActivity("map_creation", "failed", "Map permissions failed.", {
-          mapId: createdMapId,
-          mapCategory,
-          error: memberInsertError.message,
+          mapId: createdMapId, mapCategory, error: memberInsertError.message,
         });
         setError(memberInsertError.message || "Map created, but owner permissions could not be assigned.");
         return;
       }
 
-      recordMapActivity("map_creation", "success", "Map created.", {
-        mapId: createdMapId,
-        mapCategory,
-      });
+      recordMapActivity("map_creation", "success", "Map created.", { mapId: createdMapId, mapCategory });
       router.push(`/system-maps/${createdMapId}`);
     } catch (createError) {
       recordMapActivity("map_creation", "failed", "Map creation failed.", {
@@ -343,7 +340,7 @@ export default function SystemMapsListClient() {
   const getAccessLabel = (row: SystemMapRow) => {
     if (!row.role) return "Read access";
     const role = row.role.toLowerCase();
-    if (role === "full_write") return row.owner_id ? "Full write" : "Full write";
+    if (role === "full_write") return "Full write";
     if (role === "partial_write") return "Partial write";
     if (role === "read") return "Read access";
     return row.role;
@@ -379,9 +376,7 @@ export default function SystemMapsListClient() {
 
       const { error: linkError } = await supabaseBrowser
         .schema("ms")
-        .rpc("link_map_to_profile_by_code", {
-          p_map_code: code,
-        });
+        .rpc("link_map_to_profile_by_code", { p_map_code: code });
 
       if (linkError) {
         setError(linkError.message || "Unable to link map to your profile with this code.");
@@ -391,7 +386,7 @@ export default function SystemMapsListClient() {
       setMapCodeInput("");
       setShowLinkForm(false);
       await loadMaps();
-    } catch (linkErr) {
+    } catch {
       setError("Unable to link map to your profile.");
     } finally {
       setIsLinking(false);
@@ -414,24 +409,18 @@ export default function SystemMapsListClient() {
 
       if (deleteError) {
         recordMapActivity("map_deletion", "failed", "Map deletion failed.", {
-          mapId: row.id,
-          mapTitle: row.title,
-          error: deleteError.message,
+          mapId: row.id, mapTitle: row.title, error: deleteError.message,
         });
         setError(deleteError.message || "Unable to delete system map.");
         return;
       }
 
-      recordMapActivity("map_deletion", "success", "Map deleted.", {
-        mapId: row.id,
-        mapTitle: row.title,
-      });
+      recordMapActivity("map_deletion", "success", "Map deleted.", { mapId: row.id, mapTitle: row.title });
       setRows((prev) => prev.filter((item) => item.id !== row.id));
       setPendingDeleteRow(null);
     } catch (deleteError) {
       recordMapActivity("map_deletion", "failed", "Map deletion failed.", {
-        mapId: row.id,
-        mapTitle: row.title,
+        mapId: row.id, mapTitle: row.title,
         error: deleteError instanceof Error ? deleteError.message : String(deleteError),
       });
       setError("Unable to delete system map.");
@@ -451,10 +440,7 @@ export default function SystemMapsListClient() {
     const recordDuplicateActivity = (status: "success" | "failed" | "info", summary: string, metadata: Record<string, unknown> = {}) => {
       duplicateActivityLogged = true;
       recordMapActivity("map_duplication", status, summary, {
-        sourceMapId: row.id,
-        sourceMapTitle: row.title,
-        duplicatedMapId: createdMapId,
-        ...metadata,
+        sourceMapId: row.id, sourceMapTitle: row.title, duplicatedMapId: createdMapId, ...metadata,
       });
     };
     const throwIfCancelled = () => {
@@ -480,14 +466,13 @@ export default function SystemMapsListClient() {
         supabaseBrowser.schema("ms").from("document_outline_items").select("*", { count: "exact", head: true }).eq("map_id", mapId),
       ]);
 
-      const totalRemaining =
-        Number(mapsCheck.count ?? 0) +
-        Number(nodesCheck.count ?? 0) +
-        Number(elementsCheck.count ?? 0) +
-        Number(relationsCheck.count ?? 0) +
-        Number(outlineCheck.count ?? 0);
-      return totalRemaining;
+      return (
+        Number(mapsCheck.count ?? 0) + Number(nodesCheck.count ?? 0) +
+        Number(elementsCheck.count ?? 0) + Number(relationsCheck.count ?? 0) +
+        Number(outlineCheck.count ?? 0)
+      );
     };
+
     try {
       setDuplicatingMapId(row.id);
       duplicateAbortRef.current = false;
@@ -502,9 +487,7 @@ export default function SystemMapsListClient() {
 
       const canDuplicate = row.owner_id === user.id || !!row.role;
       if (!canDuplicate) {
-        recordDuplicateActivity("failed", "Map duplication denied.", {
-          reason: "insufficient_access",
-        });
+        recordDuplicateActivity("failed", "Map duplication denied.", { reason: "insufficient_access" });
         setError("You do not have access to duplicate this map.");
         return;
       }
@@ -513,51 +496,24 @@ export default function SystemMapsListClient() {
       const duplicateTitle = `${row.title} (Copy)`;
       setProgress(10, "Creating duplicate map...");
       const { data: createdMap, error: createMapError } = await supabaseBrowser
-        .schema("ms")
-        .from("system_maps")
-        .insert({
-          owner_id: user.id,
-          title: duplicateTitle,
-          description: row.description,
-          map_category: row.map_category ?? "document_map",
-        })
-        .select("id")
-        .single();
+        .schema("ms").from("system_maps")
+        .insert({ owner_id: user.id, title: duplicateTitle, description: row.description, map_category: row.map_category ?? "document_map" })
+        .select("id").single();
 
       if (!createMapError && createdMap?.id) {
         createdMapId = createdMap.id;
       } else {
-        const fallbackInsert = await supabaseBrowser
-          .schema("ms")
-          .from("system_maps")
-          .insert({
-            owner_id: user.id,
-            title: duplicateTitle,
-            description: row.description,
-            map_category: row.map_category ?? "document_map",
-        });
+        const fallbackInsert = await supabaseBrowser.schema("ms").from("system_maps")
+          .insert({ owner_id: user.id, title: duplicateTitle, description: row.description, map_category: row.map_category ?? "document_map" });
         if (fallbackInsert.error) {
-          recordDuplicateActivity("failed", "Map duplication failed.", {
-            stage: "create_map",
-            error: createMapError?.message || fallbackInsert.error.message,
-          });
+          recordDuplicateActivity("failed", "Map duplication failed.", { stage: "create_map", error: createMapError?.message || fallbackInsert.error.message });
           setError(createMapError?.message || fallbackInsert.error.message || "Unable to duplicate map.");
           return;
         }
-        const latestMap = await supabaseBrowser
-          .schema("ms")
-          .from("system_maps")
-          .select("id")
-          .eq("owner_id", user.id)
-          .eq("title", duplicateTitle)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const latestMap = await supabaseBrowser.schema("ms").from("system_maps").select("id")
+          .eq("owner_id", user.id).eq("title", duplicateTitle).order("created_at", { ascending: false }).limit(1).maybeSingle();
         if (latestMap.error || !latestMap.data?.id) {
-          recordDuplicateActivity("failed", "Duplicate id could not be resolved.", {
-            stage: "resolve_map_id",
-            error: latestMap.error?.message ?? null,
-          });
+          recordDuplicateActivity("failed", "Duplicate id could not be resolved.", { stage: "resolve_map_id", error: latestMap.error?.message ?? null });
           setError(latestMap.error?.message || "Map duplicated, but new map id could not be resolved.");
           return;
         }
@@ -565,22 +521,10 @@ export default function SystemMapsListClient() {
       }
 
       throwIfCancelled();
-      const { error: memberInsertError } = await supabaseBrowser
-        .schema("ms")
-        .from("map_members")
-        .upsert(
-          {
-            map_id: createdMapId,
-            user_id: user.id,
-            role: "full_write",
-          },
-          { onConflict: "map_id,user_id" }
-        );
+      const { error: memberInsertError } = await supabaseBrowser.schema("ms").from("map_members")
+        .upsert({ map_id: createdMapId, user_id: user.id, role: "full_write" }, { onConflict: "map_id,user_id" });
       if (memberInsertError) {
-        recordDuplicateActivity("failed", "Duplicate permissions failed.", {
-          stage: "assign_permissions",
-          error: memberInsertError.message,
-        });
+        recordDuplicateActivity("failed", "Duplicate permissions failed.", { stage: "assign_permissions", error: memberInsertError.message });
         setError(memberInsertError.message || "Map duplicated, but owner permissions could not be assigned.");
         setProgress(100, "Failed to assign owner access.", "error");
         return;
@@ -588,54 +532,19 @@ export default function SystemMapsListClient() {
 
       setProgress(16, "Loading source map data...");
       const [typesRes, nodesRes, elementsRes, relationsRes, outlineRes] = await Promise.all([
-        supabaseBrowser
-          .schema("ms")
-          .from("document_types")
-          .select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active")
-          .eq("map_id", row.id),
-        supabaseBrowser
-          .schema("ms")
-          .from("document_nodes")
-          .select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived")
-          .eq("map_id", row.id),
-        supabaseBrowser
-          .schema("ms")
-          .from("canvas_elements")
-          .select("id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height")
-          .eq("map_id", row.id),
-        supabaseBrowser
-          .schema("ms")
-          .from("node_relations")
-          .select(
-            "id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,source_system_element_id,target_system_element_id,relation_type,relationship_description,relationship_disciplines,relationship_category,relationship_custom_type"
-          )
-          .eq("map_id", row.id),
-        supabaseBrowser
-          .schema("ms")
-          .from("document_outline_items")
-          .select("id,map_id,node_id,kind,heading_level,parent_heading_id,heading_id,title,content_text,sort_order")
-          .eq("map_id", row.id),
+        supabaseBrowser.schema("ms").from("document_types").select("id,map_id,name,level_rank,band_y_min,band_y_max,is_active").eq("map_id", row.id),
+        supabaseBrowser.schema("ms").from("document_nodes").select("id,map_id,type_id,title,document_number,discipline,owner_user_id,owner_name,user_group,pos_x,pos_y,width,height,is_archived").eq("map_id", row.id),
+        supabaseBrowser.schema("ms").from("canvas_elements").select("id,map_id,element_type,heading,color_hex,created_by_user_id,element_config,pos_x,pos_y,width,height").eq("map_id", row.id),
+        supabaseBrowser.schema("ms").from("node_relations").select("id,map_id,from_node_id,to_node_id,source_grouping_element_id,target_grouping_element_id,source_system_element_id,target_system_element_id,relation_type,relationship_description,relationship_disciplines,relationship_category,relationship_custom_type").eq("map_id", row.id),
+        supabaseBrowser.schema("ms").from("document_outline_items").select("id,map_id,node_id,kind,heading_level,parent_heading_id,heading_id,title,content_text,sort_order").eq("map_id", row.id),
       ]);
 
       if (typesRes.error || nodesRes.error || elementsRes.error || relationsRes.error || outlineRes.error) {
         recordDuplicateActivity("failed", "Duplicate source load failed.", {
           stage: "load_source_data",
-          error:
-            typesRes.error?.message ||
-            nodesRes.error?.message ||
-            elementsRes.error?.message ||
-            relationsRes.error?.message ||
-            outlineRes.error?.message ||
-            null,
+          error: typesRes.error?.message || nodesRes.error?.message || elementsRes.error?.message || relationsRes.error?.message || outlineRes.error?.message || null,
         });
-        setError(
-          typesRes.error?.message ||
-            nodesRes.error?.message ||
-            elementsRes.error?.message ||
-            relationsRes.error?.message ||
-            outlineRes.error?.message ||
-            "Unable to load source map data for duplication."
-        );
+        setError(typesRes.error?.message || nodesRes.error?.message || elementsRes.error?.message || relationsRes.error?.message || outlineRes.error?.message || "Unable to load source map data for duplication.");
         setProgress(100, "Failed while loading source data.", "error");
         return;
       }
@@ -654,24 +563,11 @@ export default function SystemMapsListClient() {
       setProgress(24, "Cloning document types...");
       for (const sourceType of sourceTypes) {
         throwIfCancelled();
-        const { data: insertedType, error: insertTypeError } = await supabaseBrowser
-          .schema("ms")
-          .from("document_types")
-          .insert({
-            map_id: createdMapId,
-            name: sourceType.name,
-            level_rank: sourceType.level_rank,
-            band_y_min: sourceType.band_y_min,
-            band_y_max: sourceType.band_y_max,
-            is_active: sourceType.is_active,
-          })
-          .select("id")
-          .single();
+        const { data: insertedType, error: insertTypeError } = await supabaseBrowser.schema("ms").from("document_types")
+          .insert({ map_id: createdMapId, name: sourceType.name, level_rank: sourceType.level_rank, band_y_min: sourceType.band_y_min, band_y_max: sourceType.band_y_max, is_active: sourceType.is_active })
+          .select("id").single();
         if (insertTypeError || !insertedType?.id) {
-          recordDuplicateActivity("failed", "Duplicate document types failed.", {
-            stage: "document_types",
-            error: insertTypeError?.message ?? null,
-          });
+          recordDuplicateActivity("failed", "Duplicate document types failed.", { stage: "document_types", error: insertTypeError?.message ?? null });
           setError(insertTypeError?.message || "Unable to duplicate document hierarchy.");
           setProgress(100, "Failed while duplicating document types.", "error");
           return;
@@ -682,31 +578,11 @@ export default function SystemMapsListClient() {
       setProgress(42, "Cloning document nodes...");
       for (const sourceNode of sourceNodes) {
         throwIfCancelled();
-        const { data: insertedNode, error: insertNodeError } = await supabaseBrowser
-          .schema("ms")
-          .from("document_nodes")
-          .insert({
-            map_id: createdMapId,
-            type_id: typeIdMap.get(sourceNode.type_id) ?? sourceNode.type_id,
-            title: sourceNode.title,
-            document_number: sourceNode.document_number,
-            discipline: sourceNode.discipline,
-            owner_user_id: sourceNode.owner_user_id,
-            owner_name: sourceNode.owner_name,
-            user_group: sourceNode.user_group,
-            pos_x: sourceNode.pos_x,
-            pos_y: sourceNode.pos_y,
-            width: sourceNode.width,
-            height: sourceNode.height,
-            is_archived: sourceNode.is_archived,
-          })
-          .select("id")
-          .single();
+        const { data: insertedNode, error: insertNodeError } = await supabaseBrowser.schema("ms").from("document_nodes")
+          .insert({ map_id: createdMapId, type_id: typeIdMap.get(sourceNode.type_id) ?? sourceNode.type_id, title: sourceNode.title, document_number: sourceNode.document_number, discipline: sourceNode.discipline, owner_user_id: sourceNode.owner_user_id, owner_name: sourceNode.owner_name, user_group: sourceNode.user_group, pos_x: sourceNode.pos_x, pos_y: sourceNode.pos_y, width: sourceNode.width, height: sourceNode.height, is_archived: sourceNode.is_archived })
+          .select("id").single();
         if (insertNodeError || !insertedNode?.id) {
-          recordDuplicateActivity("failed", "Duplicate document nodes failed.", {
-            stage: "document_nodes",
-            error: insertNodeError?.message ?? null,
-          });
+          recordDuplicateActivity("failed", "Duplicate document nodes failed.", { stage: "document_nodes", error: insertNodeError?.message ?? null });
           setError(insertNodeError?.message || "Unable to duplicate document nodes.");
           setProgress(100, "Failed while duplicating document nodes.", "error");
           return;
@@ -717,28 +593,11 @@ export default function SystemMapsListClient() {
       setProgress(62, "Cloning canvas components...");
       for (const sourceElement of sourceElements) {
         throwIfCancelled();
-        const { data: insertedElement, error: insertElementError } = await supabaseBrowser
-          .schema("ms")
-          .from("canvas_elements")
-          .insert({
-            map_id: createdMapId,
-            element_type: sourceElement.element_type,
-            heading: sourceElement.heading,
-            color_hex: sourceElement.color_hex,
-            created_by_user_id: sourceElement.created_by_user_id,
-            element_config: sourceElement.element_config,
-            pos_x: sourceElement.pos_x,
-            pos_y: sourceElement.pos_y,
-            width: sourceElement.width,
-            height: sourceElement.height,
-          })
-          .select("id")
-          .single();
+        const { data: insertedElement, error: insertElementError } = await supabaseBrowser.schema("ms").from("canvas_elements")
+          .insert({ map_id: createdMapId, element_type: sourceElement.element_type, heading: sourceElement.heading, color_hex: sourceElement.color_hex, created_by_user_id: sourceElement.created_by_user_id, element_config: sourceElement.element_config, pos_x: sourceElement.pos_x, pos_y: sourceElement.pos_y, width: sourceElement.width, height: sourceElement.height })
+          .select("id").single();
         if (insertElementError || !insertedElement?.id) {
-          recordDuplicateActivity("failed", "Duplicate canvas items failed.", {
-            stage: "canvas_elements",
-            error: insertElementError?.message ?? null,
-          });
+          recordDuplicateActivity("failed", "Duplicate canvas items failed.", { stage: "canvas_elements", error: insertElementError?.message ?? null });
           setError(insertElementError?.message || "Unable to duplicate canvas elements.");
           setProgress(100, "Failed while duplicating canvas components.", "error");
           return;
@@ -749,25 +608,15 @@ export default function SystemMapsListClient() {
       setProgress(78, "Cloning relationships...");
       for (const sourceRelation of sourceRelations) {
         throwIfCancelled();
-        const { error: insertRelationError } = await supabaseBrowser
-          .schema("ms")
-          .from("node_relations")
+        const { error: insertRelationError } = await supabaseBrowser.schema("ms").from("node_relations")
           .insert({
             map_id: createdMapId,
             from_node_id: sourceRelation.from_node_id ? nodeIdMap.get(sourceRelation.from_node_id) ?? null : null,
             to_node_id: sourceRelation.to_node_id ? nodeIdMap.get(sourceRelation.to_node_id) ?? null : null,
-            source_grouping_element_id: sourceRelation.source_grouping_element_id
-              ? elementIdMap.get(sourceRelation.source_grouping_element_id) ?? null
-              : null,
-            target_grouping_element_id: sourceRelation.target_grouping_element_id
-              ? elementIdMap.get(sourceRelation.target_grouping_element_id) ?? null
-              : null,
-            source_system_element_id: sourceRelation.source_system_element_id
-              ? elementIdMap.get(sourceRelation.source_system_element_id) ?? null
-              : null,
-            target_system_element_id: sourceRelation.target_system_element_id
-              ? elementIdMap.get(sourceRelation.target_system_element_id) ?? null
-              : null,
+            source_grouping_element_id: sourceRelation.source_grouping_element_id ? elementIdMap.get(sourceRelation.source_grouping_element_id) ?? null : null,
+            target_grouping_element_id: sourceRelation.target_grouping_element_id ? elementIdMap.get(sourceRelation.target_grouping_element_id) ?? null : null,
+            source_system_element_id: sourceRelation.source_system_element_id ? elementIdMap.get(sourceRelation.source_system_element_id) ?? null : null,
+            target_system_element_id: sourceRelation.target_system_element_id ? elementIdMap.get(sourceRelation.target_system_element_id) ?? null : null,
             relation_type: sourceRelation.relation_type,
             relationship_description: sourceRelation.relationship_description,
             relationship_disciplines: sourceRelation.relationship_disciplines,
@@ -775,10 +624,7 @@ export default function SystemMapsListClient() {
             relationship_custom_type: sourceRelation.relationship_custom_type,
           });
         if (insertRelationError) {
-          recordDuplicateActivity("failed", "Duplicate relationships failed.", {
-            stage: "node_relations",
-            error: insertRelationError.message,
-          });
+          recordDuplicateActivity("failed", "Duplicate relationships failed.", { stage: "node_relations", error: insertRelationError.message });
           setError(insertRelationError.message || "Unable to duplicate relationships.");
           setProgress(100, "Failed while duplicating relationships.", "error");
           return;
@@ -788,29 +634,11 @@ export default function SystemMapsListClient() {
       setProgress(88, "Cloning structure content...");
       for (const sourceHeading of sourceOutlineItems.filter((item) => item.kind === "heading")) {
         throwIfCancelled();
-        const { data: insertedHeading, error: insertHeadingError } = await supabaseBrowser
-          .schema("ms")
-          .from("document_outline_items")
-          .insert({
-            map_id: createdMapId,
-            node_id: nodeIdMap.get(sourceHeading.node_id) ?? sourceHeading.node_id,
-            kind: sourceHeading.kind,
-            heading_level: sourceHeading.heading_level,
-            parent_heading_id: sourceHeading.parent_heading_id
-              ? outlineHeadingIdMap.get(sourceHeading.parent_heading_id) ?? null
-              : null,
-            heading_id: null,
-            title: sourceHeading.title,
-            content_text: sourceHeading.content_text,
-            sort_order: sourceHeading.sort_order,
-          })
-          .select("id")
-          .single();
+        const { data: insertedHeading, error: insertHeadingError } = await supabaseBrowser.schema("ms").from("document_outline_items")
+          .insert({ map_id: createdMapId, node_id: nodeIdMap.get(sourceHeading.node_id) ?? sourceHeading.node_id, kind: sourceHeading.kind, heading_level: sourceHeading.heading_level, parent_heading_id: sourceHeading.parent_heading_id ? outlineHeadingIdMap.get(sourceHeading.parent_heading_id) ?? null : null, heading_id: null, title: sourceHeading.title, content_text: sourceHeading.content_text, sort_order: sourceHeading.sort_order })
+          .select("id").single();
         if (insertHeadingError || !insertedHeading?.id) {
-          recordDuplicateActivity("failed", "Duplicate headings failed.", {
-            stage: "outline_headings",
-            error: insertHeadingError?.message ?? null,
-          });
+          recordDuplicateActivity("failed", "Duplicate headings failed.", { stage: "outline_headings", error: insertHeadingError?.message ?? null });
           setError(insertHeadingError?.message || "Unable to duplicate map structure headings.");
           setProgress(100, "Failed while duplicating structure headings.", "error");
           return;
@@ -820,27 +648,10 @@ export default function SystemMapsListClient() {
 
       for (const sourceContent of sourceOutlineItems.filter((item) => item.kind === "content")) {
         throwIfCancelled();
-        const { error: insertContentError } = await supabaseBrowser
-          .schema("ms")
-          .from("document_outline_items")
-          .insert({
-            map_id: createdMapId,
-            node_id: nodeIdMap.get(sourceContent.node_id) ?? sourceContent.node_id,
-            kind: sourceContent.kind,
-            heading_level: sourceContent.heading_level,
-            parent_heading_id: sourceContent.parent_heading_id
-              ? outlineHeadingIdMap.get(sourceContent.parent_heading_id) ?? null
-              : null,
-            heading_id: sourceContent.heading_id ? outlineHeadingIdMap.get(sourceContent.heading_id) ?? null : null,
-            title: sourceContent.title,
-            content_text: sourceContent.content_text,
-            sort_order: sourceContent.sort_order,
-          });
+        const { error: insertContentError } = await supabaseBrowser.schema("ms").from("document_outline_items")
+          .insert({ map_id: createdMapId, node_id: nodeIdMap.get(sourceContent.node_id) ?? sourceContent.node_id, kind: sourceContent.kind, heading_level: sourceContent.heading_level, parent_heading_id: sourceContent.parent_heading_id ? outlineHeadingIdMap.get(sourceContent.parent_heading_id) ?? null : null, heading_id: sourceContent.heading_id ? outlineHeadingIdMap.get(sourceContent.heading_id) ?? null : null, title: sourceContent.title, content_text: sourceContent.content_text, sort_order: sourceContent.sort_order });
         if (insertContentError) {
-          recordDuplicateActivity("failed", "Duplicate content failed.", {
-            stage: "outline_content",
-            error: insertContentError.message,
-          });
+          recordDuplicateActivity("failed", "Duplicate content failed.", { stage: "outline_content", error: insertContentError.message });
           setError(insertContentError.message || "Unable to duplicate map structure content.");
           setProgress(100, "Failed while duplicating structure content.", "error");
           return;
@@ -848,9 +659,7 @@ export default function SystemMapsListClient() {
       }
 
       setProgress(100, "Duplicate complete. Opening map...", "success");
-      recordDuplicateActivity("success", "Map duplicated.", {
-        duplicatedMapId: createdMapId,
-      });
+      recordDuplicateActivity("success", "Map duplicated.", { duplicatedMapId: createdMapId });
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setPendingDuplicateRow(null);
       router.push(`/system-maps/${createdMapId}`);
@@ -860,29 +669,15 @@ export default function SystemMapsListClient() {
         if (createdMapId) {
           const remaining = await cleanupDuplicatedMap(createdMapId);
           if (remaining === 0) {
-            setDuplicateProgress({
-              percent: 100,
-              message: "Duplication cancelled. No duplicated items remain.",
-              status: "aborted",
-            });
+            setDuplicateProgress({ percent: 100, message: "Duplication cancelled. No duplicated items remain.", status: "aborted" });
           } else {
-            setDuplicateProgress({
-              percent: 100,
-              message: `Duplication cancelled, but ${remaining} item(s) remain. Please retry cleanup.`,
-              status: "error",
-            });
+            setDuplicateProgress({ percent: 100, message: `Duplication cancelled, but ${remaining} item(s) remain. Please retry cleanup.`, status: "error" });
           }
         } else {
-          setDuplicateProgress({
-            percent: 100,
-            message: "Duplication cancelled before any map was created.",
-            status: "aborted",
-          });
+          setDuplicateProgress({ percent: 100, message: "Duplication cancelled before any map was created.", status: "aborted" });
         }
         if (!duplicateActivityLogged) {
-          recordDuplicateActivity("info", "Map duplication cancelled.", {
-            reason: "user_cancelled",
-          });
+          recordDuplicateActivity("info", "Map duplication cancelled.", { reason: "user_cancelled" });
         }
         await new Promise((resolve) => setTimeout(resolve, 1200));
         setPendingDuplicateRow(null);
@@ -907,18 +702,14 @@ export default function SystemMapsListClient() {
     if (!codeVisible) return;
     try {
       await navigator.clipboard.writeText(row.map_code as string);
-      recordMapActivity("sharing_code", "success", "Map code copied.", {
-        mapId: row.id,
-        mapTitle: row.title,
-      });
+      recordMapActivity("sharing_code", "success", "Map code copied.", { mapId: row.id, mapTitle: row.title });
       setCopiedMessage(`Map code copied for "${row.title}"`);
       window.setTimeout(() => {
         setCopiedMessage((prev) => (prev ? null : prev));
       }, 1400);
     } catch (copyError) {
       recordMapActivity("sharing_code", "failed", "Map code copy failed.", {
-        mapId: row.id,
-        mapTitle: row.title,
+        mapId: row.id, mapTitle: row.title,
         error: copyError instanceof Error ? copyError.message : String(copyError),
       });
       setError("Unable to copy map code.");
@@ -929,295 +720,310 @@ export default function SystemMapsListClient() {
   const safePage = Math.min(page, totalPages);
   const paginatedRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  if (isLoading) {
-    return (
-      <DashboardPageSkeleton
-        activeNav="dashboard"
-        eyebrow="Management System Maps"
-        title="Management System Maps"
-        subtitle="Create and manage management system design maps you own or that are shared with you."
-        rows={pageSize}
-        columns="22% 18% 14% 10% 12% 12% 12%"
-      />
-    );
-  }
+  const pageContent = (
+    <div className="flex flex-col min-h-full">
+      <div className="px-6 pt-5 pb-4 border-b border-neutral-100 bg-white flex-shrink-0">
+        <p className="text-[12px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">Management System Maps</p>
+        <h1 className="text-[20px] font-semibold text-neutral-900">Management System Maps</h1>
+        <p className="text-[13px] text-neutral-500 mt-[2px]">Create and manage management system design maps you own or that are shared with you.</p>
+      </div>
 
-  return (
-    <DashboardShell
-      activeNav="dashboard"
-      eyebrow="Management System Maps"
-      title="Management System Maps"
-      subtitle="Create and manage management system design maps you own or that are shared with you."
-      headerRight={
-        <div className={shellStyles.accountSummary}>
-          <div className={shellStyles.accountSummaryText}>
-            <div className={shellStyles.accountSummaryPrimary}>
-              <span className={shellStyles.accountSummaryLabel}>My account</span>
-              <strong>{currentUserEmail ?? "Signed in"}</strong>
+      <div className="flex-1 p-6 bg-[#f7f8fa] flex flex-col gap-4">
+        {isLoading ? (
+          <div className="animate-pulse flex flex-col gap-4">
+            <div className="flex justify-between">
+              <div className="h-8 w-36 rounded-lg bg-neutral-200" />
+              <div className="h-8 w-28 rounded-lg bg-neutral-200" />
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+              <div className="h-10 bg-neutral-50 border-b border-neutral-200" />
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-14 border-b border-neutral-100 px-4 flex items-center gap-4">
+                  <div className="h-4 w-1/5 rounded bg-neutral-100" />
+                  <div className="h-4 w-1/4 rounded bg-neutral-100" />
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-      }
-    >
-      <section className={shellStyles.accountCard}>
-        <div className={shellStyles.tableToolbar}>
-          <div className={shellStyles.toolbarControls}>
-            <div className={shellStyles.headerButtons}>
-              <LinkMapCodeControl
-                open={showLinkForm}
-                onOpenChange={setShowLinkForm}
-                value={mapCodeInput}
-                onValueChange={setMapCodeInput}
-                onSubmit={() => void handleLinkMapToProfile()}
-                busy={isLinking}
-                label="Link Map Code"
-              />
-              <div className={shellStyles.tableFilter}>
-                <button
-                  type="button"
-                  className={`${shellStyles.button} ${shellStyles.buttonAccent}`}
-                  onClick={() => setShowCreateMenu((prev) => !prev)}
-                  disabled={isCreating}
-                >
-                  <Image src="/icons/addcomponent.svg" alt="" width={16} height={16} className={shellStyles.buttonIcon} />
-                  {isCreating ? "Creating..." : "Create New"}
-                </button>
-                {showCreateMenu ? (
-                  <div className={shellStyles.tableFilterMenu}>
-                    <div className={shellStyles.tableFilterMenuHeader}>
-                      <strong>Map Category</strong>
-                    </div>
-                    <div className={shellStyles.tableFilterOptions}>
-                      {mapCategoryOptions.map((option) => (
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition",
+                      showLinkForm
+                        ? "border-[#2d9692] bg-[#2d9692]/5 text-[#2d9692]"
+                        : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                    )}
+                    onClick={() => setShowLinkForm((prev) => !prev)}
+                  >
+                    {showLinkForm ? <IconX size={14} /> : <IconLink size={14} />}
+                    Link Map Code
+                  </button>
+                  {showLinkForm ? (
+                    <form
+                      className="absolute left-0 top-full mt-1.5 z-10 w-72 rounded-xl border border-neutral-200 bg-white p-3 shadow-lg"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleLinkMapToProfile();
+                      }}
+                    >
+                      <label className="block text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-1.5" htmlFor="it-map-code">
+                        Map code
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          id="it-map-code"
+                          value={mapCodeInput}
+                          onChange={(event) => setMapCodeInput(event.target.value)}
+                          className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2d9692]/20 focus:border-[#2d9692]"
+                          placeholder="Enter shared map code"
+                          autoComplete="off"
+                        />
                         <button
-                          key={option.id}
-                          type="button"
-                          className={shellStyles.templatePickerOption}
-                          onClick={() => void handleCreateMap(option.id)}
-                          disabled={isCreating}
+                          type="submit"
+                          className="rounded-lg bg-[#2d9692] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#236e6b] disabled:opacity-50"
+                          disabled={isLinking}
                         >
-                          <strong>{option.label}</strong>
-                          <span>{option.description}</span>
+                          {isLinking ? "Linking..." : "Link"}
                         </button>
-                      ))}
+                      </div>
+                    </form>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={createMenuRef}>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#2d9692] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#236e6b] disabled:opacity-50"
+                    onClick={() => setShowCreateMenu((prev) => !prev)}
+                    disabled={isCreating}
+                  >
+                    <IconPlus size={14} />
+                    {isCreating ? "Creating..." : "Create New"}
+                  </button>
+                  {showCreateMenu ? (
+                    <div className="absolute right-0 top-full mt-1.5 z-10 w-72 rounded-xl border border-neutral-200 bg-white p-2 shadow-lg">
+                      <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Map Category</p>
+                      <div className="flex flex-col gap-0.5">
+                        {mapCategoryOptions.map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            className="flex flex-col rounded-lg px-3 py-2 text-left text-[13px] transition hover:bg-neutral-50 disabled:opacity-50"
+                            onClick={() => void handleCreateMap(option.id)}
+                            disabled={isCreating}
+                          >
+                            <strong className="font-medium text-neutral-900">{option.label}</strong>
+                            <span className="text-[12px] text-neutral-500">{option.description}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {error ? <p className={`${shellStyles.message} ${shellStyles.messageError}`}>{error}</p> : null}
-        {copiedMessage ? <p className={`${shellStyles.message} ${shellStyles.messageSuccess}`}>{copiedMessage}</p> : null}
+            {error ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-600">{error}</div>
+            ) : null}
+            {copiedMessage ? (
+              <div className="rounded-lg border border-[#2d9692]/20 bg-[#2d9692]/5 px-4 py-3 text-[13px] text-[#2d9692]">{copiedMessage}</div>
+            ) : null}
 
-        <div className={`${shellStyles.tableWrap} ${shellStyles.reportDataTableWrap}`}>
-          <table className={`${shellStyles.table} ${shellStyles.reportDataTable}`}>
-            <colgroup>
-              <col style={{ width: "18%" }} />
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "12%" }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Description</th>
-                <th>Category</th>
-                <th>Access</th>
-                <th>Map code</th>
-                <th>Updated</th>
-                <th>Created</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
+            <div className="hidden md:block rounded-xl border border-neutral-200 bg-white overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <colgroup>
+                    <col style={{ width: "18%" }} />
+                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "12%" }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="bg-neutral-50 border-b border-neutral-200">
+                      {["Title", "Description", "Category", "Access", "Map code", "Updated", "Created", "Actions"].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-neutral-500">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-10 text-center text-[13px] text-neutral-500">
+                          No maps have been added. Create a new map or link one to your profile.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedRows.map((row) => {
+                        const canCopy = row.owner_id === currentUserId && !!row.map_code;
+                        const canDuplicate = !!row.role || row.owner_id === currentUserId;
+                        const canDelete = row.owner_id === currentUserId;
+
+                        return (
+                          <tr
+                            key={row.id}
+                            className="hover:bg-neutral-50 cursor-pointer transition-colors"
+                            onClick={() => router.push(`/system-maps/${row.id}`)}
+                            tabIndex={0}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                router.push(`/system-maps/${row.id}`);
+                              }
+                            }}
+                          >
+                            <td className="px-4 py-3">
+                              <strong className="block max-w-[160px] truncate font-medium text-neutral-900">{row.title}</strong>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="block max-w-[200px] truncate text-neutral-600" title={row.description || "-"}>{row.description || "-"}</span>
+                            </td>
+                            <td className="px-4 py-3 text-neutral-600">{getCategoryLabel(row)}</td>
+                            <td className="px-4 py-3 text-neutral-600">{getAccessLabel(row)}</td>
+                            <td className="px-4 py-3 text-neutral-600">{row.owner_id === currentUserId ? row.map_code || "-" : "-"}</td>
+                            <td className="px-4 py-3 text-neutral-500 text-[12px]">{formatDateTime(row.updated_at)}</td>
+                            <td className="px-4 py-3 text-neutral-500 text-[12px]">{formatDateTime(row.created_at)}</td>
+                            <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  title={canCopy ? "Copy map code" : "Not available"}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40"
+                                  disabled={!canCopy}
+                                  onClick={() => void handleCopyCode(row)}
+                                >
+                                  <IconCopy size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={canDuplicate ? "Duplicate map" : "No permission"}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40"
+                                  disabled={!canDuplicate || duplicatingMapId === row.id}
+                                  onClick={() => {
+                                    setPendingDuplicateRow(row);
+                                    setDuplicateCancelRequested(false);
+                                    duplicateAbortRef.current = false;
+                                    setDuplicateProgress({ percent: 0, message: "", status: "idle" });
+                                  }}
+                                >
+                                  <IconFiles size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={canDelete ? "Delete map" : "Only the map creator can delete"}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center text-neutral-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                                  disabled={!canDelete || deletingMapId === row.id}
+                                  onClick={() => setPendingDeleteRow(row)}
+                                >
+                                  <IconTrash size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="flex flex-col gap-3 md:hidden">
               {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className={shellStyles.tableStateCell}>
-                    <div className={shellStyles.tableEmptyState}>No maps have been added. Create a new map or link one to your profile.</div>
-                  </td>
-                </tr>
+                <div className="rounded-xl border border-neutral-200 bg-white p-6 text-center text-[13px] text-neutral-500">
+                  No maps have been added. Create a new map or link one to your profile.
+                </div>
               ) : (
                 paginatedRows.map((row) => {
                   const canCopy = row.owner_id === currentUserId && !!row.map_code;
                   const canDuplicate = !!row.role || row.owner_id === currentUserId;
                   const canDelete = row.owner_id === currentUserId;
-                  const copyTitle = canCopy
-                    ? "Copy map code"
-                    : row.owner_id !== currentUserId
-                      ? "Map code is only visible to the map owner"
-                      : "No map code available to copy";
-                  const duplicateTitle = canDuplicate ? "Duplicate map" : "You do not have permission to duplicate this map";
-                  const deleteTitle = canDelete ? "Delete map" : "Only the map creator can delete this map";
 
                   return (
-                    <tr
-                      key={row.id}
-                      className={shellStyles.clickableRow}
-                      onClick={() => router.push(`/system-maps/${row.id}`)}
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          router.push(`/system-maps/${row.id}`);
-                        }
-                      }}
-                    >
-                      <td>
-                        <div className={shellStyles.mapCell}>
-                          <div className={shellStyles.mapCellText}>
-                            <strong className={shellStyles.tableClamp}>{row.title}</strong>
-                          </div>
-                        </div>
-                      </td>
-                      <td><span className={shellStyles.tableClamp} title={row.description || "-"}>{row.description || "-"}</span></td>
-                      <td><span className={shellStyles.tableClamp} title={getCategoryLabel(row)}>{getCategoryLabel(row)}</span></td>
-                      <td><span className={shellStyles.tableClamp}>{getAccessLabel(row)}</span></td>
-                      <td><span className={shellStyles.tableClamp}>{row.owner_id === currentUserId ? row.map_code || "-" : "-"}</span></td>
-                      <td><span className={shellStyles.tableDate}>{formatDateTime(row.updated_at)}</span></td>
-                      <td><span className={shellStyles.tableDate}>{formatDateTime(row.created_at)}</span></td>
-                      <td onClick={(event) => event.stopPropagation()}>
-                        <div className={shellStyles.actionButtons}>
-                          <button type="button" title={copyTitle} aria-label={copyTitle} className={shellStyles.actionButton} disabled={!canCopy} onClick={() => void handleCopyCode(row)}>
-                            <Image src="/icons/structure.svg" alt="" width={16} height={16} className={shellStyles.actionIcon} />
-                          </button>
-                          <button
-                            type="button"
-                            title={duplicateTitle}
-                            aria-label={duplicateTitle}
-                            className={shellStyles.actionButton}
-                            disabled={!canDuplicate || duplicatingMapId === row.id}
-                            onClick={() => {
-                              setPendingDuplicateRow(row);
-                              setDuplicateCancelRequested(false);
-                              duplicateAbortRef.current = false;
-                              setDuplicateProgress({ percent: 0, message: "", status: "idle" });
-                            }}
-                          >
-                            <Image src="/icons/addcomponent.svg" alt="" width={16} height={16} className={shellStyles.actionIcon} />
-                          </button>
-                          <button type="button" title={deleteTitle} aria-label={deleteTitle} className={`${shellStyles.actionButton} ${shellStyles.actionButtonDanger}`} disabled={!canDelete || deletingMapId === row.id} onClick={() => setPendingDeleteRow(row)}>
-                            <Image src="/icons/delete.svg" alt="" width={16} height={16} className={shellStyles.actionIcon} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <div key={`mobile-${row.id}`} className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+                      <button type="button" className="w-full p-4 text-left" onClick={() => router.push(`/system-maps/${row.id}`)}>
+                        <strong className="block text-[14px] font-semibold text-neutral-900">{row.title}</strong>
+                        <p className="mt-0.5 text-[12px] text-neutral-500">{row.description || "No description"}</p>
+                      </button>
+                      <div className="grid grid-cols-2 gap-3 px-4 pb-3 text-[12px]">
+                        <div><span className="text-neutral-400">Category</span><p className="font-medium text-neutral-700 mt-0.5">{getCategoryLabel(row)}</p></div>
+                        <div><span className="text-neutral-400">Access</span><p className="font-medium text-neutral-700 mt-0.5">{getAccessLabel(row)}</p></div>
+                        <div><span className="text-neutral-400">Updated</span><p className="font-medium text-neutral-700 mt-0.5">{formatDateTime(row.updated_at)}</p></div>
+                        <div><span className="text-neutral-400">Created</span><p className="font-medium text-neutral-700 mt-0.5">{formatDateTime(row.created_at)}</p></div>
+                      </div>
+                      <div className="flex gap-2 px-4 pb-4">
+                        <button type="button" className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-40" disabled={!canCopy} onClick={() => void handleCopyCode(row)}>
+                          <IconCopy size={12} />Copy Code
+                        </button>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+                          disabled={!canDuplicate || duplicatingMapId === row.id}
+                          onClick={() => { setPendingDuplicateRow(row); setDuplicateCancelRequested(false); duplicateAbortRef.current = false; setDuplicateProgress({ percent: 0, message: "", status: "idle" }); }}
+                        >
+                          <IconFiles size={12} />{duplicatingMapId === row.id ? "Duplicating..." : "Duplicate"}
+                        </button>
+                        <button type="button" className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[12px] text-red-600 hover:bg-red-100 disabled:opacity-40" disabled={!canDelete || deletingMapId === row.id} onClick={() => setPendingDeleteRow(row)}>
+                          <IconTrash size={12} />{deletingMapId === row.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </div>
                   );
                 })
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
 
-        <div className={shellStyles.dashboardMobileList}>
-          {rows.length === 0 ? (
-            <div className={shellStyles.dashboardMobileState}>No maps have been added. Create a new map or link one to your profile.</div>
-          ) : (
-            paginatedRows.map((row) => {
-              const canCopy = row.owner_id === currentUserId && !!row.map_code;
-              const canDuplicate = !!row.role || row.owner_id === currentUserId;
-              const canDelete = row.owner_id === currentUserId;
-
-              return (
-                <article key={`mobile-${row.id}`} className={shellStyles.dashboardMobileCard}>
-                  <button type="button" className={shellStyles.dashboardMobileCardToggle} onClick={() => router.push(`/system-maps/${row.id}`)}>
-                    <div className={shellStyles.dashboardMobileCardHeader}>
-                      <div className={shellStyles.dashboardMobileCardTitleBlock}>
-                        <strong>{row.title}</strong>
-                        <span>{row.description || "No description"}</span>
-                      </div>
-                    </div>
+            {rows.length > 0 && (
+              <div className="flex items-center justify-between text-[13px] text-neutral-500">
+                <span>{rows.length} map{rows.length !== 1 ? "s" : ""} — page {safePage} of {totalPages}</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="w-7 h-7 rounded-md flex items-center justify-center border border-neutral-200 bg-white text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-40"
+                    disabled={safePage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    <IconChevronLeft size={14} />
                   </button>
-
-                  <dl className={shellStyles.dashboardMobileMeta}>
-                    <div>
-                      <dt>Category</dt>
-                      <dd>{getCategoryLabel(row)}</dd>
-                    </div>
-                    <div>
-                      <dt>Access</dt>
-                      <dd>{getAccessLabel(row)}</dd>
-                    </div>
-                    <div className={shellStyles.dashboardMobileMetaDate}>
-                      <dt>Updated</dt>
-                      <dd>{formatDateTime(row.updated_at)}</dd>
-                    </div>
-                    <div className={shellStyles.dashboardMobileMetaDate}>
-                      <dt>Created</dt>
-                      <dd>{formatDateTime(row.created_at)}</dd>
-                    </div>
-                  </dl>
-
-                  <div className={shellStyles.dashboardMobileActions}>
-                    <button type="button" className={`${shellStyles.button} ${shellStyles.buttonSecondary} ${shellStyles.dashboardMobileActionButton}`} disabled={!canCopy} onClick={() => void handleCopyCode(row)}>
-                      <Image src="/icons/structure.svg" alt="" width={16} height={16} className={shellStyles.actionIcon} />
-                      Copy Code
-                    </button>
-                    <button
-                      type="button"
-                      className={`${shellStyles.button} ${shellStyles.buttonSecondary} ${shellStyles.dashboardMobileActionButton}`}
-                      disabled={!canDuplicate || duplicatingMapId === row.id}
-                      onClick={() => {
-                        setPendingDuplicateRow(row);
-                        setDuplicateCancelRequested(false);
-                        duplicateAbortRef.current = false;
-                        setDuplicateProgress({ percent: 0, message: "", status: "idle" });
-                      }}
-                    >
-                      <Image src="/icons/addcomponent.svg" alt="" width={16} height={16} className={shellStyles.actionIcon} />
-                      {duplicatingMapId === row.id ? "Duplicating..." : "Duplicate"}
-                    </button>
-                    <button type="button" className={`${shellStyles.button} ${shellStyles.buttonDanger} ${shellStyles.dashboardMobileActionButton}`} disabled={!canDelete || deletingMapId === row.id} onClick={() => setPendingDeleteRow(row)}>
-                      <Image src="/icons/delete.svg" alt="" width={16} height={16} className={shellStyles.actionIcon} />
-                      {deletingMapId === row.id ? "Deleting..." : "Delete"}
-                    </button>
-                  </div>
-                </article>
-              );
-            })
-          )}
-        </div>
-
-        <DashboardTableFooter total={rows.length} page={safePage} pageSize={pageSize} onPageChange={setPage} label="maps" />
-      </section>
-
-      {pendingDuplicateRow ? (
-        <div className={shellStyles.modalBackdrop}>
-          <div className={`${shellStyles.modalCard} ${shellStyles.dashboardModalCard}`}>
-            <h3 className={shellStyles.modalTitle}>Duplicate map?</h3>
-            <p className={shellStyles.modalText}>You are about to duplicate <strong>{pendingDuplicateRow.title}</strong>.</p>
-            <p className={shellStyles.modalText}>The duplicate will include document nodes, canvas components, relationships, and structure content. You will be set as the owner of the new map.</p>
-            {duplicateProgress.status !== "idle" ? (
-              <div className={shellStyles.progressBlock}>
-                <div className={shellStyles.progressHeader}>
-                  <span>{duplicateProgress.message}</span>
-                  <span>{duplicateProgress.percent}%</span>
-                </div>
-                <div className={shellStyles.progressTrack}>
-                  <div
-                    className={`${shellStyles.progressFill} ${
-                      duplicateProgress.status === "error"
-                        ? shellStyles.progressError
-                        : duplicateProgress.status === "success"
-                          ? shellStyles.progressSuccess
-                          : duplicateProgress.status === "aborted"
-                            ? shellStyles.progressAborted
-                            : ""
-                    }`}
-                    style={{ width: `${Math.max(0, Math.min(100, duplicateProgress.percent))}%` }}
-                  />
+                  <button
+                    type="button"
+                    className="w-7 h-7 rounded-md flex items-center justify-center border border-neutral-200 bg-white text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-40"
+                    disabled={safePage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    <IconChevronRight size={14} />
+                  </button>
                 </div>
               </div>
-            ) : null}
-            <div className={shellStyles.modalActions}>
-              <button
-                type="button"
-                className={`${shellStyles.button} ${shellStyles.buttonSecondary}`}
+            )}
+          </>
+        )}
+      </div>
+
+      {pendingDuplicateRow && (
+        <Modal
+          open={true}
+          onClose={() => {
+            if (duplicatingMapId === pendingDuplicateRow.id) return;
+            setPendingDuplicateRow(null);
+          }}
+          title="Duplicate map?"
+          footer={
+            <>
+              <Button
+                variant="neutral"
                 onClick={() => {
                   if (duplicatingMapId === pendingDuplicateRow.id) {
                     duplicateAbortRef.current = true;
@@ -1230,42 +1036,81 @@ export default function SystemMapsListClient() {
                 disabled={duplicatingMapId === pendingDuplicateRow.id && duplicateCancelRequested}
               >
                 {duplicatingMapId === pendingDuplicateRow.id ? (duplicateCancelRequested ? "Stopping..." : "Cancel duplication") : "Cancel"}
-              </button>
-              <button type="button" className={`${shellStyles.button} ${shellStyles.buttonAccent}`} onClick={() => void handleDuplicateMap(pendingDuplicateRow)} disabled={duplicatingMapId === pendingDuplicateRow.id}>
-                {duplicatingMapId === pendingDuplicateRow.id ? "Duplicating..." : "Duplicate map"}
-              </button>
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void handleDuplicateMap(pendingDuplicateRow)}
+                disabled={duplicatingMapId === pendingDuplicateRow.id}
+                loading={duplicatingMapId === pendingDuplicateRow.id && duplicateProgress.status === "running"}
+                loadingText="Duplicating..."
+              >
+                Duplicate map
+              </Button>
+            </>
+          }
+        >
+          <p className="text-[13px] text-neutral-700">You are about to duplicate <strong>{pendingDuplicateRow.title}</strong>.</p>
+          <p className="text-[13px] text-neutral-700">The duplicate will include document nodes, canvas components, relationships, and structure content.</p>
+          {duplicateProgress.status !== "idle" ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between text-[12px] text-neutral-600">
+                <span>{duplicateProgress.message}</span>
+                <span>{duplicateProgress.percent}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-neutral-100 overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    duplicateProgress.status === "error" ? "bg-red-500" :
+                    duplicateProgress.status === "success" ? "bg-green-500" :
+                    duplicateProgress.status === "aborted" ? "bg-neutral-400" :
+                    "bg-[#2d9692]"
+                  )}
+                  style={{ width: `${Math.max(0, Math.min(100, duplicateProgress.percent))}%` }}
+                />
+              </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+          ) : null}
+        </Modal>
+      )}
 
-      {pendingDeleteRow ? (
-        <div className={shellStyles.modalBackdrop}>
-          <div className={`${shellStyles.modalCard} ${shellStyles.dashboardModalCard}`}>
-            <h3 className={shellStyles.modalTitle}>Delete map?</h3>
-            <p className={shellStyles.modalText}>You are about to permanently delete <strong>{pendingDeleteRow.title}</strong>.</p>
-            <div className={shellStyles.modalListWrap}>
-              <ul className={shellStyles.modalList}>
-                <li>The system map</li>
-                <li>All document nodes</li>
-                <li>All canvas components</li>
-                <li>All relationships</li>
-                <li>All document structure content</li>
-                <li>All linked map member access for this map</li>
-              </ul>
-            </div>
-            <p className={shellStyles.modalWarning}>This cannot be undone.</p>
-            <div className={shellStyles.modalActions}>
-              <button type="button" className={`${shellStyles.button} ${shellStyles.buttonSecondary}`} onClick={() => setPendingDeleteRow(null)} disabled={deletingMapId === pendingDeleteRow.id}>
+      {pendingDeleteRow && (
+        <Modal
+          open={true}
+          onClose={() => setPendingDeleteRow(null)}
+          title="Delete map?"
+          contentFit
+          footer={
+            <>
+              <Button variant="neutral" onClick={() => setPendingDeleteRow(null)} disabled={deletingMapId === pendingDeleteRow.id}>
                 Cancel
-              </button>
-              <button type="button" className={`${shellStyles.button} ${shellStyles.buttonDanger}`} onClick={() => void handleDeleteMap(pendingDeleteRow)} disabled={deletingMapId === pendingDeleteRow.id}>
-                {deletingMapId === pendingDeleteRow.id ? "Deleting..." : "Delete map"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </DashboardShell>
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void handleDeleteMap(pendingDeleteRow)}
+                disabled={deletingMapId === pendingDeleteRow.id}
+                loading={deletingMapId === pendingDeleteRow.id}
+                loadingText="Deleting..."
+              >
+                Delete map
+              </Button>
+            </>
+          }
+        >
+          <p className="text-[13px] text-neutral-700">Permanently delete <strong>{pendingDeleteRow.title}</strong>? This will remove:</p>
+          <ul className="mt-2 flex flex-col gap-1 text-[13px] text-neutral-600 list-disc list-inside">
+            <li>The system map</li>
+            <li>All document nodes</li>
+            <li>All canvas components</li>
+            <li>All relationships</li>
+            <li>All document structure content</li>
+            <li>All linked map member access</li>
+          </ul>
+          <p className="mt-2 text-[13px] font-medium text-red-600">This cannot be undone.</p>
+        </Modal>
+      )}
+    </div>
   );
+
+  return <DashboardShell>{pageContent}</DashboardShell>;
 }

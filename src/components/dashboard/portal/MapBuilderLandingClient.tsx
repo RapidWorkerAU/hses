@@ -4,9 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
-import { TableSkeleton } from "@/components/loading/HsesLoaders";
-import PortalTableFooter from "@/components/table/PortalTableFooter";
-import styles from "./MapBuilderLanding.module.css";
+import { Modal, ConfirmModal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Skeleton } from "@/components/ui/Skeleton";
+import {
+  IconTrash,
+  IconPlus,
+  IconLink,
+  IconX,
+  IconCheck,
+  IconCopy,
+  IconLayoutGrid,
+  IconChevronLeft,
+  IconChevronRight,
+} from "@tabler/icons-react";
 import {
   MAP_BUILDER_CATEGORIES,
   MAP_BUILDER_CATEGORY_BY_ID,
@@ -1145,38 +1157,51 @@ export default function MapBuilderLandingClient({ category, returnToPath = "/das
   const footerLabel = category?.title.toLowerCase() ?? "canvas maps";
 
   if (isLoading) {
-    return <TableSkeleton rows={pageSize} columns="5% 20% 14% 15% 10% 12% 10% 14%" showToolbar />;
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-44" />
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+          <div className="divide-y divide-neutral-100">
+            {Array.from({ length: pageSize }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3">
+                <Skeleton className="h-4 w-4" />
+                <Skeleton className="h-4 w-[180px]" />
+                <Skeleton className="h-4 w-[100px]" />
+                <Skeleton className="h-4 w-[100px]" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-[80px]" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className={`${styles.wrap} ${!isSingleCategoryView ? styles.documentMapWrap : ""}`}>
-      <div className={styles.toolbar}>
-        <button
-          type="button"
-          className={styles.bulkDeleteButton}
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <Button
+          variant="danger"
+          size="sm"
+          iconLeft={<IconTrash size={14} />}
           onClick={() => setShowBulkDeleteConfirm(true)}
           disabled={!selectedOwnedMapIds.length || isBulkDeleting}
         >
-          <img src="/icons/delete.svg" alt="" className={styles.toolbarButtonIcon} />
-          <span>{isBulkDeleting ? "Deleting..." : "Bulk Delete"}</span>
-        </button>
+          {isBulkDeleting ? "Deleting..." : "Bulk Delete"}
+        </Button>
 
-        <div className={styles.toolbarActions}>
-            <div ref={linkPanelRef} className={`${styles.linkPanelInline} ${showLinkForm ? styles.linkPanelInlineOpen : ""}`}>
-              <div className={styles.linkExpandShell}>
-                <button
-                  type="button"
-                  className={styles.linkExpandTrigger}
-                  onClick={() => setShowLinkForm((prev) => !prev)}
-                  aria-expanded={showLinkForm}
-                >
-                  <img src="/icons/relationship.svg" alt="" className={styles.toolbarButtonIcon} />
-                  <span>Link Map Code</span>
-                </button>
+        <div className="flex items-center gap-2">
+          <div ref={linkPanelRef} className="relative flex items-center">
+            {showLinkForm ? (
+              <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 h-8">
                 <input
                   ref={linkInputRef}
                   type="text"
-                  className={styles.linkInput}
+                  className="text-[13px] outline-none w-[140px] placeholder:text-neutral-400 text-neutral-900"
                   placeholder="Enter code here"
                   value={mapCodeInput}
                   onChange={(event) => setMapCodeInput(event.target.value)}
@@ -1190,47 +1215,60 @@ export default function MapBuilderLandingClient({ category, returnToPath = "/das
                     }
                   }}
                 />
-              </div>
-              <div className={styles.linkPanelInlineBody}>
                 <button
                   type="button"
-                  className={styles.linkInlineIconButton}
-                  onClick={handleLinkMapToProfile}
-                  disabled={isLinking}
                   title={isLinking ? "Linking" : "Link map code"}
                   aria-label={isLinking ? "Linking" : "Link map code"}
+                  onClick={() => void handleLinkMapToProfile()}
+                  disabled={isLinking}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-100 text-neutral-500 hover:text-neutral-700 transition-colors disabled:opacity-40"
                 >
-                  <img src="/icons/relationship.svg" alt="" className={styles.linkInlineIcon} />
+                  <IconCheck size={14} />
                 </button>
                 <button
                   type="button"
-                  className={styles.linkInlineIconButton}
-                  onClick={() => setShowLinkForm(false)}
-                  title="Close link map code"
+                  title="Close"
                   aria-label="Close link map code"
+                  onClick={() => setShowLinkForm(false)}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 transition-colors"
                 >
-                  <span className={styles.linkInlineCloseIcon} aria-hidden="true" />
+                  <IconX size={14} />
                 </button>
               </div>
-            </div>
-          <button type="button" className={styles.primaryButton} onClick={openCreateModal}>
-            <img
-              src="/icons/addcomponent.svg"
-              alt=""
-              className={`${styles.toolbarButtonIcon} ${styles.toolbarButtonIconLight}`}
-            />
-            <span>{createButtonLabel}</span>
-          </button>
+            ) : (
+              <Button
+                variant="neutral"
+                size="sm"
+                iconLeft={<IconLink size={14} />}
+                onClick={() => setShowLinkForm(true)}
+                aria-expanded={showLinkForm}
+              >
+                Link Map Code
+              </Button>
+            )}
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            iconLeft={<IconPlus size={14} />}
+            onClick={openCreateModal}
+          >
+            {createButtonLabel}
+          </Button>
         </div>
       </div>
 
-      {error ? <div className={styles.error}>{error}</div> : null}
-      {successMessage ? <div className={styles.success}>{successMessage}</div> : null}
+      {error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">{error}</div>
+      ) : null}
+      {successMessage ? (
+        <div className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-[13px] text-teal-700">{successMessage}</div>
+      ) : null}
 
       {!isSingleCategoryView ? (
-        <div className={styles.mobileDocumentCards}>
+        <div className="flex flex-col gap-3 md:hidden">
           {rows.length === 0 ? (
-            <div className={styles.mobileDocumentEmpty}>{emptyLabel}</div>
+            <p className="text-[13px] text-neutral-500 py-6 text-center">{emptyLabel}</p>
           ) : (
             paginatedRows.map((row) => {
               const rowCategory = getCategoryForMap(row.map_category);
@@ -1241,32 +1279,20 @@ export default function MapBuilderLandingClient({ category, returnToPath = "/das
                 <button
                   key={row.id}
                   type="button"
-                  className={styles.mobileDocumentCard}
+                  className="rounded-xl border border-neutral-200 bg-white p-4 text-left hover:shadow-sm hover:border-neutral-300 transition-all"
                   onClick={() => router.push(getRecordHref(row))}
                 >
-                  <div className={styles.mobileDocumentCardTop}>
-                    <span className={styles.mobileDocumentIcon}>
-                      <img src={rowCategory.icon} alt="" className={styles.mobileDocumentIconImage} />
-                    </span>
-                    <span className={styles.mobileDocumentCodePill}>{row.map_code || "No code"}</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-medium text-neutral-400 bg-neutral-100 rounded px-2 py-0.5">{row.map_code || "No code"}</span>
                   </div>
-                  <div className={styles.mobileDocumentBody}>
-                    <h3>{row.title}</h3>
-                    <p>{row.description || "No description added for this canvas map yet."}</p>
+                  <div className="mb-3">
+                    <p className="text-[14px] font-semibold text-neutral-900">{row.title}</p>
+                    <p className="text-[12px] text-neutral-500 mt-0.5">{row.description || "No description added for this canvas map yet."}</p>
                   </div>
-                  <div className={styles.mobileDocumentMeta}>
-                    <span className={styles.mobileDocumentMetaGroup}>
-                      <span className={styles.mobileDocumentMetaLabel}>Category</span>
-                      <span className={styles.mobileDocumentMetaPill}>{rowCategory.title}</span>
-                    </span>
-                    <span className={styles.mobileDocumentMetaGroup}>
-                      <span className={styles.mobileDocumentMetaLabel}>Owner</span>
-                      <span className={styles.mobileDocumentMetaPill}>{ownerLabel}</span>
-                    </span>
-                    <span className={styles.mobileDocumentMetaGroup}>
-                      <span className={styles.mobileDocumentMetaLabel}>Updated</span>
-                      <span className={styles.mobileDocumentMetaPill}>{updatedParts.date}</span>
-                    </span>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    <span className="text-[11px] text-neutral-500"><span className="font-medium">Category</span> · {rowCategory.title}</span>
+                    <span className="text-[11px] text-neutral-500"><span className="font-medium">Owner</span> · {ownerLabel}</span>
+                    <span className="text-[11px] text-neutral-500"><span className="font-medium">Updated</span> · {updatedParts.date}</span>
                   </div>
                 </button>
               );
@@ -1275,39 +1301,28 @@ export default function MapBuilderLandingClient({ category, returnToPath = "/das
         </div>
       ) : null}
 
-      <div className={`${styles.tableCard} portal-table-shell`}>
-        <div className={styles.tableWrap}>
-          <table className={`${styles.table} portal-table`}>
-            <colgroup>
-              <col className={styles.colCheckbox} />
-              <col className={styles.colName} />
-              <col className={styles.colCategory} />
-              <col className={styles.colOwner} />
-              <col className={styles.colCode} />
-              <col className={styles.colUpdatedBy} />
-              <col className={styles.colUpdatedDate} />
-              <col className={styles.colCreatedDate} />
-              <col className={styles.colActions} />
-            </colgroup>
+      <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px] text-neutral-700">
             <thead>
-              <tr>
-                <th className={styles.checkboxHeader}>
-                  <input type="checkbox" checked={allOwnedSelected} onChange={toggleSelectAllOwned} aria-label="Select all owned maps" />
+              <tr className="bg-neutral-50 border-b border-neutral-200">
+                <th className="w-10 px-4 py-3 text-left font-medium text-neutral-500">
+                  <input type="checkbox" checked={allOwnedSelected} onChange={toggleSelectAllOwned} aria-label="Select all owned maps" className="rounded border-neutral-300" />
                 </th>
-                <th>Map name</th>
-                <th>Category</th>
-                <th>Owner</th>
-                <th>Code</th>
-                <th>Last updated by</th>
-                <th>Updated date</th>
-                <th>Created date</th>
-                <th className={styles.actionHeader}>Action</th>
+                <th className="px-4 py-3 text-left font-medium text-neutral-500">Map name</th>
+                <th className="px-4 py-3 text-left font-medium text-neutral-500">Category</th>
+                <th className="px-4 py-3 text-left font-medium text-neutral-500">Owner</th>
+                <th className="px-4 py-3 text-left font-medium text-neutral-500">Code</th>
+                <th className="px-4 py-3 text-left font-medium text-neutral-500">Last updated by</th>
+                <th className="px-4 py-3 text-left font-medium text-neutral-500">Updated</th>
+                <th className="px-4 py-3 text-left font-medium text-neutral-500">Created</th>
+                <th className="px-4 py-3 text-right font-medium text-neutral-500">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-neutral-100">
               {rows.length === 0 ? (
-                <tr className="portal-table-empty-row">
-                  <td className={styles.empty} colSpan={9}>
+                <tr>
+                  <td colSpan={9} className="px-4 py-12 text-center text-[13px] text-neutral-400">
                     {emptyLabel}
                   </td>
                 </tr>
@@ -1322,42 +1337,37 @@ export default function MapBuilderLandingClient({ category, returnToPath = "/das
                   return (
                     <tr
                       key={row.id}
-                      className={`${styles.row} portal-table-row`}
+                      className="hover:bg-neutral-50 cursor-pointer transition-colors"
                       onClick={() => router.push(getRecordHref(row))}
                     >
-                      <td className={styles.checkboxCell} onClick={(event) => event.stopPropagation()}>
+                      <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedMapIds.includes(row.id)}
                           disabled={!canDelete}
                           onChange={() => toggleRowSelection(row.id)}
                           aria-label={`Select ${row.title}`}
+                          className="rounded border-neutral-300"
                         />
                       </td>
-                      <td>
-                        <div className={styles.nameCell}>
-                          <strong>{row.title}</strong>
-                          <span className={styles.desc}>{row.description || "-"}</span>
-                        </div>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-neutral-900">{row.title}</p>
+                        {row.description && <p className="text-[12px] text-neutral-400 mt-0.5">{row.description}</p>}
                       </td>
-                      <td>{rowCategory.title}</td>
-                      <td title={ownerLabel}>{ownerLabel}</td>
-                      <td>{row.map_code || "-"}</td>
-                      <td title={ownerLabel}>{ownerLabel}</td>
-                      <td>
-                        <div className={styles.dateCell}>
-                          <span>{updatedParts.date}</span>
-                          <span>{updatedParts.time}</span>
-                        </div>
+                      <td className="px-4 py-3 text-neutral-600">{rowCategory.title}</td>
+                      <td className="px-4 py-3 text-neutral-600" title={ownerLabel}>{ownerLabel}</td>
+                      <td className="px-4 py-3 text-neutral-600">{row.map_code || "-"}</td>
+                      <td className="px-4 py-3 text-neutral-600" title={ownerLabel}>{ownerLabel}</td>
+                      <td className="px-4 py-3">
+                        <p className="text-neutral-700">{updatedParts.date}</p>
+                        <p className="text-[11px] text-neutral-400">{updatedParts.time}</p>
                       </td>
-                      <td>
-                        <div className={styles.dateCell}>
-                          <span>{createdParts.date}</span>
-                          <span>{createdParts.time}</span>
-                        </div>
+                      <td className="px-4 py-3">
+                        <p className="text-neutral-700">{createdParts.date}</p>
+                        <p className="text-[11px] text-neutral-400">{createdParts.time}</p>
                       </td>
-                      <td className={styles.actionCell} onClick={(event) => event.stopPropagation()}>
-                        <div className={styles.actionButtons}>
+                      <td className="px-4 py-3 text-right" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
                           {(() => {
                             const canCopy = row.owner_id === currentUserId && !!row.map_code;
                             const copyTitle = canCopy
@@ -1367,38 +1377,41 @@ export default function MapBuilderLandingClient({ category, returnToPath = "/das
                                 : "No map code available to copy";
 
                             return (
-                              <button
-                                type="button"
+                              <Button
+                                variant="neutral"
+                                size="sm"
+                                iconOnly
                                 title={copyTitle}
                                 aria-label={copyTitle}
-                                className={styles.actionButton}
                                 onClick={() => void handleCopyCode(row)}
                                 disabled={!canCopy}
                               >
-                                <img src="/icons/structure.svg" alt="" className={styles.actionIcon} />
-                              </button>
+                                <IconCopy size={15} />
+                              </Button>
                             );
                           })()}
-                          <button
-                            type="button"
+                          <Button
+                            variant="neutral"
+                            size="sm"
+                            iconOnly
                             title="Duplicate map"
                             aria-label="Duplicate map"
-                            className={styles.actionButton}
                             onClick={() => setPendingDuplicateRow(row)}
                             disabled={duplicatingMapId === row.id}
                           >
-                            <img src="/icons/addcomponent.svg" alt="" className={styles.actionIcon} />
-                          </button>
-                          <button
-                            type="button"
+                            <IconLayoutGrid size={15} />
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            iconOnly
                             title={canDelete ? "Delete map" : "Only the map creator can delete this map"}
                             aria-label={canDelete ? "Delete map" : "Only the map creator can delete this map"}
-                            className={styles.actionButton}
                             onClick={() => setPendingDeleteRow(row)}
                             disabled={!canDelete || deletingMapId === row.id}
                           >
-                            <img src="/icons/delete.svg" alt="" className={styles.actionIcon} />
-                          </button>
+                            <IconTrash size={15} />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -1410,226 +1423,189 @@ export default function MapBuilderLandingClient({ category, returnToPath = "/das
         </div>
       </div>
 
-      <div className={styles.tableFooterWrap}>
-        <PortalTableFooter
-          total={rows.length}
-          page={safePage}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          label={footerLabel}
-        />
-      </div>
+      {rows.length > pageSize && (
+        <div className="flex items-center justify-between text-[13px] text-neutral-500">
+          <span>
+            Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, rows.length)} of {rows.length} {footerLabel}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="neutral"
+              size="sm"
+              iconOnly
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              aria-label="Previous page"
+            >
+              <IconChevronLeft size={14} />
+            </Button>
+            <Button
+              variant="neutral"
+              size="sm"
+              iconOnly
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              aria-label="Next page"
+            >
+              <IconChevronRight size={14} />
+            </Button>
+          </div>
+        </div>
+      )}
 
-      {isCreateModalOpen ? (
-        <>
-          <button type="button" className={styles.modalBackdrop} aria-label="Close create map modal" onClick={() => setIsCreateModalOpen(false)} />
-          <div className={`${styles.modal} ${styles.createModal}`} role="dialog" aria-modal="true" aria-label="Create canvas map">
-            <div className={styles.createModalHeader}>
-              <div className={styles.createModalBrand}>
-                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.createModalLogo} />
-                <div className={styles.createModalBrandCopy}>
-                  <span className={styles.createModalEyebrow}>New canvas map</span>
-                  <h3 className={styles.createModalTitle}>Create your canvas map</h3>
-                </div>
-              </div>
-            </div>
-            <div className={styles.createModalBody}>
-              {!category ? (
-                <label className={styles.createModalField}>
-                  <span>Map category</span>
-                  <select
-                    className={styles.createModalInput}
-                    value={selectedMapCategory}
-                    onChange={(event) => setSelectedMapCategory(event.target.value as MapBuilderCategory["mapCategory"])}
-                  >
-                    {accessibleCategoryOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <label className={styles.createModalField}>
-                <span>{resolvedCreateCategory.mapCategory === "incident_investigation" ? "Investigation title" : "Title"}</span>
-                <input
-                  className={styles.createModalInput}
-                  value={newTitle}
-                  onChange={(event) => setNewTitle(event.target.value)}
-                  placeholder={getTitlePlaceholder(resolvedCreateCategory)}
-                />
-              </label>
-              <label className={styles.createModalField}>
-                <span>Description</span>
-                <textarea
-                  className={`${styles.createModalInput} ${styles.createModalTextarea}`}
-                  value={newDescription}
-                  onChange={(event) => setNewDescription(event.target.value)}
-                  placeholder={getDescriptionPlaceholder(resolvedCreateCategory)}
-                  rows={5}
-                />
-              </label>
-              <div className={styles.createModalActions}>
-                <button
-                  type="button"
-                  className={styles.modalSecondaryButton}
-                  onClick={() => setIsCreateModalOpen(false)}
-                  disabled={isCreating}
-                >
-                  Cancel
-                </button>
-                <button type="button" className={styles.modalPrimaryButton} onClick={() => void createMap()} disabled={isCreating}>
-                  {isCreating ? "Creating..." : resolvedCreateCategory.mapCategory === "incident_investigation" ? "Create investigation" : "Create new"}
-                </button>
-              </div>
-            </div>
+      <Modal
+        open={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Create canvas map"
+        subtitle="Set up a new canvas map."
+        size="md"
+        footer={
+          <>
+            <Button variant="neutral" onClick={() => setIsCreateModalOpen(false)} disabled={isCreating}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={() => void createMap()} loading={isCreating} loadingText="Creating...">
+              {resolvedCreateCategory.mapCategory === "incident_investigation" ? "Create investigation" : "Create new"}
+            </Button>
+          </>
+        }
+      >
+        {!category ? (
+          <div className="flex flex-col gap-1">
+            <label className="text-[13px] font-medium text-neutral-700">Map category</label>
+            <select
+              className="rounded-md border border-neutral-200 bg-white px-3 h-9 text-[13px] text-neutral-900 outline-none focus:ring-2 focus:ring-[#2d9692]/20 focus:border-[#2d9692]"
+              value={selectedMapCategory}
+              onChange={(event) => setSelectedMapCategory(event.target.value as MapBuilderCategory["mapCategory"])}
+            >
+              {accessibleCategoryOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-        </>
-      ) : null}
+        ) : null}
+        <div className="flex flex-col gap-1">
+          <Input
+            label={resolvedCreateCategory.mapCategory === "incident_investigation" ? "Investigation title" : "Title"}
+            value={newTitle}
+            onChange={(event) => setNewTitle(event.target.value)}
+            placeholder={getTitlePlaceholder(resolvedCreateCategory)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[13px] font-medium text-neutral-700">Description</label>
+          <textarea
+            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus:ring-2 focus:ring-[#2d9692]/20 focus:border-[#2d9692] resize-none"
+            value={newDescription}
+            onChange={(event) => setNewDescription(event.target.value)}
+            placeholder={getDescriptionPlaceholder(resolvedCreateCategory)}
+            rows={5}
+          />
+        </div>
+      </Modal>
 
-      {pendingDuplicateRow ? (
-        <>
-          <button type="button" className={styles.modalBackdrop} aria-label="Close duplicate modal" onClick={() => setPendingDuplicateRow(null)} />
-          <div className={`${styles.modal} ${styles.createModal}`} role="dialog" aria-modal="true" aria-label="Duplicate map">
-            <div className={styles.createModalHeader}>
-              <div className={styles.createModalBrand}>
-                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.createModalLogo} />
-                <div className={styles.createModalBrandCopy}>
-                  <span className={styles.createModalEyebrow}>Duplicate map</span>
-                  <h3 className={styles.createModalTitle}>Duplicate map?</h3>
-                </div>
-              </div>
-            </div>
-            <div className={styles.createModalBody}>
-              <p className={styles.dialogText}>
-                You are about to duplicate <strong>{pendingDuplicateRow.title}</strong>.
-              </p>
-              <p className={styles.dialogText}>
-                The duplicate will include nodes, components, relationships, and outline content. You will become the owner of the new map.
-              </p>
-              <div className={styles.createModalActions}>
-                <button
-                  type="button"
-                  className={styles.modalSecondaryButton}
-                  onClick={() => setPendingDuplicateRow(null)}
-                  disabled={duplicatingMapId === pendingDuplicateRow.id}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className={styles.modalPrimaryButton}
-                  onClick={() => void handleDuplicateMap(pendingDuplicateRow)}
-                  disabled={duplicatingMapId === pendingDuplicateRow.id}
-                >
-                  {duplicatingMapId === pendingDuplicateRow.id ? "Duplicating..." : "Duplicate map"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      ) : null}
+      <ConfirmModal
+        open={!!pendingDuplicateRow}
+        onClose={() => setPendingDuplicateRow(null)}
+        title="Duplicate map?"
+        description={`You are about to duplicate "${pendingDuplicateRow?.title ?? ""}". The duplicate will include nodes, components, relationships, and outline content. You will become the owner of the new map.`}
+        confirmLabel="Duplicate map"
+        variant="default"
+        onConfirm={() => { if (pendingDuplicateRow) void handleDuplicateMap(pendingDuplicateRow); }}
+        loading={duplicatingMapId === pendingDuplicateRow?.id}
+      />
 
-      {pendingDeleteRow ? (
-        <>
-          <button type="button" className={styles.modalBackdrop} aria-label="Close delete modal" onClick={() => setPendingDeleteRow(null)} />
-          <div className={`${styles.modal} ${styles.createModal}`} role="dialog" aria-modal="true" aria-label="Delete map">
-            <div className={styles.createModalHeader}>
-              <div className={styles.createModalBrand}>
-                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.createModalLogo} />
-                <div className={styles.createModalBrandCopy}>
-                  <span className={styles.createModalEyebrow}>Delete map</span>
-                  <h3 className={styles.createModalTitle}>Delete map?</h3>
-                </div>
-              </div>
+      <Modal
+        open={!!pendingDeleteRow}
+        onClose={() => setPendingDeleteRow(null)}
+        title="Delete map?"
+        size="sm"
+        contentFit
+        footer={
+          <>
+            <Button variant="neutral" onClick={() => setPendingDeleteRow(null)} disabled={deletingMapId === pendingDeleteRow?.id}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => { if (pendingDeleteRow) void handleDeleteMap(pendingDeleteRow); }}
+              loading={deletingMapId === pendingDeleteRow?.id}
+              loadingText="Deleting..."
+            >
+              Delete map
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-neutral-700">
+          You are about to permanently delete <strong>{pendingDeleteRow?.title}</strong>.
+        </p>
+        <ul className="text-[13px] text-neutral-500 list-disc pl-5 mt-2 space-y-1">
+          <li>The {deleteItemLabel}</li>
+          <li>All nodes and canvas components</li>
+          <li>All relationships and outline content</li>
+          <li>All linked map member access for this map</li>
+        </ul>
+        <p className="text-[12px] font-medium text-red-600 mt-2">This cannot be undone.</p>
+        {deleteProgress ? (
+          <div className="mt-3 rounded-md border border-neutral-200 p-3">
+            <div className="flex justify-between text-[12px] text-neutral-600 mb-1.5">
+              <span>{deleteProgress.message}</span>
+              <span>{deleteProgress.percent}%</span>
             </div>
-            <div className={styles.createModalBody}>
-              <p className={styles.dialogText}>
-                You are about to permanently delete <strong>{pendingDeleteRow.title}</strong>.
-              </p>
-              <ul className={styles.dialogList}>
-                <li>The {deleteItemLabel}</li>
-                <li>All nodes and canvas components</li>
-                <li>All relationships and outline content</li>
-                <li>All linked map member access for this map</li>
-              </ul>
-              <p className={styles.dialogWarning}>This cannot be undone.</p>
-              {deleteProgress ? (
-                <div className={styles.dialogProgress}>
-                  <div className={styles.dialogProgressHeader}>
-                    <span>{deleteProgress.message}</span>
-                    <span>{deleteProgress.percent}%</span>
-                  </div>
-                  <div className={styles.dialogProgressTrack}>
-                    <div className={styles.dialogProgressFill} style={{ width: `${deleteProgress.percent}%` }} />
-                  </div>
-                </div>
-              ) : null}
-              <div className={styles.createModalActions}>
-              <button type="button" className={styles.modalSecondaryButton} onClick={() => setPendingDeleteRow(null)} disabled={deletingMapId === pendingDeleteRow.id}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={styles.modalDangerButton}
-                onClick={() => void handleDeleteMap(pendingDeleteRow)}
-                disabled={deletingMapId === pendingDeleteRow.id}
-              >
-                {deletingMapId === pendingDeleteRow.id ? "Deleting..." : "Delete map"}
-              </button>
+            <div className="h-1.5 rounded-full bg-neutral-100 overflow-hidden">
+              <div className="h-full bg-[#2d9692] rounded-full transition-all" style={{ width: `${deleteProgress.percent}%` }} />
             </div>
           </div>
-          </div>
-        </>
-      ) : null}
+        ) : null}
+      </Modal>
 
-      {showBulkDeleteConfirm ? (
-        <>
-          <button type="button" className={styles.modalBackdrop} aria-label="Close bulk delete modal" onClick={() => setShowBulkDeleteConfirm(false)} />
-          <div className={`${styles.modal} ${styles.createModal}`} role="dialog" aria-modal="true" aria-label="Bulk delete maps">
-            <div className={styles.createModalHeader}>
-              <div className={styles.createModalBrand}>
-                <img src="/images/favicon.png" alt="HSES Industry Partners" className={styles.createModalLogo} />
-                <div className={styles.createModalBrandCopy}>
-                  <span className={styles.createModalEyebrow}>Bulk delete</span>
-                  <h3 className={styles.createModalTitle}>Bulk delete maps?</h3>
-                </div>
-              </div>
+      <Modal
+        open={showBulkDeleteConfirm}
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        title="Bulk delete maps?"
+        size="sm"
+        contentFit
+        footer={
+          <>
+            <Button variant="neutral" onClick={() => setShowBulkDeleteConfirm(false)} disabled={isBulkDeleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void handleBulkDelete()}
+              loading={isBulkDeleting}
+              loadingText="Deleting..."
+            >
+              Delete selected
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13px] text-neutral-700">
+          You are about to delete <strong>{selectedOwnedMapIds.length}</strong> selected map{selectedOwnedMapIds.length === 1 ? "" : "s"}.
+        </p>
+        <ul className="text-[13px] text-neutral-500 list-disc pl-5 mt-2 space-y-1">
+          <li>The selected maps</li>
+          <li>All nodes and canvas components linked to those maps</li>
+          <li>All relationships and outline content for those maps</li>
+          <li>All linked map member access for those maps</li>
+        </ul>
+        <p className="text-[12px] font-medium text-red-600 mt-2">This cannot be undone.</p>
+        {bulkDeleteProgress ? (
+          <div className="mt-3 rounded-md border border-neutral-200 p-3">
+            <div className="flex justify-between text-[12px] text-neutral-600 mb-1.5">
+              <span>{bulkDeleteProgress.message}</span>
+              <span>{bulkDeleteProgress.percent}%</span>
             </div>
-            <div className={styles.createModalBody}>
-              <p className={styles.dialogText}>
-                You are about to delete <strong>{selectedOwnedMapIds.length}</strong> selected map{selectedOwnedMapIds.length === 1 ? "" : "s"}.
-              </p>
-              <ul className={styles.dialogList}>
-                <li>The selected maps</li>
-                <li>All nodes and canvas components linked to those maps</li>
-                <li>All relationships and outline content for those maps</li>
-                <li>All linked map member access for those maps</li>
-              </ul>
-              <p className={styles.dialogWarning}>This cannot be undone.</p>
-              {bulkDeleteProgress ? (
-                <div className={styles.dialogProgress}>
-                  <div className={styles.dialogProgressHeader}>
-                    <span>{bulkDeleteProgress.message}</span>
-                    <span>{bulkDeleteProgress.percent}%</span>
-                  </div>
-                  <div className={styles.dialogProgressTrack}>
-                    <div className={styles.dialogProgressFill} style={{ width: `${bulkDeleteProgress.percent}%` }} />
-                  </div>
-                </div>
-              ) : null}
-              <div className={styles.createModalActions}>
-                <button type="button" className={styles.modalSecondaryButton} onClick={() => setShowBulkDeleteConfirm(false)} disabled={isBulkDeleting}>
-                  Cancel
-                </button>
-                <button type="button" className={styles.modalDangerButton} onClick={() => void handleBulkDelete()} disabled={isBulkDeleting}>
-                  {isBulkDeleting ? "Deleting..." : "Delete selected"}
-                </button>
-              </div>
+            <div className="h-1.5 rounded-full bg-neutral-100 overflow-hidden">
+              <div className="h-full bg-[#2d9692] rounded-full transition-all" style={{ width: `${bulkDeleteProgress.percent}%` }} />
             </div>
           </div>
-        </>
-      ) : null}
+        ) : null}
+      </Modal>
     </div>
   );
 }

@@ -1,42 +1,33 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { IconCheck, IconPencil, IconTrash } from "@tabler/icons-react";
 import { fetchAdmin } from "../lib/adminFetch";
 import type { AdminMilestone } from "./types";
+import { cn } from "@/lib/utils";
+import { formatMoney } from "@/lib/formatters";
 
-const formatMoney = (value: number | null | undefined) => {
-  if (value === null || value === undefined) return "-";
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD",
-    maximumFractionDigits: 2,
-  }).format(value);
-};
+const inputCls = "w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-neutral-900 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition";
+const selectCls = "w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-neutral-900 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500 transition";
 
 type MilestoneRowProps = {
   milestone: AdminMilestone;
-  maxHours: number;
-  otherHours: number;
   deliverableUnitPrice: number;
   deliverableRate: number;
   editingMilestoneId: string | null;
   onEdit: (id: string) => void;
   onStopEdit: () => void;
-  onAddAfterSave?: () => void;
   onSaved: () => void | Promise<void>;
   onDeleted: () => void | Promise<void>;
 };
 
 export default function MilestoneRow({
   milestone,
-  maxHours,
-  otherHours,
   deliverableUnitPrice,
   deliverableRate,
   editingMilestoneId,
   onEdit,
   onStopEdit,
-  onAddAfterSave,
   onSaved,
   onDeleted,
 }: MilestoneRowProps) {
@@ -57,20 +48,12 @@ export default function MilestoneRow({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const exceedsHours =
-    form.pricing_unit === "hours" &&
-    maxHours > 0 &&
-    otherHours + form.estimated_hours > maxHours;
-  const hoursRemaining = maxHours - otherHours;
-  const milestoneUnits =
-    form.pricing_unit === "hours" ? form.estimated_hours : form.quantity;
+
+  const milestoneUnits = form.pricing_unit === "hours" ? form.estimated_hours : form.quantity;
   const clientAmount = milestoneUnits * deliverableRate;
   const formattedUnitPrice = formatMoney(deliverableUnitPrice);
   const formattedClientAmount = formatMoney(clientAmount);
-  const isComplete =
-    form.milestone_title.trim().length > 0 &&
-    milestoneUnits > 0 &&
-    !exceedsHours;
+  const isComplete = form.milestone_title.trim().length > 0 && milestoneUnits > 0;
   const isEditable = !isLocked && editingMilestoneId === milestone.id;
 
   useEffect(() => {
@@ -86,7 +69,7 @@ export default function MilestoneRow({
   }, [editingMilestoneId, lockKey, milestone.id, milestone.milestone_title, onEdit]);
 
   const save = async () => {
-    if (exceedsHours || isLocked || !isEditable) return;
+    if (isLocked || !isEditable) return;
     setIsSaving(true);
     setErrorMessage(null);
     try {
@@ -142,152 +125,142 @@ export default function MilestoneRow({
     }
   };
 
+  const iconBtn = (title: string, variant: "edit" | "delete" | "save", onClick: () => void, disabled = false) => (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-7 w-7 items-center justify-center rounded-md border bg-white transition disabled:cursor-not-allowed disabled:opacity-40",
+        variant === "delete" ? "border-red-100 text-red-500 hover:bg-red-50" :
+        variant === "save"   ? "border-accent-500/25 text-accent-500 hover:bg-accent-500/10" :
+                               "border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"
+      )}
+    >
+      {variant === "edit"   && <IconPencil size={13} />}
+      {variant === "delete" && <IconTrash  size={13} />}
+      {variant === "save"   && <IconCheck  size={13} />}
+    </button>
+  );
+
   return (
-    <>
-      <tr className="qb-nested-row">
-        <td>
-          {!isEditable ? (
-            <div>{form.milestone_title || "-"}</div>
-          ) : (
+    <tr
+      className={cn(
+        "border-b border-neutral-100 last:border-b-0 transition-colors",
+        isEditable ? "bg-accent-500/[3%]" : "hover:bg-neutral-50/60"
+      )}
+    >
+      {/* ── Title ── */}
+      <td className="px-4 py-3 align-top">
+        {!isEditable ? (
+          <p className="break-words text-[10px] font-medium text-neutral-900">
+            {form.milestone_title || "-"}
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1">
             <input
-              className="qb-input"
+              className={cn(inputCls, "h-8 py-1 !text-[10px]")}
               value={form.milestone_title}
-              onChange={(event) => setForm({ ...form, milestone_title: event.target.value })}
+              onChange={(e) => setForm({ ...form, milestone_title: e.target.value })}
             />
-          )}
-        </td>
-        <td>
-          {!isEditable ? (
-            <div>{form.milestone_description || "-"}</div>
-          ) : (
-            <input
-              className="qb-input"
-              value={form.milestone_description}
-              onChange={(event) =>
-                setForm({ ...form, milestone_description: event.target.value })
-              }
-            />
-          )}
-        </td>
-        <td>
-          {!isEditable ? (
-            <div>{form.pricing_unit === "hours" ? "Hours" : "Each"}</div>
-          ) : (
-            <select
-              className="qb-select"
-              value={form.pricing_unit}
-              onChange={(event) => setForm({ ...form, pricing_unit: event.target.value })}
-            >
-              <option value="hours">Hours</option>
-              <option value="each">Each</option>
-            </select>
-          )}
-        </td>
-        <td>
-          {!isEditable ? (
-            <div>{milestoneUnits || 0}</div>
-          ) : form.pricing_unit === "hours" ? (
-            <div>
-              <input
-                type="number"
-                className="qb-input"
-                value={form.estimated_hours}
-                onChange={(event) =>
-                  setForm({ ...form, estimated_hours: Number(event.target.value) })
-                }
-              />
-              {maxHours > 0 && (
-                <div className="qb-muted text-xs">
-                  {exceedsHours
-                    ? `Exceeds deliverable hours (${hoursRemaining} remaining).`
-                    : `${hoursRemaining} hours remaining.`}
-                </div>
-              )}
-            </div>
-          ) : (
-            <input
-              type="number"
-              className="qb-input"
-              value={form.quantity}
-              onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })}
-            />
-          )}
-        </td>
-        <td>{formattedUnitPrice}</td>
-        <td>{formattedClientAmount}</td>
-        <td>
-          <div className="qb-row-actions">
-            {!isEditable ? (
-              <>
-                <button
-                  type="button"
-                  className="qb-icon-btn qb-icon-btn--edit"
-                  onClick={handleEdit}
-                  title="Edit milestone"
-                  aria-label="Edit milestone"
-                >
-                  <span className="qb-icon qb-icon--edit" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="qb-icon-btn qb-icon-btn--delete"
-                  onClick={remove}
-                  disabled={isDeleting}
-                  aria-busy={isDeleting}
-                  title={isDeleting ? "Deleting milestone" : "Delete milestone"}
-                  aria-label={isDeleting ? "Deleting milestone" : "Delete milestone"}
-                >
-                  <span className="qb-icon qb-icon--delete" aria-hidden="true" />
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="qb-icon-btn qb-icon-btn--delete"
-                  onClick={remove}
-                  disabled={isDeleting}
-                  aria-busy={isDeleting}
-                  title={isDeleting ? "Deleting milestone" : "Delete milestone"}
-                  aria-label={isDeleting ? "Deleting milestone" : "Delete milestone"}
-                >
-                  <span className="qb-icon qb-icon--delete" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="qb-icon-btn qb-icon-btn--save"
-                  onClick={save}
-                  disabled={isSaving || exceedsHours}
-                  aria-busy={isSaving}
-                  title={
-                    exceedsHours
-                      ? "Resolve over hours before saving"
-                      : isSaving
-                        ? "Saving milestone"
-                        : "Save milestone"
-                  }
-                  aria-label={
-                    exceedsHours
-                      ? "Resolve over hours before saving"
-                      : isSaving
-                        ? "Saving milestone"
-                        : "Save milestone"
-                  }
-                >
-                  <span className="qb-icon qb-icon--save" aria-hidden="true" />
-                </button>
-              </>
+            {errorMessage && (
+              <p className="text-[10px] text-red-600">{errorMessage}</p>
             )}
           </div>
-        </td>
-      </tr>
-      {errorMessage ? (
-        <tr className="qb-nested-row qb-nested-row--error">
-          <td colSpan={7} className="qb-row-error-cell">
-            {errorMessage}
-          </td>
-        </tr>
-      ) : null}
-    </>
+        )}
+      </td>
+
+      {/* ── Description ── */}
+      <td className="px-4 py-3 align-top">
+        {!isEditable ? (
+          <p
+            className={cn(
+              "break-words text-[10px] leading-4",
+              form.milestone_description ? "text-neutral-500" : "italic text-neutral-300"
+            )}
+          >
+            {form.milestone_description || "No description"}
+          </p>
+        ) : (
+          <textarea
+            rows={2}
+            className={cn(inputCls, "resize-none py-1 !text-[10px]")}
+            value={form.milestone_description}
+            placeholder="Milestone description"
+            onChange={(e) => setForm({ ...form, milestone_description: e.target.value })}
+          />
+        )}
+      </td>
+
+      {/* ── Unit ── */}
+      <td className="px-4 py-3 align-top">
+        {!isEditable ? (
+          <span className="inline-block whitespace-nowrap rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[10px] font-medium text-neutral-600">
+            {form.pricing_unit === "hours" ? "Hours" : "Each"}
+          </span>
+        ) : (
+          <select
+            className={cn(selectCls, "h-8 py-1 !text-[10px]")}
+            value={form.pricing_unit}
+            onChange={(e) => setForm({ ...form, pricing_unit: e.target.value })}
+          >
+            <option value="hours">Hours</option>
+            <option value="each">Each</option>
+          </select>
+        )}
+      </td>
+
+      {/* ── Qty ── */}
+      <td className="px-4 py-3 align-top text-right">
+        {!isEditable ? (
+          <span className="text-[10px] text-neutral-700">{milestoneUnits || 0}</span>
+        ) : (
+          <input
+            type="number"
+            className={cn(inputCls, "h-8 py-1 text-right !text-[10px]")}
+            value={form.pricing_unit === "hours" ? form.estimated_hours : form.quantity}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                ...(form.pricing_unit === "hours"
+                  ? { estimated_hours: Number(e.target.value) }
+                  : { quantity: Number(e.target.value) }),
+              })
+            }
+          />
+        )}
+      </td>
+
+      {/* ── Rate ── */}
+      <td className="px-4 py-3 align-top text-right">
+        <span className="whitespace-nowrap text-[10px] text-neutral-500">{formattedUnitPrice}</span>
+      </td>
+
+      {/* ── Total ── */}
+      <td className="px-4 py-3 align-top text-right">
+        <span className="whitespace-nowrap text-[10px] font-semibold text-neutral-900">
+          {formattedClientAmount}
+        </span>
+      </td>
+
+      {/* ── Actions ── */}
+      <td className="px-4 py-3 align-top">
+        <div className="flex items-center justify-end gap-1">
+          {!isEditable ? (
+            <>
+              {iconBtn("Edit milestone", "edit", handleEdit)}
+              {iconBtn(isDeleting ? "Deleting..." : "Delete milestone", "delete", () => void remove(), isDeleting)}
+            </>
+          ) : (
+            <>
+              {iconBtn(isDeleting ? "Deleting..." : "Delete milestone", "delete", () => void remove(), isDeleting)}
+              {iconBtn(isSaving ? "Saving..." : "Save milestone", "save", () => void save(), isSaving)}
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }

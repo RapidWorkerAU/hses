@@ -46,6 +46,19 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAnonServerClient();
+
+  if (action === "approved" || action === "rejected") {
+    const service = createServiceRoleClient();
+    const { data: currentQuote } = await service
+      .from("quotes")
+      .select("status")
+      .eq("id", quoteId)
+      .single();
+    if (currentQuote?.status === action) {
+      return NextResponse.json({ ok: true });
+    }
+  }
+
   const { error } = await supabase.rpc("add_quote_client_action", {
     p_quote_id: quoteId,
     p_action: action,

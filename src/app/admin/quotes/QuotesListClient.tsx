@@ -1,12 +1,15 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchAdmin } from "../lib/adminFetch";
-import PortalModal from "@/components/PortalModal";
-import modalStyles from "@/components/PortalModal.module.css";
-import { TableSkeleton } from "@/components/loading/HsesLoaders";
-import PortalTableFooter from "@/components/table/PortalTableFooter";
+import { Modal } from "@/components/ui/Modal";
+import { ConfirmModal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { IconChevronLeft, IconChevronRight, IconTrash, IconSearch, IconPlus } from "@tabler/icons-react";
+import { formatMoney, formatDate } from "@/lib/formatters";
 
 type QuoteRow = {
   id: string;
@@ -16,10 +19,7 @@ type QuoteRow = {
   updated_at: string | null;
   organisations?: { name?: string | null } | null;
   contacts?: { full_name?: string | null; email?: string | null } | null;
-  quote_access_codes?: Array<{
-    access_code: string | null;
-    created_at: string | null;
-  }>;
+  quote_access_codes?: Array<{ access_code: string | null; created_at: string | null }>;
   latest_access_code?: string | null;
   quote_versions?: Array<{
     id: string;
@@ -33,41 +33,18 @@ type QuoteRow = {
 
 const statusOptions = ["all", "draft", "published", "approved", "rejected"];
 
-const formatDate = (value: string | null | undefined) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-AU");
-};
-
-const formatMoney = (value: number | null | undefined) => {
-  if (value === null || value === undefined) return "-";
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD",
-    maximumFractionDigits: 2,
-  }).format(value);
-};
-
 const formatStatus = (value: string | null | undefined) => {
   const status = (value ?? "draft").trim();
-  if (!status) return "Draft";
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  return status ? status.charAt(0).toUpperCase() + status.slice(1) : "Draft";
 };
 
-const getStatusPillClassName = (value: string | null | undefined) => {
-  const status = (value ?? "draft").trim().toLowerCase();
-  if (status === "approved") {
-    return "bg-emerald-100 text-emerald-700";
-  }
-  if (status === "published") {
-    return "bg-sky-100 text-sky-700";
-  }
-  if (status === "rejected") {
-    return "bg-rose-100 text-rose-700";
-  }
-  return "bg-amber-100 text-amber-700";
+const STATUS_PILL: Record<string, string> = {
+  approved:  "bg-emerald-100 text-emerald-700",
+  published: "bg-sky-100 text-sky-700",
+  rejected:  "bg-rose-100 text-rose-700",
 };
+const getStatusPill = (value: string | null | undefined) =>
+  STATUS_PILL[(value ?? "draft").trim().toLowerCase()] ?? "bg-amber-100 text-amber-700";
 
 export default function QuotesListClient() {
   const router = useRouter();
@@ -87,14 +64,10 @@ export default function QuotesListClient() {
     code?: string | null;
     cc?: string;
   }>({ open: false });
-  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">(
-    "idle"
-  );
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [resendError, setResendError] = useState<string | null>(null);
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; quote?: QuoteRow | null; isDeleting: boolean }>({
-    open: false,
-    quote: null,
-    isDeleting: false,
+    open: false, quote: null, isDeleting: false,
   });
   const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
@@ -115,25 +88,16 @@ export default function QuotesListClient() {
       const data = (await response.json()) as { quotes: QuoteRow[]; total: number };
       setQuotes(data.quotes ?? []);
       setTotal(data.total ?? 0);
-      setSelectedQuoteIds((current) => current.filter((id) => (data.quotes ?? []).some((quote) => quote.id === id)));
+      setSelectedQuoteIds((current) => current.filter((id) => (data.quotes ?? []).some((q) => q.id === id)));
     }
     setIsLoading(false);
   };
 
-  useEffect(() => {
-    load();
-  }, [status, page]);
-
-  if (isLoading) {
-    return <TableSkeleton rows={pageSize} columns="10% 18% 14% 14% 10% 10% 8% 8% 8%" showToolbar />;
-  }
+  useEffect(() => { load(); }, [status, page]);
 
   const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page !== 1) {
-      setPage(1);
-      return;
-    }
+    if (page !== 1) { setPage(1); return; }
     load();
   };
 
@@ -144,20 +108,13 @@ export default function QuotesListClient() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "New Quote" }),
     });
-    if (!response.ok) {
-      const message = await response.text();
-      setError(message || "Unable to create quote.");
-      return;
-    }
+    if (!response.ok) { setError((await response.text()) || "Unable to create quote."); return; }
     const data = (await response.json()) as { id?: string };
-    if (!data.id) {
-      setError("Quote created but id was missing. Please refresh and try again.");
-      return;
-    }
+    if (!data.id) { setError("Quote created but id was missing. Please refresh and try again."); return; }
     router.push(`/admin/quotes/${data.id}`);
   };
 
-  const deleteQuote = async (event: React.MouseEvent, quote: QuoteRow) => {
+  const deleteQuote = (event: React.MouseEvent, quote: QuoteRow) => {
     event.stopPropagation();
     if (quote.has_project) return;
     setDeleteModal({ open: true, quote, isDeleting: false });
@@ -166,38 +123,14 @@ export default function QuotesListClient() {
   const confirmDeleteQuote = async () => {
     if (!deleteModal.quote) return;
     setDeleteModal((prev) => ({ ...prev, isDeleting: true }));
-    setError(null);
     const response = await fetchAdmin(`/api/admin/quotes/${deleteModal.quote.id}`, { method: "DELETE" });
     if (!response.ok) {
-      const message = await response.text();
-      setError(message || "Unable to delete quote.");
+      setError((await response.text()) || "Unable to delete quote.");
       setDeleteModal((prev) => ({ ...prev, isDeleting: false }));
       return;
     }
     setDeleteModal({ open: false, quote: null, isDeleting: false });
     await load();
-  };
-
-  const deletableQuotes = quotes.filter((quote) => !quote.has_project);
-  const allDeletableSelected =
-    deletableQuotes.length > 0 && deletableQuotes.every((quote) => selectedQuoteIds.includes(quote.id));
-
-  const toggleSelectAllDeletable = () => {
-    if (allDeletableSelected) {
-      setSelectedQuoteIds((current) => current.filter((id) => !deletableQuotes.some((quote) => quote.id === id)));
-      return;
-    }
-    setSelectedQuoteIds((current) => {
-      const next = new Set(current);
-      deletableQuotes.forEach((quote) => next.add(quote.id));
-      return [...next];
-    });
-  };
-
-  const toggleQuoteSelection = (quoteId: string) => {
-    setSelectedQuoteIds((current) =>
-      current.includes(quoteId) ? current.filter((id) => id !== quoteId) : [...current, quoteId]
-    );
   };
 
   const handleBulkDeleteQuotes = async () => {
@@ -206,14 +139,10 @@ export default function QuotesListClient() {
     setError(null);
     try {
       const results = await Promise.all(
-        selectedQuoteIds.map((quoteId) => fetchAdmin(`/api/admin/quotes/${quoteId}`, { method: "DELETE" }))
+        selectedQuoteIds.map((id) => fetchAdmin(`/api/admin/quotes/${id}`, { method: "DELETE" }))
       );
-      const failed = results.find((response) => !response.ok);
-      if (failed) {
-        const message = await failed.text();
-        setError(message || "Unable to delete selected quotes.");
-        return;
-      }
+      const failed = results.find((r) => !r.ok);
+      if (failed) { setError((await failed.text()) || "Unable to delete selected quotes."); return; }
       setBulkDeleteModalOpen(false);
       setSelectedQuoteIds([]);
       await load();
@@ -239,361 +168,283 @@ export default function QuotesListClient() {
     if (!resendModal.quoteId) return;
     const email = resendModal.email?.trim() ?? "";
     const code = resendModal.code?.trim() ?? "";
-    if (!email) {
-      setResendStatus("error");
-      setResendError("Please enter a recipient email.");
-      return;
-    }
-    if (!code) {
-      setResendStatus("error");
-      setResendError("No access code found for this quote.");
-      return;
-    }
+    if (!email) { setResendStatus("error"); setResendError("Please enter a recipient email."); return; }
+    if (!code) { setResendStatus("error"); setResendError("No access code found for this quote."); return; }
     setResendStatus("sending");
     setResendError(null);
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin).replace(/\/$/, "");
-    const link = `${siteUrl}/quote`;
     const response = await fetchAdmin(`/api/admin/quotes/${resendModal.quoteId}/send-access-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: email,
-        cc: resendModal.cc?.trim() || null,
-        access_code: code,
-        link,
-      }),
+      body: JSON.stringify({ to: email, cc: resendModal.cc?.trim() || null, access_code: code, link: `${siteUrl}/quote` }),
     });
-    if (!response.ok) {
-      const message = await response.text();
-      setResendStatus("error");
-      setResendError(message || "Unable to send email.");
-      return;
-    }
+    if (!response.ok) { setResendStatus("error"); setResendError((await response.text()) || "Unable to send email."); return; }
     setResendStatus("sent");
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="management-table-toolbar">
-        <button
-          type="button"
-          className="management-bulk-delete-button"
-          onClick={() => setBulkDeleteModalOpen(true)}
-          disabled={!selectedQuoteIds.length || isBulkDeleting}
-        >
-          <img src="/icons/delete.svg" alt="" className="management-bulk-delete-button-icon" />
-          <span>{isBulkDeleting ? "Deleting..." : "Bulk Delete"}</span>
-        </button>
-        <div className="admin-quotes-filters management-table-toolbar-actions flex flex-wrap items-center gap-3">
-        <select
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          value={status}
-          onChange={(event) => {
-            setStatus(event.target.value);
-            setPage(1);
-          }}
-        >
-          {statusOptions.map((option) => (
-            <option key={option} value={option}>
-              {option.charAt(0).toUpperCase() + option.slice(1)}
-            </option>
-          ))}
-        </select>
-        <form onSubmit={handleSearch} className="admin-quotes-search flex flex-1 items-center gap-2">
-          <input
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700"
-            placeholder="Search by quote number, title, org, or contact..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <button
-            type="submit"
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700"
-          >
-            Search
-          </button>
-        </form>
-        <button
-          className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#0b4f63]"
-          type="button"
-          onClick={handleCreate}
-        >
-          New Quote
-        </button>
+  const closeResend = () => { setResendModal({ open: false }); setResendStatus("idle"); setResendError(null); };
+
+  const deletableQuotes = quotes.filter((q) => !q.has_project);
+  const allDeletableSelected = deletableQuotes.length > 0 && deletableQuotes.every((q) => selectedQuoteIds.includes(q.id));
+  const toggleSelectAllDeletable = () => {
+    if (allDeletableSelected) {
+      setSelectedQuoteIds((current) => current.filter((id) => !deletableQuotes.some((q) => q.id === id)));
+    } else {
+      setSelectedQuoteIds((current) => [...new Set([...current, ...deletableQuotes.map((q) => q.id)])]);
+    }
+  };
+  const toggleQuoteSelection = (id: string) =>
+    setSelectedQuoteIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-9 w-[120px]" />
+          <Skeleton className="h-9 w-[140px]" />
+          <Skeleton className="h-9 flex-1" />
+          <Skeleton className="h-9 w-[100px]" />
+        </div>
+        <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+          <div className="divide-y divide-neutral-100">
+            {Array.from({ length: pageSize }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3">
+                <Skeleton className="h-4 w-4" />
+                <Skeleton className="h-4 w-[70px]" />
+                <Skeleton className="h-4 w-[130px]" />
+                <Skeleton className="h-4 w-[100px]" />
+                <Skeleton className="h-4 w-[100px]" />
+                <Skeleton className="h-4 w-[80px]" />
+                <Skeleton className="h-4 w-[60px]" />
+                <Skeleton className="h-4 w-[70px]" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        {selectedQuoteIds.length > 0 && (
+          <Button
+            variant="danger"
+            size="sm"
+            iconLeft={<IconTrash size={14} />}
+            onClick={() => setBulkDeleteModalOpen(true)}
+            loading={isBulkDeleting}
+            loadingText="Deleting..."
+          >
+            Delete {selectedQuoteIds.length} selected
+          </Button>
+        )}
+        <select
+          className="h-9 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500"
+          value={status}
+          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+        >
+          {statusOptions.map((opt) => (
+            <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
+          ))}
+        </select>
+        <form onSubmit={handleSearch} className="flex flex-1 items-center gap-2 min-w-[200px]">
+          <Input
+            containerClassName="flex-1"
+            className="!h-9 text-[13px]"
+            iconLeft={<IconSearch size={14} />}
+            placeholder="Search by quote number, title, org, or contact…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Button type="submit" variant="neutral" size="sm">Search</Button>
+        </form>
+        <Button variant="primary" size="sm" iconLeft={<IconPlus size={14} />} onClick={handleCreate}>
+          New Quote
+        </Button>
+      </div>
+
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
-        </div>
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>
       )}
 
-      <div className="portal-table-shell">
-        <table className="admin-quotes-table portal-table w-full text-left text-sm">
-          <colgroup>
-            <col style={{ width: "5%" }} />
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "10%" }} />
-          </colgroup>
+      {/* Table */}
+      <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+        <table className="w-full text-left text-[13px]">
           <thead>
-            <tr>
-              <th className="management-checkbox-header">
-                <input type="checkbox" checked={allDeletableSelected} onChange={toggleSelectAllDeletable} aria-label="Select all deletable quotes" />
+            <tr className="border-b border-neutral-100 bg-neutral-50">
+              <th className="w-10 px-4 py-3">
+                <input type="checkbox" checked={allDeletableSelected} onChange={toggleSelectAllDeletable} aria-label="Select all" />
               </th>
-              <th className="px-4 py-3">Quote ID</th>
-              <th className="px-4 py-3">Proposal name</th>
-              <th className="px-4 py-3">Organisation</th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Access code</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Total</th>
-              <th className="px-4 py-3">Updated</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Quote ID</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Proposal name</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Organisation</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Contact</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Access code</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Total</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider">Updated</th>
+              <th className="px-4 py-3 text-[12px] font-semibold text-neutral-500 uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-neutral-100">
             {quotes.length === 0 && (
-              <tr className="portal-table-empty-row">
-                <td colSpan={10}>
-                  No quotes found.
-                </td>
+              <tr>
+                <td colSpan={10} className="px-4 py-10 text-center text-[13px] text-neutral-400">No quotes found.</td>
               </tr>
             )}
             {quotes.map((quote) => {
-                const latestVersion = quote.quote_versions?.[0];
-                const latestCode =
-                  quote.latest_access_code ??
-                  quote.quote_access_codes?.[0]?.access_code ??
-                  "-";
-                return (
-                  <tr
-                    key={quote.id}
-                    className="admin-quotes-row portal-table-row cursor-pointer"
-                    onClick={() => router.push(`/admin/quotes/${quote.id}`)}
-                  >
-                    <td className="management-checkbox-cell" onClick={(event) => event.stopPropagation()} data-label="">
-                      <input
-                        type="checkbox"
-                        checked={selectedQuoteIds.includes(quote.id)}
+              const latestVersion = quote.quote_versions?.[0];
+              const latestCode = quote.latest_access_code ?? quote.quote_access_codes?.[0]?.access_code ?? "-";
+              return (
+                <tr
+                  key={quote.id}
+                  className="hover:bg-neutral-50 cursor-pointer transition-colors"
+                  onClick={() => router.push(`/admin/quotes/${quote.id}`)}
+                >
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedQuoteIds.includes(quote.id)}
+                      disabled={quote.has_project}
+                      onChange={() => toggleQuoteSelection(quote.id)}
+                      aria-label={`Select ${quote.quote_number ?? quote.title ?? "quote"}`}
+                    />
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-neutral-900">{quote.quote_number ?? "-"}</td>
+                  <td className="px-4 py-3 text-neutral-600 max-w-[180px] truncate">{quote.title ?? "-"}</td>
+                  <td className="px-4 py-3 text-neutral-600">{quote.organisations?.name ?? "-"}</td>
+                  <td className="px-4 py-3 text-neutral-600">
+                    <div>{quote.contacts?.full_name ?? "-"}</div>
+                    <div className="text-[12px] text-neutral-400">{quote.contacts?.email ?? ""}</div>
+                  </td>
+                  <td className="px-4 py-3 text-neutral-600">{latestCode}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${getStatusPill(quote.status)}`}>
+                      {formatStatus(quote.status)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-neutral-700">{formatMoney(latestVersion?.total_inc_gst)}</td>
+                  <td className="px-4 py-3 text-neutral-500">{formatDate(quote.updated_at)}</td>
+                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button variant="neutral" size="sm" onClick={(e) => openResend(e, quote)}>
+                        Resend
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={(e) => deleteQuote(e, quote)}
                         disabled={quote.has_project}
-                        onChange={() => toggleQuoteSelection(quote.id)}
-                        aria-label={`Select ${quote.quote_number ?? quote.title ?? "quote"}`}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-900" data-label="Quote ID">
-                      {quote.quote_number ?? "-"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 management-cell-wrap" data-label="Proposal name">
-                      {quote.title ?? "-"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 management-cell-wrap" data-label="Organisation">
-                      {quote.organisations?.name ?? "-"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 management-cell-wrap" data-label="Contact">
-                      <div>{quote.contacts?.full_name ?? "-"}</div>
-                      <div className="text-xs text-slate-400">{quote.contacts?.email ?? ""}</div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600" data-label="Access code">
-                      {latestCode}
-                    </td>
-                    <td className="px-4 py-3" data-label="Status">
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusPillClassName(
-                          quote.status
-                        )}`}
-                      >
-                        {formatStatus(quote.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-700" data-label="Total">
-                      {formatMoney(latestVersion?.total_inc_gst)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-500" data-label="Updated">
-                      {formatDate(quote.updated_at)}
-                    </td>
-                    <td className="px-4 py-3 text-right" data-label="Actions">
-                      <button
-                        type="button"
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                        onClick={(event) => openResend(event, quote)}
-                      >
-                        Resend email
-                      </button>
-                      <button
-                        type="button"
-                        className={`ml-2 rounded-full border px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
-                          quote.has_project
-                            ? "border-slate-200 text-slate-400"
-                            : "border-rose-200 text-rose-700 hover:bg-rose-50"
-                        }`}
-                        onClick={(event) => deleteQuote(event, quote)}
-                        disabled={quote.has_project}
-                        title={
-                          quote.has_project
-                            ? "Quote already converted to a project."
-                            : "Delete quote"
-                        }
+                        tooltip={quote.has_project ? "Quote already converted to a project" : undefined}
                       >
                         Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
             })}
           </tbody>
         </table>
       </div>
-      <PortalTableFooter
-        total={total}
-        page={page}
-        pageSize={pageSize}
-        onPageChange={setPage}
-        label="quotes"
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between text-[13px] text-neutral-500">
+        <span>
+          {total === 0
+            ? "No quotes"
+            : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total} quotes`}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button variant="neutral" size="sm" iconOnly
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+          >
+            <IconChevronLeft size={14} />
+          </Button>
+          <span className="px-3 py-1 text-neutral-700">{page} / {totalPages}</span>
+          <Button variant="neutral" size="sm" iconOnly
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+          >
+            <IconChevronRight size={14} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Bulk delete modal */}
+      <ConfirmModal
+        open={bulkDeleteModalOpen}
+        onClose={() => { if (!isBulkDeleting) setBulkDeleteModalOpen(false); }}
+        title="Delete selected quotes?"
+        description={`You are about to permanently delete ${selectedQuoteIds.length} selected quote${selectedQuoteIds.length === 1 ? "" : "s"}. This cannot be undone.`}
+        variant="danger"
+        confirmLabel="Delete selected"
+        cancelLabel="Cancel"
+        onConfirm={() => void handleBulkDeleteQuotes()}
+        loading={isBulkDeleting}
       />
 
-      <PortalModal
-        open={bulkDeleteModalOpen}
-        ariaLabel="Delete selected quotes"
-        eyebrow="Bulk Delete"
-        title="Delete selected quotes?"
-        description={`You are about to permanently delete ${selectedQuoteIds.length} selected quote${selectedQuoteIds.length === 1 ? "" : "s"}.`}
-        onClose={() => {
-          if (isBulkDeleting) return;
-          setBulkDeleteModalOpen(false);
-        }}
+      {/* Resend email modal */}
+      <Modal
+        open={resendModal.open}
+        onClose={closeResend}
+        title="Send quote access email"
+        subtitle="Send the existing access code to the recipient below."
         footer={
           <>
-            <button
-              type="button"
-              className={modalStyles.secondaryButton}
-              onClick={() => setBulkDeleteModalOpen(false)}
-              disabled={isBulkDeleting}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className={modalStyles.dangerButton}
-              onClick={() => void handleBulkDeleteQuotes()}
-              disabled={isBulkDeleting}
-            >
-              {isBulkDeleting ? "Deleting..." : "Delete selected"}
-            </button>
+            <Button variant="neutral" onClick={closeResend}>Close</Button>
+            <Button variant="primary" onClick={sendResendEmail} loading={resendStatus === "sending"} loadingText="Sending...">
+              Send email
+            </Button>
           </>
         }
       >
-        <div className={modalStyles.noticeError}>This cannot be undone.</div>
-      </PortalModal>
-
-      {resendModal.open && (
-        <PortalModal
-          open={resendModal.open}
-          ariaLabel="Resend quote email"
-          eyebrow="Quote Access"
-          title="Send quote access email"
-          description="Send the existing access code to the recipient below."
-          onClose={() => {
-            setResendModal({ open: false });
-            setResendStatus("idle");
-            setResendError(null);
-          }}
-          footer={
-            <>
-              <button
-                type="button"
-                className={modalStyles.secondaryButton}
-                onClick={() => {
-                  setResendModal({ open: false });
-                  setResendStatus("idle");
-                  setResendError(null);
-                }}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                className={modalStyles.primaryButton}
-                onClick={sendResendEmail}
-                disabled={resendStatus === "sending"}
-              >
-                {resendStatus === "sending" ? "Sending..." : "Send email"}
-              </button>
-            </>
-          }
-        >
-          <div className={modalStyles.stack}>
-            <div className={modalStyles.surface}>
-              <p className={modalStyles.fieldLabel}>Access code</p>
-              <div className="mt-2 text-base font-semibold text-slate-900">{resendModal.code ?? "-"}</div>
-            </div>
-            <div className={modalStyles.field}>
-              <span className={modalStyles.fieldLabel}>Recipient email</span>
-              <input
-                type="email"
-                className={modalStyles.input}
-                value={resendModal.email ?? ""}
-                placeholder="client@example.com"
-                onChange={(event) => setResendModal((prev) => ({ ...prev, email: event.target.value }))}
-              />
-            </div>
-            <div className={modalStyles.field}>
-              <span className={modalStyles.fieldLabel}>CC</span>
-              <input
-                type="text"
-                className={modalStyles.input}
-                value={resendModal.cc ?? ""}
-                placeholder="manager@example.com, ops@example.com"
-                onChange={(event) => setResendModal((prev) => ({ ...prev, cc: event.target.value }))}
-              />
-            </div>
-            {resendError ? <div className={modalStyles.noticeError}>{resendError}</div> : null}
-            {resendStatus === "sent" ? <div className={modalStyles.noticeSuccess}>Email sent.</div> : null}
+        <div className="space-y-4">
+          <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+            <p className="text-[12px] font-medium text-neutral-500 uppercase tracking-wider mb-1">Access code</p>
+            <p className="text-[15px] font-semibold text-neutral-900">{resendModal.code ?? "-"}</p>
           </div>
-        </PortalModal>
-      )}
+          <Input
+            label="Recipient email"
+            type="email"
+            value={resendModal.email ?? ""}
+            placeholder="client@example.com"
+            onChange={(e) => setResendModal((prev) => ({ ...prev, email: e.target.value }))}
+          />
+          <Input
+            label="CC"
+            type="text"
+            value={resendModal.cc ?? ""}
+            placeholder="manager@example.com, ops@example.com"
+            onChange={(e) => setResendModal((prev) => ({ ...prev, cc: e.target.value }))}
+          />
+          {resendError && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-700">{resendError}</div>
+          )}
+          {resendStatus === "sent" && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">Email sent successfully.</div>
+          )}
+        </div>
+      </Modal>
 
-      <PortalModal
+      {/* Delete single quote modal */}
+      <ConfirmModal
         open={deleteModal.open}
-        ariaLabel="Delete quote"
-        eyebrow="Delete Quote"
-        title="Delete this quote?"
-        description={
-          deleteModal.quote
-            ? `You are about to permanently delete ${deleteModal.quote.quote_number ?? deleteModal.quote.title ?? "this quote"}.`
-            : "You are about to permanently delete this quote."
-        }
         onClose={() => setDeleteModal({ open: false, quote: null, isDeleting: false })}
-        footer={
-          <>
-            <button
-              type="button"
-              className={modalStyles.secondaryButton}
-              onClick={() => setDeleteModal({ open: false, quote: null, isDeleting: false })}
-              disabled={deleteModal.isDeleting}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className={modalStyles.dangerButton}
-              onClick={() => void confirmDeleteQuote()}
-              disabled={deleteModal.isDeleting}
-            >
-              {deleteModal.isDeleting ? "Deleting..." : "Delete quote"}
-            </button>
-          </>
-        }
-      >
-        <div className={modalStyles.noticeError}>This cannot be undone.</div>
-      </PortalModal>
+        title="Delete this quote?"
+        description={`You are about to permanently delete ${deleteModal.quote?.quote_number ?? deleteModal.quote?.title ?? "this quote"}. This cannot be undone.`}
+        variant="danger"
+        confirmLabel="Delete quote"
+        cancelLabel="Cancel"
+        onConfirm={() => void confirmDeleteQuote()}
+        loading={deleteModal.isDeleting}
+      />
     </div>
   );
 }
-

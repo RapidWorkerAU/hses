@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { ensurePortalSupabaseUser } from "@/lib/supabase/portalSession";
-import styles from "./SmsIntakeClient.module.css";
+import { cn } from "@/lib/utils";
 
 type SmsMap = {
   id: string;
@@ -161,6 +161,8 @@ const buildGuidedAnswerSummary = ({
   if (otherSelected && otherText.trim()) parts.push(`Other: ${otherText.trim()}`);
   return parts.length ? parts.join("; ") : "No answer selected";
 };
+
+const inputCls = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#2d9692]/20 focus:border-[#2d9692] transition disabled:opacity-50";
 
 export default function SmsIntakeClient({ mapId }: { mapId: string }) {
   const [payload, setPayload] = useState<IntakePayload | null>(null);
@@ -608,352 +610,518 @@ export default function SmsIntakeClient({ mapId }: { mapId: string }) {
 
   if (isLoading) {
     return (
-      <div className={styles.screen}>
-        <div className={styles.progressHeader}>
-          <p className={styles.eyebrow}>System Architect</p>
-          <h1 className={styles.title}>Loading intake...</h1>
+      <div className="animate-pulse flex flex-col gap-4">
+        <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden flex min-h-[500px]">
+          <div className="w-52 shrink-0 border-r border-neutral-100 bg-neutral-50 p-5 flex flex-col gap-3">
+            <div className="h-3 w-16 rounded bg-neutral-200" />
+            <div className="h-4 w-28 rounded bg-neutral-200 mb-2" />
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="h-8 rounded-lg bg-neutral-100" />
+            ))}
+          </div>
+          <div className="flex-1 p-6 flex flex-col gap-4">
+            <div className="h-5 w-36 rounded bg-neutral-200" />
+            <div className="h-4 w-64 rounded bg-neutral-100" />
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-24 rounded-xl bg-neutral-100" />
+              ))}
+            </div>
+          </div>
         </div>
-        <div className={styles.loadingState}>Preparing your questions</div>
       </div>
     );
   }
 
   if (!payload?.map || !payload.session) {
     return (
-      <div className={styles.screen}>
-        <div className={styles.progressHeader}>
-          <p className={styles.eyebrow}>System Architect</p>
-          <h1 className={styles.title}>Intake unavailable</h1>
-        </div>
-        <main className={styles.main}>
-          <div className={styles.panel}>{error ? <div className={styles.error}>{error}</div> : null}</div>
-        </main>
+      <div className="rounded-xl border border-neutral-200 bg-white p-6">
+        <h2 className="text-[16px] font-semibold text-neutral-900">Intake unavailable</h2>
+        {error ? (
+          <p className="mt-2 text-[13px] text-red-600">{error}</p>
+        ) : (
+          <p className="mt-1 text-[13px] text-neutral-500">The intake session could not be loaded for this map.</p>
+        )}
       </div>
     );
   }
 
+  const workspaceTitle =
+    currentGroup === "QS1"
+      ? "Context"
+      : currentGroup === "gap_analysis"
+        ? "Gap analysis"
+        : currentGroup === "complete"
+          ? "Complete"
+          : activeStep.label;
+
+  const workspaceSubtitle =
+    currentGroup === "QS1"
+      ? "Start with the core operating details before the guided conversation begins."
+      : currentGroup === "gap_analysis"
+        ? "Answer any follow-up questions you can, or complete the intake without extra detail."
+        : currentGroup === "complete"
+          ? "The intake responses have been captured for this system map."
+          : "Answer one question at a time so the system can capture structured map inputs.";
+
+  const statusLabel =
+    currentGroup === "complete"
+      ? "Intake complete"
+      : currentGroup === "gap_analysis"
+        ? "Gap analysis"
+        : `Current: ${progressSteps[currentStepIndex]?.label ?? "Context"}`;
+
   return (
-    <div className={styles.screen}>
-      <main className={styles.main}>
-        <div className={styles.intakeShell}>
-          <aside className={styles.sideNav} aria-label="Question progress">
-            <p className={styles.sideEyebrow}>Intake</p>
-            <h2 className={styles.sideTitle}>System Map</h2>
-            <div className={styles.navItems}>
-              {progressSteps.map((step, index) => {
-                const isDone = index < currentStepIndex || currentGroup === "complete";
-                const isActive = index === currentStepIndex && currentGroup !== "complete";
-                return (
-                  <div
-                    key={step.key}
-                    className={`${styles.navItem} ${isDone ? styles.navItemDone : ""} ${isActive ? styles.navItemActive : ""}`}
-                  >
-                    <span className={styles.navIcon}>{isDone ? "OK" : index + 1}</span>
-                    <span>
-                      <strong>{step.label}</strong>
-                      <small>{isDone ? "Complete" : isActive ? "In progress" : "Waiting"}</small>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </aside>
-
-          <div className={styles.workspace}>
-            <div className={styles.workspaceHeader}>
-              <div>
-                <h2>
-                  {currentGroup === "QS1"
-                    ? "Context"
-                    : currentGroup === "gap_analysis"
-                      ? "Gap analysis"
-                      : currentGroup === "complete"
-                        ? "Complete"
-                        : activeStep.label}
-                </h2>
-                <p>
-                  {currentGroup === "QS1"
-                    ? "Start with the core operating details before the guided conversation begins."
-                    : currentGroup === "gap_analysis"
-                      ? "Answer any follow-up questions you can, or complete the intake without extra detail."
-                      : currentGroup === "complete"
-                      ? "The intake responses have been captured for this system map."
-                      : "Answer one question at a time so the system can capture structured map inputs."}
-                </p>
-              </div>
-              <div className={styles.workspaceActions}>
-                <span className={styles.statusPill}>
-                  {currentGroup === "complete" ? "Intake complete" : currentGroup === "gap_analysis" ? "Gap analysis" : `Current: ${progressSteps[currentStepIndex]?.label ?? "Context"}`}
+    <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden flex min-h-[600px]">
+      {/* Left step nav */}
+      <aside className="w-52 shrink-0 border-r border-neutral-100 bg-neutral-50/60 p-5 flex flex-col" aria-label="Question progress">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">Intake</p>
+        <p className="text-[14px] font-semibold text-neutral-800 mb-5">System Map</p>
+        <div className="flex flex-col gap-0.5">
+          {progressSteps.map((step, index) => {
+            const isDone = index < currentStepIndex || currentGroup === "complete";
+            const isActive = index === currentStepIndex && currentGroup !== "complete";
+            return (
+              <div
+                key={step.key}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px]",
+                  isDone && "text-neutral-500",
+                  isActive && "bg-[#2d9692]/10 text-[#2d9692]",
+                  !isDone && !isActive && "text-neutral-400"
+                )}
+              >
+                <span className={cn(
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold",
+                  isDone && "bg-[#2d9692]/15 text-[#2d9692]",
+                  isActive && "bg-[#2d9692] text-white",
+                  !isDone && !isActive && "bg-neutral-200 text-neutral-500"
+                )}>
+                  {isDone ? "✓" : index + 1}
                 </span>
-                <button type="button" className={styles.dangerButton} onClick={() => void restartIntake()} disabled={isRestarting}>
-                  {isRestarting ? "Restarting..." : "Restart questions"}
-                </button>
+                <span className="flex flex-col leading-tight">
+                  <strong className={cn("font-medium", isActive && "font-semibold")}>{step.label}</strong>
+                  <small className="text-[10px] opacity-70">{isDone ? "Complete" : isActive ? "In progress" : "Waiting"}</small>
+                </span>
               </div>
-            </div>
+            );
+          })}
+        </div>
+      </aside>
 
-            {currentGroup === "QS1" ? (
-              <section className={styles.panel}>
-                {error ? <div className={styles.error}>{error}</div> : null}
-
-                <div className={styles.questionGrid}>
-                  <div className={styles.questionCard}>
-                    <label className={styles.questionLabel} htmlFor="jurisdiction">What country or state does this business operate in?</label>
-                    <select id="jurisdiction" className={styles.select} value={qs1.jurisdiction} onChange={(event) => updateQs1("jurisdiction", event.target.value)}>
-                      <option value="">Select jurisdiction</option>
-                      {jurisdictionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </div>
-
-                  <div className={styles.questionCard}>
-                    <div className={styles.questionLabel}>Is this safety system for ongoing operations or a specific project?</div>
-                    <div className={styles.optionGrid}>
-                      {[
-                        ["ongoing_operations", "Ongoing operations", "A business or site that will keep operating."],
-                        ["project_based", "Project based", "A defined project, shutdown, campaign, or contract."],
-                        ["both", "Both", "A system that needs to cover operations and projects."],
-                      ].map(([value, label, description]) => (
-                        <button key={value} type="button" className={`${styles.optionCard} ${qs1.operationalContext === value ? styles.optionCardActive : ""}`} onClick={() => updateQs1("operationalContext", value)}>
-                          <strong>{label}</strong>
-                          <span>{description}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className={styles.questionCard}>
-                    <label className={styles.questionLabel} htmlFor="industry">What industry or sector does the business operate in?</label>
-                    <input id="industry" className={styles.input} list="industry-options" value={qs1.industrySector} onChange={(event) => updateQs1("industrySector", event.target.value)} placeholder="Start typing or choose an industry" />
-                    <datalist id="industry-options">
-                      {industryOptions.map((option) => <option key={option} value={option} />)}
-                    </datalist>
-                  </div>
-
-                  <div className={styles.questionCard}>
-                    <div className={styles.questionLabel}>How many people work in the business?</div>
-                    <div className={`${styles.optionGrid} ${styles.optionGridCompact}`}>
-                      {["1-5", "6-20", "21-50", "51-200", "200+"].map((value) => (
-                        <button key={value} type="button" className={`${styles.optionCard} ${qs1.workforceSize === value ? styles.optionCardActive : ""}`} onClick={() => updateQs1("workforceSize", value)}>
-                          <strong>{value}</strong>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className={styles.questionCard}>
-                    <div className={styles.questionLabel}>Does the business currently have a safety management system in place?</div>
-                    <div className={`${styles.optionGrid} ${styles.optionGridCompact}`}>
-                      {[
-                        ["yes", "Yes"],
-                        ["partially", "Partially"],
-                        ["no", "No"],
-                      ].map(([value, label]) => (
-                        <button key={value} type="button" className={`${styles.optionCard} ${qs1.existingSms === value ? styles.optionCardActive : ""}`} onClick={() => updateQs1("existingSms", value)}>
-                          <strong>{label}</strong>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className={styles.questionCard}>
-                    <div className={styles.questionLabel}>Is the business working toward or currently certified to ISO 45001?</div>
-                    <div className={`${styles.optionGrid} ${styles.optionGridCompact}`}>
-                      {[
-                        ["yes", "Yes"],
-                        ["no", "No"],
-                        ["not_sure", "Not sure"],
-                      ].map(([value, label]) => (
-                        <button key={value} type="button" className={`${styles.optionCard} ${qs1.iso45001 === value ? styles.optionCardActive : ""}`} onClick={() => updateQs1("iso45001", value)}>
-                          <strong>{label}</strong>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className={styles.questionCard}>
-                    <div className={styles.questionLabel}>Will this system cover employees only, or contractors and visitors as well?</div>
-                    <div className={styles.optionGrid}>
-                      {[
-                        ["employees", "Employees", "Your direct workforce."],
-                        ["contractors", "Contractors", "Contractors and subcontractors."],
-                        ["visitors", "Visitors", "Visitors entering your workplace."],
-                        ["public", "Members of public", "Public-facing operations or shared spaces."],
-                      ].map(([value, label, description]) => (
-                        <button key={value} type="button" className={`${styles.optionCard} ${qs1.audience.includes(value) ? styles.optionCardActive : ""}`} onClick={() => toggleAudience(value)}>
-                          <strong>{label}</strong>
-                          <span>{description}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className={styles.questionCard}>
-                    <div className={styles.questionLabel}>How would you prefer your documents to be structured?</div>
-                    <div className={styles.optionGrid}>
-                      {[
-                        ["combined", "Combined", "Fewer, broader documents that cover multiple topics together."],
-                        ["separate", "Separate", "Individual focused documents for each topic."],
-                        ["not_sure", "Not sure", "Let the system recommend a sensible structure."],
-                      ].map(([value, label, description]) => (
-                        <button key={value} type="button" className={`${styles.optionCard} ${qs1.documentStyle === value ? styles.optionCardActive : ""}`} onClick={() => updateQs1("documentStyle", value)}>
-                          <strong>{label}</strong>
-                          <span>{description}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className={styles.actions}>
-                  <button type="button" className={styles.primaryButton} onClick={() => void submitFixedQuestions()} disabled={isSavingFixed}>
-                    {isSavingFixed ? "Saving..." : "Continue to conversation"}
-                  </button>
-                </div>
-              </section>
-            ) : (
-              <section className={styles.chatShell}>
-                <div className={styles.messages} aria-live="polite">
-                  {messages.map((message) => (
-                    <div key={message.id} className={`${styles.messageRow} ${message.role === "user" ? styles.messageRowUser : ""}`}>
-                      <div className={`${styles.messageBubble} ${message.role === "user" ? styles.messageUser : styles.messageAi}`}>
-                        <span>{message.content}</span>
-                        {message.role === "assistant" && message.savedCount ? (
-                          <span className={styles.savedIndicator}>Saved {message.savedCount} item{message.savedCount === 1 ? "" : "s"}</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                  {isAiThinking ? (
-                    <div className={styles.messageRow}>
-                      <div className={`${styles.messageBubble} ${styles.messageAi}`}>Thinking through the next practical question...</div>
-                    </div>
-                  ) : null}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {error ? <div className={styles.error}>{error}</div> : null}
-
-                <div className={styles.guidedComposer}>
-                  {currentGroup === "gap_analysis" ? (
-                    <div className={styles.guidedPanel}>
-                      <div className={styles.guidedPanelHeader}>
-                        <p>Follow-up notes</p>
-                        <span>Answer what you know</span>
-                      </div>
-                      <h3>Use the questions above as prompts. Short notes are enough.</h3>
-                      <textarea
-                        className={styles.otherContext}
-                        value={gapResponse}
-                        onChange={(event) => setGapResponse(event.target.value)}
-                        placeholder="Example: Controls in place include pre-start checks, SWMS, toolbox talks, supervision, inductions..."
-                        disabled={isCompletingGapAnalysis}
-                      />
-                      <div className={styles.guidedActions}>
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={() => void completeGapAnalysis(true)}
-                          disabled={isCompletingGapAnalysis}
-                        >
-                          Complete without extra detail
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          onClick={() => void completeGapAnalysis(false)}
-                          disabled={isCompletingGapAnalysis || !gapResponse.trim()}
-                        >
-                          {isCompletingGapAnalysis ? "Completing..." : "Save follow-up answers"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : currentGroup === "complete" ? (
-                    <div className={styles.groupCompletePanel}>
-                      <strong>Intake complete</strong>
-                      <span>The captured responses are ready for the next System Architect step.</span>
-                    </div>
-                  ) : activeGuidedQuestion ? (
-                    <div className={styles.guidedPanel}>
-                      <div className={styles.guidedPanelHeader}>
-                        <p>{activeGuidedQuestion.label}</p>
-                        <span>{activeGuidedQuestion.selectionMode === "multi" ? "Select all that apply" : "Select one"}</span>
-                      </div>
-                      <h3>{activeGuidedQuestion.prompt}</h3>
-                      <div className={styles.guidedOptions}>
-                        {activeGuidedQuestion.options.map((option) => {
-                          const isSelected = selectedOptionIds.includes(option.id);
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              className={`${styles.guidedOption} ${isSelected ? styles.guidedOptionActive : ""}`}
-                              onClick={() => toggleGuidedOption(activeGuidedQuestion, option.id)}
-                              disabled={isAiThinking || isAdvancingGroup}
-                            >
-                              <strong>{option.label}</strong>
-                              {option.description ? <span>{option.description}</span> : null}
-                            </button>
-                          );
-                        })}
-                        {activeGuidedQuestion.allowOther ? (
-                          <button
-                            type="button"
-                            className={`${styles.guidedOption} ${otherSelected ? styles.guidedOptionActive : ""}`}
-                            onClick={() => setOtherSelected((current) => !current)}
-                            disabled={isAiThinking || isAdvancingGroup}
-                          >
-                            <strong>Other</strong>
-                            <span>Add context in your own words.</span>
-                          </button>
-                        ) : null}
-                      </div>
-                      {otherSelected ? (
-                        <textarea
-                          className={styles.otherContext}
-                          value={otherText}
-                          onChange={(event) => setOtherText(event.target.value)}
-                          placeholder={activeGuidedQuestion.otherPrompt}
-                          disabled={isAiThinking || isAdvancingGroup}
-                        />
-                      ) : null}
-                      <div className={styles.guidedActions}>
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          onClick={() => void submitGuidedAnswer()}
-                          disabled={isAiThinking || isAdvancingGroup || (!selectedOptionIds.length && !otherText.trim())}
-                        >
-                          {isAiThinking ? "Saving..." : "Save and continue"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : isGroupComplete ? (
-                    <div className={styles.groupCompletePanel}>
-                      <strong>{activeStep.label} section complete</strong>
-                      <span>Use the continue button to move to the next question set.</span>
-                    </div>
-                  ) : (
-                    <div className={styles.groupCompletePanel}>
-                      <strong>Preparing the next question</strong>
-                      <span>The options are being tailored from the answers already captured.</span>
-                    </div>
-                  )}
-
-                  {nextChatGroup ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => void advanceChatGroup(nextChatGroup.key)}
-                      disabled={isAiThinking || isAdvancingGroup}
-                    >
-                      {isAdvancingGroup ? "Moving..." : `Continue to ${nextChatGroup.label}`}
-                    </button>
-                  ) : null}
-                </div>
-              </section>
-            )}
+      {/* Right workspace */}
+      <div className="flex flex-1 flex-col min-w-0">
+        {/* Workspace header */}
+        <div className="px-6 pt-5 pb-4 border-b border-neutral-100 flex-shrink-0 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-[16px] font-semibold text-neutral-900">{workspaceTitle}</h2>
+            <p className="text-[13px] text-neutral-500 mt-0.5">{workspaceSubtitle}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+            <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600">
+              {statusLabel}
+            </span>
+            <button
+              type="button"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[12px] font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+              onClick={() => void restartIntake()}
+              disabled={isRestarting}
+            >
+              {isRestarting ? "Restarting..." : "Restart"}
+            </button>
           </div>
         </div>
-      </main>
+
+        {/* QS1 form */}
+        {currentGroup === "QS1" ? (
+          <div className="flex-1 p-6 overflow-y-auto">
+            {error ? (
+              <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-[13px] text-red-600">{error}</div>
+            ) : null}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Jurisdiction */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <label className="block text-[13px] font-medium text-neutral-700 mb-2" htmlFor="jurisdiction">
+                  What country or state does this business operate in?
+                </label>
+                <select
+                  id="jurisdiction"
+                  className={inputCls}
+                  value={qs1.jurisdiction}
+                  onChange={(event) => updateQs1("jurisdiction", event.target.value)}
+                >
+                  <option value="">Select jurisdiction</option>
+                  {jurisdictionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Operational context */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <p className="text-[13px] font-medium text-neutral-700 mb-2">
+                  Is this safety system for ongoing operations or a specific project?
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ["ongoing_operations", "Ongoing operations", "A business or site that will keep operating."],
+                    ["project_based", "Project based", "A defined project, shutdown, campaign, or contract."],
+                    ["both", "Both", "A system that needs to cover operations and projects."],
+                  ].map(([value, label, description]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={cn(
+                        "rounded-lg border p-2.5 text-left text-[12px] transition",
+                        qs1.operationalContext === value
+                          ? "border-[#2d9692] bg-[#2d9692]/5"
+                          : "border-neutral-200 bg-white hover:border-[#2d9692]/40 hover:bg-[#2d9692]/5"
+                      )}
+                      onClick={() => updateQs1("operationalContext", value)}
+                    >
+                      <strong className="block font-medium text-neutral-900">{label}</strong>
+                      <span className="mt-0.5 block text-neutral-500">{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Industry */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <label className="block text-[13px] font-medium text-neutral-700 mb-2" htmlFor="industry">
+                  What industry or sector does the business operate in?
+                </label>
+                <input
+                  id="industry"
+                  className={inputCls}
+                  list="industry-options"
+                  value={qs1.industrySector}
+                  onChange={(event) => updateQs1("industrySector", event.target.value)}
+                  placeholder="Start typing or choose an industry"
+                />
+                <datalist id="industry-options">
+                  {industryOptions.map((option) => <option key={option} value={option} />)}
+                </datalist>
+              </div>
+
+              {/* Workforce size */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <p className="text-[13px] font-medium text-neutral-700 mb-2">How many people work in the business?</p>
+                <div className="flex flex-wrap gap-2">
+                  {["1-5", "6-20", "21-50", "51-200", "200+"].map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-[13px] font-medium transition",
+                        qs1.workforceSize === value
+                          ? "border-[#2d9692] bg-[#2d9692]/5 text-[#2d9692]"
+                          : "border-neutral-200 bg-white text-neutral-700 hover:border-[#2d9692]/40"
+                      )}
+                      onClick={() => updateQs1("workforceSize", value)}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Existing SMS */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <p className="text-[13px] font-medium text-neutral-700 mb-2">
+                  Does the business currently have a safety management system in place?
+                </p>
+                <div className="flex gap-2">
+                  {[["yes", "Yes"], ["partially", "Partially"], ["no", "No"]].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-[13px] font-medium transition",
+                        qs1.existingSms === value
+                          ? "border-[#2d9692] bg-[#2d9692]/5 text-[#2d9692]"
+                          : "border-neutral-200 bg-white text-neutral-700 hover:border-[#2d9692]/40"
+                      )}
+                      onClick={() => updateQs1("existingSms", value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ISO 45001 */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <p className="text-[13px] font-medium text-neutral-700 mb-2">
+                  Is the business working toward or currently certified to ISO 45001?
+                </p>
+                <div className="flex gap-2">
+                  {[["yes", "Yes"], ["no", "No"], ["not_sure", "Not sure"]].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-[13px] font-medium transition",
+                        qs1.iso45001 === value
+                          ? "border-[#2d9692] bg-[#2d9692]/5 text-[#2d9692]"
+                          : "border-neutral-200 bg-white text-neutral-700 hover:border-[#2d9692]/40"
+                      )}
+                      onClick={() => updateQs1("iso45001", value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Audience */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm md:col-span-2">
+                <p className="text-[13px] font-medium text-neutral-700 mb-2">
+                  Will this system cover employees only, or contractors and visitors as well?
+                </p>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  {[
+                    ["employees", "Employees", "Your direct workforce."],
+                    ["contractors", "Contractors", "Contractors and subcontractors."],
+                    ["visitors", "Visitors", "Visitors entering your workplace."],
+                    ["public", "Members of public", "Public-facing operations or shared spaces."],
+                  ].map(([value, label, description]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={cn(
+                        "rounded-lg border p-3 text-left text-[12px] transition",
+                        qs1.audience.includes(value)
+                          ? "border-[#2d9692] bg-[#2d9692]/5"
+                          : "border-neutral-200 bg-white hover:border-[#2d9692]/40 hover:bg-[#2d9692]/5"
+                      )}
+                      onClick={() => toggleAudience(value)}
+                    >
+                      <strong className="block font-medium text-neutral-900">{label}</strong>
+                      <span className="mt-0.5 block text-neutral-500">{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Document style */}
+              <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm md:col-span-2">
+                <p className="text-[13px] font-medium text-neutral-700 mb-2">
+                  How would you prefer your documents to be structured?
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ["combined", "Combined", "Fewer, broader documents that cover multiple topics together."],
+                    ["separate", "Separate", "Individual focused documents for each topic."],
+                    ["not_sure", "Not sure", "Let the system recommend a sensible structure."],
+                  ].map(([value, label, description]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={cn(
+                        "rounded-lg border p-3 text-left text-[12px] transition",
+                        qs1.documentStyle === value
+                          ? "border-[#2d9692] bg-[#2d9692]/5"
+                          : "border-neutral-200 bg-white hover:border-[#2d9692]/40 hover:bg-[#2d9692]/5"
+                      )}
+                      onClick={() => updateQs1("documentStyle", value)}
+                    >
+                      <strong className="block font-medium text-neutral-900">{label}</strong>
+                      <span className="mt-0.5 block text-neutral-500">{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                className="rounded-lg bg-[#2d9692] px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-[#236e6b] disabled:opacity-50"
+                onClick={() => void submitFixedQuestions()}
+                disabled={isSavingFixed}
+              >
+                {isSavingFixed ? "Saving..." : "Continue to conversation"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Chat section */
+          <div className="flex flex-1 flex-col min-h-0">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3" aria-live="polite">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
+                >
+                  <div className={cn(
+                    "max-w-[82%] rounded-xl px-4 py-3 text-[13px] leading-relaxed",
+                    message.role === "user"
+                      ? "bg-[#2d9692] text-white"
+                      : "bg-white border border-neutral-200 text-neutral-800"
+                  )}>
+                    {message.content}
+                    {message.role === "assistant" && message.savedCount ? (
+                      <span className="mt-1.5 block text-[11px] text-[#2d9692]">
+                        Saved {message.savedCount} item{message.savedCount === 1 ? "" : "s"}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {isAiThinking ? (
+                <div className="flex justify-start">
+                  <div className="max-w-[82%] rounded-xl border border-neutral-200 bg-white px-4 py-3 text-[13px] text-neutral-400 italic">
+                    Thinking through the next practical question...
+                  </div>
+                </div>
+              ) : null}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {error ? (
+              <div className="px-5 pb-2">
+                <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-[13px] text-red-600">{error}</div>
+              </div>
+            ) : null}
+
+            {/* Guided composer */}
+            <div className="border-t border-neutral-100 bg-neutral-50/50 p-5 flex flex-col gap-3">
+              {currentGroup === "gap_analysis" ? (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-[12px] font-semibold text-neutral-500">Follow-up notes</p>
+                    <p className="text-[11px] text-neutral-400 mt-0.5">Answer what you know</p>
+                  </div>
+                  <p className="text-[13px] font-medium text-neutral-800">Use the questions above as prompts. Short notes are enough.</p>
+                  <textarea
+                    className={cn(inputCls, "min-h-[80px] resize-y")}
+                    value={gapResponse}
+                    onChange={(event) => setGapResponse(event.target.value)}
+                    placeholder="Example: Controls in place include pre-start checks, SWMS, toolbox talks, supervision, inductions..."
+                    disabled={isCompletingGapAnalysis}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+                      onClick={() => void completeGapAnalysis(true)}
+                      disabled={isCompletingGapAnalysis}
+                    >
+                      Complete without extra detail
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg bg-[#2d9692] px-4 py-2 text-[13px] font-medium text-white transition hover:bg-[#236e6b] disabled:opacity-50"
+                      onClick={() => void completeGapAnalysis(false)}
+                      disabled={isCompletingGapAnalysis || !gapResponse.trim()}
+                    >
+                      {isCompletingGapAnalysis ? "Completing..." : "Save follow-up answers"}
+                    </button>
+                  </div>
+                </div>
+              ) : currentGroup === "complete" ? (
+                <div className="rounded-xl border border-[#2d9692]/20 bg-[#2d9692]/5 px-4 py-3">
+                  <strong className="block text-[13px] font-semibold text-[#2d9692]">Intake complete</strong>
+                  <span className="text-[12px] text-neutral-600">The captured responses are ready for the next System Architect step.</span>
+                </div>
+              ) : activeGuidedQuestion ? (
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-[12px] font-semibold text-neutral-500">{activeGuidedQuestion.label}</p>
+                    <p className="text-[13px] font-semibold text-neutral-900 mt-0.5">{activeGuidedQuestion.prompt}</p>
+                    <p className="text-[11px] text-neutral-400 mt-0.5">
+                      {activeGuidedQuestion.selectionMode === "multi" ? "Select all that apply" : "Select one"}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                    {activeGuidedQuestion.options.map((option) => {
+                      const isSelected = selectedOptionIds.includes(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          className={cn(
+                            "rounded-lg border p-3 text-left text-[12px] transition",
+                            isSelected
+                              ? "border-[#2d9692] bg-[#2d9692]/5"
+                              : "border-neutral-200 bg-white hover:border-[#2d9692]/40 hover:bg-[#2d9692]/5"
+                          )}
+                          onClick={() => toggleGuidedOption(activeGuidedQuestion, option.id)}
+                          disabled={isAiThinking || isAdvancingGroup}
+                        >
+                          <strong className="block font-medium text-neutral-900">{option.label}</strong>
+                          {option.description ? <span className="mt-0.5 block text-neutral-500">{option.description}</span> : null}
+                        </button>
+                      );
+                    })}
+                    {activeGuidedQuestion.allowOther ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          "rounded-lg border p-3 text-left text-[12px] transition",
+                          otherSelected
+                            ? "border-[#2d9692] bg-[#2d9692]/5"
+                            : "border-neutral-200 bg-white hover:border-[#2d9692]/40 hover:bg-[#2d9692]/5"
+                        )}
+                        onClick={() => setOtherSelected((current) => !current)}
+                        disabled={isAiThinking || isAdvancingGroup}
+                      >
+                        <strong className="block font-medium text-neutral-900">Other</strong>
+                        <span className="mt-0.5 block text-neutral-500">Add context in your own words.</span>
+                      </button>
+                    ) : null}
+                  </div>
+                  {otherSelected ? (
+                    <textarea
+                      className={cn(inputCls, "min-h-[60px] resize-y")}
+                      value={otherText}
+                      onChange={(event) => setOtherText(event.target.value)}
+                      placeholder={activeGuidedQuestion.otherPrompt}
+                      disabled={isAiThinking || isAdvancingGroup}
+                    />
+                  ) : null}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-[#2d9692] px-4 py-2 text-[13px] font-medium text-white transition hover:bg-[#236e6b] disabled:opacity-50"
+                      onClick={() => void submitGuidedAnswer()}
+                      disabled={isAiThinking || isAdvancingGroup || (!selectedOptionIds.length && !otherText.trim())}
+                    >
+                      {isAiThinking ? "Saving..." : "Save and continue"}
+                    </button>
+                  </div>
+                </div>
+              ) : isGroupComplete ? (
+                <div className="rounded-xl border border-neutral-200 bg-white px-4 py-3">
+                  <strong className="block text-[13px] font-medium text-neutral-800">{activeStep.label} section complete</strong>
+                  <span className="text-[12px] text-neutral-500">Use the continue button to move to the next question set.</span>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-neutral-100 bg-white px-4 py-3">
+                  <strong className="block text-[13px] font-medium text-neutral-700">Preparing the next question</strong>
+                  <span className="text-[12px] text-neutral-400">The options are being tailored from the answers already captured.</span>
+                </div>
+              )}
+
+              {nextChatGroup ? (
+                <div className="flex justify-end border-t border-neutral-100 pt-3">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-[13px] font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+                    onClick={() => void advanceChatGroup(nextChatGroup.key)}
+                    disabled={isAiThinking || isAdvancingGroup}
+                  >
+                    {isAdvancingGroup ? "Moving..." : `Continue to ${nextChatGroup.label}`}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

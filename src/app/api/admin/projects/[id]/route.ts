@@ -72,8 +72,21 @@ export async function GET(
     return new NextResponse(timeEntriesResponse.error.message, { status: 500 });
   }
 
+  // Fetch latest access code for this project's quote
+  let latestAccessCode: string | null = null;
+  const quoteId = projectResponse.data.quote_id;
+  if (quoteId) {
+    const { data: codes } = await supabase
+      .from("quote_access_codes")
+      .select("access_code")
+      .eq("quote_id", quoteId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    latestAccessCode = codes?.[0]?.access_code ?? null;
+  }
+
   return NextResponse.json({
-    project: projectResponse.data,
+    project: { ...projectResponse.data, latest_access_code: latestAccessCode },
     deliverables,
     milestones: milestonesResponse.data ?? [],
     time_entries: timeEntriesResponse.data ?? [],

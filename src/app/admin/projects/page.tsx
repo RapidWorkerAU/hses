@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import HsesDashboardShell from "@/components/dashboard/portal/HsesDashboardShell";
 import PortalAccessGate from "@/components/dashboard/portal/PortalAccessGate";
 import ProjectsListClient from "./ProjectsListClient";
 
@@ -9,16 +8,12 @@ export const metadata: Metadata = {
 
 export default function ProjectSchedulePage() {
   return (
-    <HsesDashboardShell
-      eyebrow="Business Admin"
-      title="Project Schedule Builder"
-      subtitle="Track accepted work, allocate hours to milestones, and manage delivery progress from the shared admin workspace."
-      backHref="/dashboard/business-admin"
-      backLabel="Back"
-    >
-      <PortalAccessGate portalKey="business-admin">
-        <ProjectsListClient />
-      </PortalAccessGate>
-    </HsesDashboardShell>
+    <div className="flex flex-col min-h-full">
+      <div className="flex-1 p-6 bg-[#f7f8fa]">
+        <PortalAccessGate portalKey="business-admin">
+          <ProjectsListClient />
+        </PortalAccessGate>
+      </div>
+    </div>
   );
 }

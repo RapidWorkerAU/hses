@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/supabase/admin";
+import { calculateQuoteVersionTotals } from "../quotes/calcTotals";
 
 export async function POST(request: Request) {
   const auth = await requireAdmin(request);
@@ -72,6 +73,64 @@ export async function POST(request: Request) {
 
   if (error || !data) {
     return new NextResponse(error?.message ?? "Unable to create milestone.", { status: 500 });
+  }
+
+  const { data: deliverable, error: deliverableError } = await supabase
+    .from("quote_deliverables")
+    .select("id,quote_version_id")
+    .eq("id", data.deliverable_id)
+    .single();
+
+  if (deliverableError || !deliverable) {
+    return new NextResponse(deliverableError?.message ?? "Unable to load deliverable.", {
+      status: 500,
+    });
+  }
+
+  const { data: milestones, error: milestonesError } = await supabase
+    .from("quote_milestones")
+    .select("pricing_unit,estimated_hours,quantity")
+    .eq("deliverable_id", data.deliverable_id);
+
+  if (milestonesError) {
+    return new NextResponse(milestonesError.message, { status: 500 });
+  }
+
+  const totalHours = (milestones ?? []).reduce((sum, milestone) => {
+    const unit = milestone.pricing_unit ?? "hours";
+    if (unit === "hours") return sum + (milestone.estimated_hours ?? 0);
+    return sum + (milestone.quantity ?? 0);
+  }, 0);
+
+  const { error: deliverableUpdateError } = await supabase
+    .from("quote_deliverables")
+    .update({ total_hours: totalHours })
+    .eq("id", data.deliverable_id);
+
+  if (deliverableUpdateError) {
+    return new NextResponse(deliverableUpdateError.message, { status: 500 });
+  }
+
+  const { data: version, error: versionError } = await supabase
+    .from("quote_versions")
+    .select("gst_enabled,gst_rate,prices_include_gst")
+    .eq("id", deliverable.quote_version_id)
+    .single();
+
+  if (versionError || !version) {
+    return new NextResponse(versionError?.message ?? "Unable to load totals.", {
+      status: 500,
+    });
+  }
+
+  const totals = await calculateQuoteVersionTotals(supabase, deliverable.quote_version_id, version);
+  const { error: totalsError } = await supabase
+    .from("quote_versions")
+    .update(totals)
+    .eq("id", deliverable.quote_version_id);
+
+  if (totalsError) {
+    return new NextResponse(totalsError.message, { status: 500 });
   }
 
   return NextResponse.json({ milestone: data });

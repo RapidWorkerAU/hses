@@ -3,6 +3,7 @@ import "./globals.css";
 import "./public-shared.css";
 import HashRedirector from "./HashRedirector";
 import GoogleTag from "./GoogleTag";
+import { ToastProvider } from "@/hooks/useToast";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.hses.com.au"),
@@ -37,8 +38,10 @@ export default function RootLayout({
         <GoogleTag />
       </head>
       <body>
-        <HashRedirector />
-        {children}
+        <ToastProvider>
+          <HashRedirector />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

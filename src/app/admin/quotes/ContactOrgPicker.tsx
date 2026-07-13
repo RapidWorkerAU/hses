@@ -1,10 +1,12 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchAdmin } from "../lib/adminFetch";
 import type { Contact, Organisation } from "./types";
-import PortalModal from "@/components/PortalModal";
-import modalStyles from "@/components/PortalModal.module.css";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { cn } from "@/lib/utils";
 
 type ContactOrgPickerProps = {
   organisationId: string | null;
@@ -20,6 +22,7 @@ type ComboItem = {
   label: string;
   subLabel?: string;
 };
+
 
 type ComboboxProps = {
   value: string;
@@ -58,7 +61,6 @@ function Combobox({ value, placeholder, items, emptyText, onInputChange, onSelec
       return;
     }
     if (!isOpen) return;
-
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setHighlighted((prev) => (items.length ? (prev + 1) % items.length : 0));
@@ -74,44 +76,51 @@ function Combobox({ value, placeholder, items, emptyText, onInputChange, onSelec
         setIsOpen(false);
       }
     }
-    if (event.key === "Escape") {
-      setIsOpen(false);
-    }
+    if (event.key === "Escape") setIsOpen(false);
   };
 
   return (
-    <div className="qb-combobox">
+    <div className="relative flex-1 min-w-0">
       <input
-        className="qb-input"
+        className="h-[40px] w-full rounded-md border border-neutral-200 bg-white px-3 text-[14px] text-neutral-900 outline-none transition-colors duration-150 hover:border-neutral-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 placeholder:text-neutral-400"
         placeholder={placeholder}
         value={value}
         onChange={(event) => onInputChange(event.target.value)}
         onFocus={handleFocus}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
+        autoComplete="off"
       />
       {isOpen && (
-        <div className="qb-combobox-list" role="listbox">
-          {items.length === 0 && (
-            <div className="qb-combobox-empty">{emptyText}</div>
-          )}
-          {items.map((item, index) => (
-            <div
-              key={item.id}
-              role="option"
-              aria-selected={index === highlighted}
-              className={`qb-combobox-option ${index === highlighted ? "is-active" : ""}`}
-              onMouseDown={(event) => {
-                event.preventDefault();
-                onSelect(item);
-                setIsOpen(false);
-              }}
-              onMouseEnter={() => setHighlighted(index)}
-            >
-              <div>{item.label}</div>
-              {item.subLabel && <div className="qb-combobox-sub">{item.subLabel}</div>}
+        <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-neutral-200 bg-white shadow-lg overflow-hidden" role="listbox">
+          {items.length === 0 ? (
+            <div className="px-3 py-3 text-center text-[13px] text-neutral-400">{emptyText}</div>
+          ) : (
+            <div className="max-h-52 overflow-y-auto">
+              {items.map((item, index) => (
+                <div
+                  key={item.id}
+                  role="option"
+                  aria-selected={index === highlighted}
+                  className={cn(
+                    "px-3 py-2 cursor-pointer transition-colors",
+                    index === highlighted ? "bg-accent-500/10 text-accent-500" : "hover:bg-neutral-50"
+                  )}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    onSelect(item);
+                    setIsOpen(false);
+                  }}
+                  onMouseEnter={() => setHighlighted(index)}
+                >
+                  <div className="text-[13px] font-medium text-neutral-900">{item.label}</div>
+                  {item.subLabel && (
+                    <div className="text-[12px] text-neutral-500 mt-0.5">{item.subLabel}</div>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
@@ -133,18 +142,8 @@ export default function ContactOrgPicker({
   const [contactQuery, setContactQuery] = useState("");
   const [contactInput, setContactInput] = useState("");
   const [contactResults, setContactResults] = useState<Contact[]>([]);
-  const [orgForm, setOrgForm] = useState({
-    name: "",
-    abn: "",
-    billing_address: "",
-    shipping_address: "",
-  });
-  const [contactForm, setContactForm] = useState({
-    full_name: "",
-    email: "",
-    phone: "",
-    organisation_id: "",
-  });
+  const [orgForm, setOrgForm] = useState({ name: "", abn: "", billing_address: "", shipping_address: "" });
+  const [contactForm, setContactForm] = useState({ full_name: "", email: "", phone: "", organisation_id: "" });
   const [showOrgModal, setShowOrgModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [contactOrgInput, setContactOrgInput] = useState("");
@@ -179,27 +178,15 @@ export default function ContactOrgPicker({
   }, [contactQuery, organisationId]);
 
   useEffect(() => {
-    if (!organisationId) {
-      setOrgInput("");
-      return;
-    }
+    if (!organisationId) { setOrgInput(""); return; }
     const match = orgResults.find((org) => org.id === organisationId);
-    if (match) {
-      setOrgInput(match.name);
-      setOrgQuery(match.name);
-    }
+    if (match) { setOrgInput(match.name); setOrgQuery(match.name); }
   }, [organisationId, orgResults]);
 
   useEffect(() => {
-    if (!contactId) {
-      setContactInput("");
-      return;
-    }
+    if (!contactId) { setContactInput(""); return; }
     const match = contactResults.find((contact) => contact.id === contactId);
-    if (match) {
-      setContactInput(match.full_name);
-      setContactQuery(match.full_name);
-    }
+    if (match) { setContactInput(match.full_name); setContactQuery(match.full_name); }
   }, [contactId, contactResults]);
 
   const createOrganisation = async () => {
@@ -225,8 +212,7 @@ export default function ContactOrgPicker({
 
   const createContact = async () => {
     const orgId = organisationId || contactForm.organisation_id;
-    if (!orgId) return;
-    if (isCreatingContact) return;
+    if (!orgId || isCreatingContact) return;
     setIsCreatingContact(true);
     try {
       const response = await fetchAdmin("/api/admin/contacts", {
@@ -247,31 +233,16 @@ export default function ContactOrgPicker({
     }
   };
 
-  const orgItems = useMemo(
-    () =>
-      orgResults.map((org) => ({
-        id: org.id,
-        label: org.name,
-      })),
-    [orgResults]
-  );
-
+  const orgItems = useMemo(() => orgResults.map((org) => ({ id: org.id, label: org.name })), [orgResults]);
   const contactItems = useMemo(
-    () =>
-      contactResults.map((contact) => ({
-        id: contact.id,
-        label: contact.full_name,
-        subLabel: contact.email,
-      })),
+    () => contactResults.map((contact) => ({ id: contact.id, label: contact.full_name, subLabel: contact.email })),
     [contactResults]
   );
 
   const handleOrgInput = (value: string) => {
     setOrgInput(value);
     setOrgQuery(value);
-    const match = orgResults.find(
-      (org) => org.name.trim().toLowerCase() === value.trim().toLowerCase()
-    );
+    const match = orgResults.find((org) => org.name.trim().toLowerCase() === value.trim().toLowerCase());
     if (match) {
       onOrganisationChange(match.id);
       onContactChange(null);
@@ -291,235 +262,163 @@ export default function ContactOrgPicker({
     const match = contactResults.find(
       (contact) => contact.full_name.trim().toLowerCase() === value.trim().toLowerCase()
     );
-    if (match) {
-      onContactChange(match.id);
-    } else {
-      onContactChange(null);
-    }
+    if (match) onContactChange(match.id);
+    else onContactChange(null);
   };
 
   const pickerFields = (
-    <div
-      className={
-        inline
-          ? "qb-contact-picker-fields"
-          : embedded
-            ? "qb-panel-body qb-panel-body--embedded"
-            : "qb-panel-body"
-      }
-    >
-        <div className="qb-field">
-          <label>Organisation</label>
-          <div className="qb-field-row">
-            <Combobox
-              value={orgInput}
-              placeholder="Select organisation..."
-              items={orgItems}
-              emptyText="No organisations found."
-              onInputChange={handleOrgInput}
-              onSelect={(item) => {
-                onOrganisationChange(item.id);
-                setOrgInput(item.label);
-                setOrgQuery(item.label);
-                onContactChange(null);
-                setContactInput("");
-                setContactQuery("");
-              }}
-            />
-            <button
-              type="button"
-              className="qb-btn qb-btn--fixed"
-              onClick={() => {
-                setShowOrgModal(true);
-                setOrgForm({ name: "", abn: "", billing_address: "", shipping_address: "" });
-              }}
-            >
-              Create new organisation
-            </button>
-          </div>
-        </div>
-
-        <div className={inline ? "qb-field" : "mt-4 qb-field"}>
-          <label>Contact</label>
-          <div className="qb-field-row">
-            <Combobox
-              value={contactInput}
-              placeholder={organisationId ? "Select contact..." : "Select contact (all)"}
-              items={contactItems}
-              emptyText="No contacts found."
-              onInputChange={handleContactInput}
-              onSelect={(item) => {
-                onContactChange(item.id);
-                setContactInput(item.label);
-                setContactQuery(item.label);
-              }}
-            />
-            <button
-              type="button"
-              className="qb-btn qb-btn--fixed"
-              onClick={() => {
-                setShowContactModal(true);
-                setContactForm({ full_name: "", email: "", phone: "", organisation_id: "" });
-                setContactOrgInput("");
-              }}
-            >
-              Create new contact
-            </button>
-          </div>
+    <div className={cn("grid gap-4", inline ? "md:grid-cols-2" : "")}>
+      <div>
+        <label className="block text-[13px] font-medium text-neutral-900 mb-[5px]">Organisation</label>
+        <div className="flex gap-2">
+          <Combobox
+            value={orgInput}
+            placeholder="Select organisation..."
+            items={orgItems}
+            emptyText="No organisations found."
+            onInputChange={handleOrgInput}
+            onSelect={(item) => {
+              onOrganisationChange(item.id);
+              setOrgInput(item.label);
+              setOrgQuery(item.label);
+              onContactChange(null);
+              setContactInput("");
+              setContactQuery("");
+            }}
+          />
+          <button
+            type="button"
+            className="flex-shrink-0 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 whitespace-nowrap"
+            onClick={() => {
+              setShowOrgModal(true);
+              setOrgForm({ name: "", abn: "", billing_address: "", shipping_address: "" });
+            }}
+          >
+            + New
+          </button>
         </div>
       </div>
+
+      <div>
+        <label className="block text-[13px] font-medium text-neutral-900 mb-[5px]">Contact</label>
+        <div className="flex gap-2">
+          <Combobox
+            value={contactInput}
+            placeholder={organisationId ? "Select contact..." : "Select contact (all)"}
+            items={contactItems}
+            emptyText="No contacts found."
+            onInputChange={handleContactInput}
+            onSelect={(item) => {
+              onContactChange(item.id);
+              setContactInput(item.label);
+              setContactQuery(item.label);
+            }}
+          />
+          <button
+            type="button"
+            className="flex-shrink-0 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-50 whitespace-nowrap"
+            onClick={() => {
+              setShowContactModal(true);
+              setContactForm({ full_name: "", email: "", phone: "", organisation_id: "" });
+              setContactOrgInput("");
+            }}
+          >
+            + New
+          </button>
+        </div>
+      </div>
+    </div>
   );
 
   return (
     <>
       {embedded ? (
-        <div className="qb-contact-picker qb-contact-picker--embedded">{pickerFields}</div>
+        pickerFields
       ) : (
-        <div className="qb-panel qb-panel--overflow">
-          <div className="qb-panel-header">
-            <button
-              type="button"
-              className="qb-panel-toggle"
-              aria-expanded={!isCollapsed}
-              onClick={() => setIsCollapsed((prev) => !prev)}
-            >
-              <span>Contacts &amp; Organisation</span>
-              <span className="qb-panel-toggle-icon">{isCollapsed ? "+" : "−"}</span>
-            </button>
-          </div>
-          {!isCollapsed && pickerFields}
+        <div className="rounded-xl border border-neutral-200 bg-white overflow-hidden">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between px-4 py-3 text-[13px] font-medium text-neutral-900 hover:bg-neutral-50 transition"
+            aria-expanded={!isCollapsed}
+            onClick={() => setIsCollapsed((prev) => !prev)}
+          >
+            <span>Contacts &amp; Organisation</span>
+            <span className="text-neutral-400 text-[16px] leading-none">{isCollapsed ? "+" : "−"}</span>
+          </button>
+          {!isCollapsed && <div className="p-4 border-t border-neutral-100">{pickerFields}</div>}
         </div>
       )}
 
       {showOrgModal && (
-        <PortalModal
+        <Modal
           open={showOrgModal}
-          ariaLabel="Create organisation"
-          eyebrow="Organisation"
           title="Create new organisation"
           onClose={() => setShowOrgModal(false)}
           size="lg"
           footer={
             <>
-              <button type="button" className={modalStyles.secondaryButton} onClick={() => setShowOrgModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={`${modalStyles.primaryButton} qb-button-loading`}
+              <Button variant="neutral" onClick={() => setShowOrgModal(false)}>Cancel</Button>
+              <Button
+                variant="primary"
                 onClick={createOrganisation}
                 disabled={!orgForm.name.trim() || isCreatingOrganisation}
-                aria-busy={isCreatingOrganisation}
+                loading={isCreatingOrganisation}
+                loadingText="Saving..."
               >
-                {isCreatingOrganisation ? "Saving..." : "Save organisation"}
-              </button>
+                Save organisation
+              </Button>
             </>
           }
         >
           <div className="grid gap-3 md:grid-cols-2">
-              <input
-                className="qb-input"
-                placeholder="Organisation name"
-                value={orgForm.name}
-                onChange={(event) => setOrgForm({ ...orgForm, name: event.target.value })}
-              />
-              <input
-                className="qb-input"
-                placeholder="ABN"
-                value={orgForm.abn}
-                onChange={(event) => setOrgForm({ ...orgForm, abn: event.target.value })}
-              />
-              <input
-                className="qb-input md:col-span-2"
-                placeholder="Billing address"
-                value={orgForm.billing_address}
-                onChange={(event) =>
-                  setOrgForm({ ...orgForm, billing_address: event.target.value })
-                }
-              />
-              <input
-                className="qb-input md:col-span-2"
-                placeholder="Shipping address"
-                value={orgForm.shipping_address}
-                onChange={(event) =>
-                  setOrgForm({ ...orgForm, shipping_address: event.target.value })
-                }
-              />
+            <Input placeholder="Organisation name" value={orgForm.name} onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })} />
+            <Input placeholder="ABN" value={orgForm.abn} onChange={(e) => setOrgForm({ ...orgForm, abn: e.target.value })} />
+            <Input containerClassName="md:col-span-2" placeholder="Billing address" value={orgForm.billing_address} onChange={(e) => setOrgForm({ ...orgForm, billing_address: e.target.value })} />
+            <Input containerClassName="md:col-span-2" placeholder="Shipping address" value={orgForm.shipping_address} onChange={(e) => setOrgForm({ ...orgForm, shipping_address: e.target.value })} />
           </div>
-        </PortalModal>
+        </Modal>
       )}
 
       {showContactModal && (
-        <PortalModal
+        <Modal
           open={showContactModal}
-          ariaLabel="Create contact"
-          eyebrow="Contact"
           title="Create new contact"
           onClose={() => setShowContactModal(false)}
           size="lg"
           footer={
             <>
-              <button type="button" className={modalStyles.secondaryButton} onClick={() => setShowContactModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={`${modalStyles.primaryButton} qb-button-loading`}
+              <Button variant="neutral" onClick={() => setShowContactModal(false)}>Cancel</Button>
+              <Button
+                variant="primary"
                 onClick={createContact}
-                disabled={
-                  isCreatingContact ||
-                  !(organisationId || contactForm.organisation_id) ||
-                  !contactForm.full_name.trim() ||
-                  !contactForm.email.trim()
-                }
-                aria-busy={isCreatingContact}
+                disabled={isCreatingContact || !(organisationId || contactForm.organisation_id) || !contactForm.full_name.trim() || !contactForm.email.trim()}
+                loading={isCreatingContact}
+                loadingText="Saving..."
               >
-                {isCreatingContact ? "Saving..." : "Save contact"}
-              </button>
+                Save contact
+              </Button>
             </>
           }
         >
           <div className="grid gap-3 md:grid-cols-2">
-              {!organisationId && (
-                <input
-                  className="qb-input md:col-span-2"
-                  placeholder="Organisation"
-                  value={contactOrgInput}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    const match = orgResults.find(
-                      (org) => org.name.trim().toLowerCase() === value.trim().toLowerCase()
-                    );
-                    setContactForm({
-                      ...contactForm,
-                      organisation_id: match ? match.id : "",
-                    });
-                    setContactOrgInput(value);
-                  }}
-                />
-              )}
-              <input
-                className="qb-input"
-                placeholder="Full name"
-                value={contactForm.full_name}
-                onChange={(event) =>
-                  setContactForm({ ...contactForm, full_name: event.target.value })
-                }
+            {!organisationId && (
+              <Input
+                containerClassName="md:col-span-2"
+                placeholder="Organisation"
+                value={contactOrgInput}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const match = orgResults.find((org) => org.name.trim().toLowerCase() === value.trim().toLowerCase());
+                  setContactForm({ ...contactForm, organisation_id: match ? match.id : "" });
+                  setContactOrgInput(value);
+                }}
               />
-              <input
-                className="qb-input"
-                placeholder="Email"
-                value={contactForm.email}
-                onChange={(event) => setContactForm({ ...contactForm, email: event.target.value })}
-              />
-              <input
-                className="qb-input"
-                placeholder="Phone (optional)"
-                value={contactForm.phone}
-                onChange={(event) => setContactForm({ ...contactForm, phone: event.target.value })}
-              />
+            )}
+            <Input placeholder="Full name" value={contactForm.full_name} onChange={(e) => setContactForm({ ...contactForm, full_name: e.target.value })} />
+            <Input placeholder="Email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} />
+            <Input placeholder="Phone (optional)" value={contactForm.phone} onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })} />
           </div>
-        </PortalModal>
+        </Modal>
       )}
     </>
   );
