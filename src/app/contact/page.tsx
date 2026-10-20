@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import ContactForm from "./ContactForm";
 import styles from "./ContactPage.module.css";
 
 export const metadata: Metadata = {
@@ -24,11 +23,13 @@ export default function ContactPage() {
               <span className={styles.brandText}>Contact HSES</span>
             </div>
 
-            <ContactForm />
+            <p>
+              To get in touch, email us at{" "}
+              <a href="mailto:ask@hses.com.au">ask@hses.com.au</a>.
+            </p>
 
             <p className={styles.footnote}>
-              Prefer email? <a href="mailto:ask@hses.com.au">ask@hses.com.au</a>
-              {" "}or return to the <a href="/">homepage</a>.
+              Or return to the <a href="/">homepage</a>.
             </p>
           </div>
         </section>
